@@ -715,6 +715,14 @@ a:focus {
   background: var(--govuk-dark-grey);
 }
 
+.govuk-tag--blue {
+  background: var(--govuk-blue);
+}
+
+.govuk-tag--purple {
+  background: #912b88;
+}
+
 /* ===== CARDS (home page) ===== */
 .govuk-card-grid {
   display: grid;
@@ -837,6 +845,28 @@ a:focus {
   font-size: 16px;
   color: var(--govuk-dark-grey);
   margin: 0;
+}
+
+.govuk-timeline__details {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.govuk-timeline__detail {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.govuk-timeline__detail dt {
+  color: var(--govuk-dark-grey);
+  text-transform: capitalize;
+  min-width: 100px;
+}
+
+.govuk-timeline__detail dd {
+  margin: 0;
+  color: var(--govuk-black);
 }
 
 /* ===== LOADING ===== */
