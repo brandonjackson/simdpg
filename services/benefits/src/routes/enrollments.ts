@@ -134,7 +134,7 @@ router.get(
 router.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const row = db
       .select({
@@ -172,7 +172,7 @@ router.get(
 router.patch(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const existing = db
       .select()

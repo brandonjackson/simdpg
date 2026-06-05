@@ -144,7 +144,7 @@ router.post(
 router.patch(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const existing = db
       .select()

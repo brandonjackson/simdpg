@@ -58,7 +58,7 @@ function formatProgram(row: typeof programs.$inferSelect) {
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const status = req.query.status as string | undefined;
+    const status = req.query.status as "active" | "suspended" | "closed" | undefined;
 
     let rows;
     if (status) {
@@ -81,7 +81,7 @@ router.get(
 router.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const program = db
       .select()

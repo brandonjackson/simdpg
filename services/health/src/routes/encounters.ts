@@ -153,7 +153,7 @@ router.get(
 router.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const encounter = db
       .select()
