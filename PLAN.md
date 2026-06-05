@@ -188,9 +188,29 @@ continuous load from Milestone 5 and measure how OpenFn holds up.
 
 ---
 
+## Milestone 7 — Build forms for services and connect to OpenFn
+
+Turn the service stubs from Milestone 2 into working services: replace each
+under-construction page with a real citizen-facing form and wire it through an
+OpenFn workflow. This ticks off checklist items 2 and 3 on every service stub.
+
+- [ ] **Build the user form per service** on the portal to initiate it —
+      gov.uk-style (one question per page, validation, check-your-answers),
+      replacing the under-construction page. (Checklist item 2.)
+- [ ] **Connect each form to the systems via an OpenFn workflow** — submitting
+      the form triggers the service's workflow (Milestone 6) rather than calling
+      systems directly, so the portal exercises the same integration path under
+      test. (Checklist item 3.)
+- [ ] **Confirmation page per service** — gov.uk-style confirmation panel with a
+      reference number once the workflow accepts the submission.
+- [ ] **Flip each service's catalog checklist to complete** as its form and
+      workflow connection land, so the service catalog reflects live status.
+
+---
+
 ## Later / Backlog
 
-Worth doing, but not part of the six milestones above.
+Worth doing, but not part of the seven milestones above.
 
 ### Tests
 - [ ] System API tests (vitest + supertest) — happy path per endpoint
@@ -216,7 +236,6 @@ Worth doing, but not part of the six milestones above.
 
 ### Portal polish
 - [ ] Error states — handle systems being down gracefully on all pages
-- [ ] Confirmation pages — gov.uk-style confirmation panel with reference number after submission
 - [ ] Mobile testing — verify responsive layout
 
 ### Deployment
