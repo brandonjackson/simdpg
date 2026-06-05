@@ -63,7 +63,7 @@ export default function RegisterDeath() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:3002/deaths", {
+      const res = await fetch("/api/proxy/civil-registry/deaths", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

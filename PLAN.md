@@ -74,7 +74,7 @@ Each service has seed scripts but they should be coordinated:
 
 ### 5. Portal Improvements
 
-- [ ] Server-side API calls — currently the portal calls service APIs from the browser (CORS). Move to Next.js server actions or API routes to keep service URLs server-side.
+- [x] Server-side API calls — staff dashboard converted to server component; all other pages proxy through `/api/proxy/[service]/[...path]` route to keep service URLs server-side.
 - [ ] Error states — handle services being down gracefully on all pages
 - [ ] Confirmation pages — after form submission, show a gov.uk-style confirmation panel with a reference number
 - [ ] Mobile testing — verify responsive layout works

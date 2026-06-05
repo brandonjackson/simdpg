@@ -53,7 +53,7 @@ export default function CitizenTimeline() {
     const events: TimelineEvent[] = [];
 
     try {
-      const citizenRes = await fetch(`http://localhost:3001/citizens/${id}`);
+      const citizenRes = await fetch(`/api/proxy/identity/citizens/${id}`);
       if (!citizenRes.ok) {
         setError("Citizen not found");
         setLoading(false);
@@ -77,7 +77,7 @@ export default function CitizenTimeline() {
 
     try {
       const eventsRes = await fetch(
-        `http://localhost:3002/events?citizen_id=${id}`
+        `/api/proxy/civil-registry/events?citizen_id=${id}`
       );
       if (eventsRes.ok) {
         const vitalEvents = await eventsRes.json();
@@ -102,7 +102,7 @@ export default function CitizenTimeline() {
 
     try {
       const patientRes = await fetch(
-        `http://localhost:3003/patients?citizen_id=${id}`
+        `/api/proxy/health/patients?citizen_id=${id}`
       );
       if (patientRes.ok) {
         const patients = await patientRes.json();
@@ -117,7 +117,7 @@ export default function CitizenTimeline() {
           });
 
           const encRes = await fetch(
-            `http://localhost:3003/encounters?patient_id=${patient.id}`
+            `/api/proxy/health/encounters?patient_id=${patient.id}`
           );
           if (encRes.ok) {
             const encounters = await encRes.json();
@@ -138,7 +138,7 @@ export default function CitizenTimeline() {
           }
 
           const vacRes = await fetch(
-            `http://localhost:3003/vaccinations?patient_id=${patient.id}`
+            `/api/proxy/health/vaccinations?patient_id=${patient.id}`
           );
           if (vacRes.ok) {
             const vaccinations = await vacRes.json();
@@ -163,7 +163,7 @@ export default function CitizenTimeline() {
 
     try {
       const enrollRes = await fetch(
-        `http://localhost:3004/enrollments?citizen_id=${id}`
+        `/api/proxy/benefits/enrollments?citizen_id=${id}`
       );
       if (enrollRes.ok) {
         const enrollmentData = await enrollRes.json();

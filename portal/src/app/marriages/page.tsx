@@ -89,7 +89,7 @@ export default function RegisterMarriage() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:3002/marriages", {
+      const res = await fetch("/api/proxy/civil-registry/marriages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

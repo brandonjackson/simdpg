@@ -32,7 +32,7 @@ export default function StaffSearch() {
       if (dob) params.set("dob", dob);
 
       const res = await fetch(
-        `http://localhost:3001/citizens/search?${params.toString()}`
+        `/api/proxy/identity/citizens/search?${params.toString()}`
       );
       if (!res.ok) {
         const data = await res.json();

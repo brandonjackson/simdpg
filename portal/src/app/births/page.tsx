@@ -97,7 +97,7 @@ export default function RegisterBirth() {
     setLoading(true);
     try {
       // First create the child citizen in the identity service
-      const citizenRes = await fetch("http://localhost:3001/citizens", {
+      const citizenRes = await fetch("/api/proxy/identity/citizens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -114,7 +114,7 @@ export default function RegisterBirth() {
       const childCitizen = await citizenRes.json();
 
       // Then register the birth in the civil registry
-      const birthRes = await fetch("http://localhost:3002/births", {
+      const birthRes = await fetch("/api/proxy/civil-registry/births", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

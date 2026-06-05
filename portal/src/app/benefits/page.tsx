@@ -84,7 +84,7 @@ export default function ApplyForBenefit() {
     }
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:3004/eligibility/check", {
+      const res = await fetch("/api/proxy/benefits/eligibility/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -110,7 +110,7 @@ export default function ApplyForBenefit() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:3004/enrollments", {
+      const res = await fetch("/api/proxy/benefits/enrollments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
