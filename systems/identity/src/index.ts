@@ -4,6 +4,7 @@ import { db, ensureTables } from "./db/index.js";
 import { citizens, addresses } from "./db/schema.js";
 import { citizenRouter } from "./routes/citizens.js";
 import { householdRouter } from "./routes/households.js";
+import { adminRouter } from "./routes/admin.js";
 import { errorHandler } from "./middleware/error-handler.js";
 
 // Ensure tables exist on startup
@@ -61,6 +62,7 @@ app.get("/citizens", async (req, res, next) => {
 // ---------------------------------------------------------------------------
 app.use("/citizens", citizenRouter);
 app.use("/households", householdRouter);
+app.use("/admin", adminRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler (must be registered last)

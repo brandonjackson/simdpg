@@ -4,6 +4,7 @@ import programsRouter from "./routes/programs.js";
 import enrollmentsRouter from "./routes/enrollments.js";
 import paymentsRouter from "./routes/payments.js";
 import eligibilityRouter from "./routes/eligibility.js";
+import adminRouter from "./routes/admin.js";
 import { errorHandler } from "./middleware/error-handler.js";
 
 // Ensure tables exist on startup
@@ -28,6 +29,7 @@ app.use("/programs", programsRouter);
 app.use("/enrollments", enrollmentsRouter);
 app.use("/payments", paymentsRouter);
 app.use("/eligibility", eligibilityRouter);
+app.use("/admin", adminRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler (must be registered last)

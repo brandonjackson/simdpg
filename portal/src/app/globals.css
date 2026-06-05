@@ -534,6 +534,34 @@ a:focus {
   cursor: pointer;
 }
 
+/* ===== CHECKBOXES ===== */
+.govuk-checkboxes {
+  margin-bottom: 20px;
+}
+
+.govuk-checkboxes__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+  min-height: 40px;
+  padding: 7px 0;
+}
+
+.govuk-checkboxes__input {
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.govuk-checkboxes__label {
+  font-size: 19px;
+  padding-top: 8px;
+  cursor: pointer;
+}
+
 /* ===== ERROR MESSAGES ===== */
 .govuk-error-message {
   font-size: 19px;

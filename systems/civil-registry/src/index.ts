@@ -5,6 +5,7 @@ import birthsRouter from "./routes/births.js";
 import deathsRouter from "./routes/deaths.js";
 import marriagesRouter from "./routes/marriages.js";
 import eventsRouter from "./routes/events.js";
+import adminRouter from "./routes/admin.js";
 
 const app = express();
 const PORT = process.env.PORT ?? 3002;
@@ -27,6 +28,7 @@ app.use("/births", birthsRouter);
 app.use("/deaths", deathsRouter);
 app.use("/marriages", marriagesRouter);
 app.use("/events", eventsRouter);
+app.use("/admin", adminRouter);
 
 // ---------------------------------------------------------------------------
 // Error handling
