@@ -172,7 +172,7 @@ export default async function StaffDashboard() {
         </div>
         <div className="govuk-card">
           <h3 className="govuk-card__title">
-            <a href="/births" className="govuk-link">
+            <a href="/services/birth-registration" className="govuk-link">
               Register a birth
             </a>
           </h3>
@@ -182,7 +182,7 @@ export default async function StaffDashboard() {
         </div>
         <div className="govuk-card">
           <h3 className="govuk-card__title">
-            <a href="/deaths" className="govuk-link">
+            <a href="/services/death-registration" className="govuk-link">
               Register a death
             </a>
           </h3>
@@ -192,7 +192,7 @@ export default async function StaffDashboard() {
         </div>
         <div className="govuk-card">
           <h3 className="govuk-card__title">
-            <a href="/vaccinations" className="govuk-link">
+            <a href="/services/vaccination" className="govuk-link">
               Record vaccination
             </a>
           </h3>
