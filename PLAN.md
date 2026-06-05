@@ -1,164 +1,259 @@
-# SimDPG — What's Next
+# SimDPG — Roadmap
+
+A simulated city-state's digital public infrastructure, built to stress-test
+[OpenFn](https://openfn.org) integration workflows. This plan is organised into
+six milestones. Work that doesn't yet fit a milestone is collected under
+[Later / Backlog](#later--backlog).
+
+Two distinct catalogs live in the staff area and are referenced throughout:
+
+- **Systems catalog** (`portal/src/app/staff/systems-catalog/page.tsx`,
+  `/staff/systems-catalog`) — documents the *systems of record* (the DPI
+  building blocks): how each works, its full API, and its core data structures.
+  Built, and already documents the five live systems with data model, endpoints,
+  webhooks, and cross-system relationships. Extended with stubs in Milestone 1
+  and kept in sync as APIs deepen in Milestone 3.
+- **Service catalog** (`portal/src/app/staff/service-catalog/page.tsx`) —
+  documents the *citizen-facing services*: overview, customer journey, relevant
+  systems, and the OpenFn business-logic prompt. Built; extended in Milestone 2.
+
+---
 
 ## What's Done
 
 - [x] Mono-repo scaffold with npm workspaces
-- [x] Identity system (citizens, households, addresses, search)
-- [x] Citizens have email and phone_number contact fields for notification delivery
+- [x] Identity system (citizens, households, addresses, search; email + phone contact fields)
 - [x] Civil Registry system (births, deaths, marriages, combined events)
 - [x] Health system (patients, encounters, vaccinations, overdue queries)
 - [x] Benefits system (programs, eligibility rules, enrollments, payments)
-- [x] Notifications system (port 3005) — stores notification records sent to citizens via email/sms
-- [x] Typed API clients package (`@simdpg/api-clients`) — includes NotificationsClient
-- [x] Gov.uk portal — citizen pages (birth/death/marriage registration, vaccination booking, benefit application, check my record, my notifications)
-- [x] Gov.uk portal — staff pages (dashboard, search, citizen timeline)
-- [x] Simulation engine — population generator (with email/phone), 6 event scripts, runner with year/scale modes
+- [x] Notifications system (port 3005) — records email/sms notifications to citizens
+- [x] Typed API clients package (`@simdpg/api-clients`)
+- [x] Gov.uk portal — citizen pages (birth/death/marriage, vaccination booking, benefit application, check my record, my notifications)
+- [x] Gov.uk portal — staff pages (dashboard, search, citizen timeline, service catalog, systems catalog)
+- [x] Simulation engine — population generator, 6 event scripts, runner with year/scale modes
 - [x] End-to-end verified: all systems start, population generates, birth flow works cross-system
 
-## What's Next (in priority order)
+---
 
-### 1. OpenFn Workflows (Part 3 of spec)
+## Milestone 1 — Identify critical systems
 
-This is the core of what we're testing. 10 workflows that wire the systems together:
+Take stock of which DPI building blocks a credible city-state needs, confirm
+each has at least a presence in the repo, and stub the rest in the **systems
+catalog** so the full landscape is visible before we deepen anything.
 
-**Event-driven (triggered by webhooks):**
-1. Birth registered → create citizen in identity system
-2. Citizen created (newborn) → register as patient, schedule vaccinations
-3. Citizen created (newborn) → check child benefit eligibility, enroll if eligible
-4. Death registered → close records across identity, health, and benefits
-5. Marriage registered → link/merge households, reassess benefits
-6. Vaccination administered → update encounter records, push to reporting
-7. Enrollment created → schedule payments based on program rules
-8. Any system event → look up citizen contact info (email/phone) from identity, send notification via notifications system
+- [ ] **Add status badges to the systems catalog.** The catalog already lists
+      the five live systems; mark each entry built / stub / planned so the
+      not-yet-built components (added below) are clearly distinguished.
+- [ ] **Inventory critical DPI components** against common reference taxonomies
+      (GovStack building blocks, DCI). Confirmed present: Identity, Civil
+      Registry, Health, Benefits, Notifications. The information-mediator /
+      exchange layer is played by OpenFn.
+- [ ] **Stub the components we don't have yet.** For each, add a systems-catalog
+      entry sketching what it will do, even though no code exists. Candidates to
+      assess and stub as appropriate:
+  - [ ] **Payments / payment rails** — Benefits currently *schedules* payments but nothing disburses them; a payments system is the obvious gap.
+  - [ ] **Authentication / single sign-on** — citizen and staff identity assurance (out of scope to build now, but belongs in the catalog).
+  - [ ] **Consent / data-sharing** — authorisation for cross-system data access.
+  - [ ] **Social registry / functional registry** — needs-based targeting that feeds Benefits eligibility.
+  - [ ] Any other building block the inventory surfaces (e.g. document/credential issuance).
+- [ ] Each stub clearly marked as a sketch so it isn't mistaken for a working system.
 
-**Scheduled (cron):**
-8. Daily: age-based eligibility changes (turning 18 → terminate child benefit, check adult programs)
-9. Weekly: missed vaccination follow-up (query overdue, schedule consultations)
-10. Duplicate citizen detection (fuzzy match, flag/merge, cascade ID changes)
+---
 
-**What to measure for each workflow:**
-- Did OpenFn AI generate a working first draft from the spec description?
-- How many manual edits were needed?
-- Error rate and retry behavior under load
-- Latency per execution
+## Milestone 2 — Service stubs complete
 
-**Action items:**
-- [ ] Configure webhook URLs in each system to point to OpenFn endpoints
-- [ ] Create each workflow in OpenFn (ideally using AI generation)
-- [ ] Document AI generation quality per workflow
-- [ ] Test each workflow end-to-end with a single event
-- [ ] Run simulation to test at scale
+Make the portal show the *full* menu of services a citizen of the city-state
+would need, navigable to gov.uk standards, with every service backed by a stub
+page and a service-catalog entry — including the OpenFn business-logic prompt.
 
-### 2. DCI API Standards & OpenAPI Specs
+- [ ] **Full service list on the portal.** Represent every service from
+      <https://brandonjackson.org/uds-tracker>, but include *only* the ones
+      buildable with systems present in the systems catalog (Milestone 1).
+- [ ] **Align with the Digital Convergence Initiative.** Where a DCI standard
+      service option exists, model our service on it (naming, scope, flow).
+- [ ] **Gov.uk navigation.** Organise services into clear categories, easy to
+      browse, following gov.uk best practice (task-based grouping, plain
+      language, clear hierarchy).
+- [ ] **Under-construction stub page per service.** Clicking a service shows a
+      checklist of its build state:
+  1. Spec written ✅ — links to the service's entry in the staff service catalog
+  2. Build the user form on the portal to initiate the service
+  3. Connect the form to the systems using an OpenFn workflow
+- [ ] **Service-catalog entry per service** (extends the existing page). Each
+      entry contains:
+  - Overview of how the service works
+  - The customer journey
+  - The relevant systems
+  - A **text input pre-filled with an OpenFn prompt** describing the underlying
+    business logic, ready to paste into OpenFn AI generation
 
-SimDPG services should be credible stand-ins for real DPGs. Aligning with [DCI (Digital Convergence Initiative)](https://digitalpublicgoods.net/digital-convergence-initiative/) API standards makes the simulated systems behave like the real ones OpenFn will eventually talk to.
+> The existing service catalog already carries overview, customer journey,
+> systems, and OpenFn workflow descriptions — the new work is the OpenFn
+> *prompt* input, the uds-tracker-aligned service list, the gov.uk navigation,
+> and the under-construction stub pages.
 
-**DCI compliance per service:**
-- [ ] Adopt standard HTTP status codes and error envelope (`{ "error": { "code", "message", "details" } }`) across all five systems
-- [ ] Standardise pagination — all list endpoints return `{ data: [], meta: { page, per_page, total } }`
-- [ ] Add `X-Request-ID` header propagation for traceability
-- [ ] Use ISO 8601 dates everywhere (audit existing fields — some may be inconsistent)
-- [ ] Align webhook event payloads with DCI event schema conventions (type, source, id, time, data)
+---
 
-**OpenAPI specs:**
-- [ ] Generate/author `openapi.yaml` for each system (identity, civil-registry, health, benefits, notifications) — colocate at `systems/<name>/openapi.yaml`
-- [ ] Validate specs with a linter (e.g. `redocly lint`) as part of CI / `npm run lint`
-- [ ] Serve interactive docs from each system at `GET /docs` (e.g. Scalar or Swagger UI middleware)
-- [ ] Keep specs in sync with route implementations — add a check task that diffs generated vs committed spec
+## Milestone 3 — Systems are feature complete
 
-**Service catalog:**
-- [ ] Add a `/catalog` page to the portal listing all five services with: name, description, base URL, status badge, link to its `/docs`, and links to the relevant DCI standard documentation
-- [ ] Link each service to the DCI spec section it implements (e.g. Civil Registry → GovStack Civil Registry BB spec, Health → GovStack Health BB spec)
-- [ ] Include a "Standards compliance" column showing which DCI/GovStack building-block specs each service targets
+Turn the systems of record from minimal stubs into credible stand-ins for real
+DPGs: full read/write APIs, DCI-aligned data models, OpenAPI specs, and complete
+system-catalog documentation.
 
-### 3. Notification System — Future Enhancements
+- [ ] **Core read + write APIs** for each system of record, mirroring the public
+      API functions of the equivalent real DPG (e.g. OpenCRVS for civil
+      registry, DHIS2 for health).
+- [ ] **DCI-aligned data model and naming.** Structure data models and function
+      names per Digital Convergence Initiative specs where relevant.
+- [ ] **DCI API conventions across all systems:**
+  - [ ] Standard HTTP status codes and error envelope `{ "error": { "code", "message", "details" } }`
+  - [ ] Standard pagination — list endpoints return `{ data: [], meta: { page, per_page, total } }`
+  - [ ] `X-Request-ID` header propagation for traceability
+  - [ ] ISO 8601 dates everywhere (audit existing fields for inconsistencies)
+  - [ ] Webhook payloads aligned to a DCI-style event schema (type, source, id, time, data)
+- [ ] **OpenAPI specs:**
+  - [ ] Author `openapi.yaml` per system, colocated at `systems/<name>/openapi.yaml`
+  - [ ] Validate specs in CI / `npm run lint` (e.g. `redocly lint`)
+  - [ ] Serve interactive docs at `GET /docs` per system (Scalar or Swagger UI)
+  - [ ] Keep specs in sync with routes (diff generated vs committed spec)
+- [ ] **Systems-catalog entries kept in sync.** The catalog already documents
+      how each built system works, its full API, and its core data structures —
+      keep these current as the APIs deepen, promote the Milestone 1 stubs as
+      they get built, and link each system to the DCI / GovStack building-block
+      spec it targets.
+- [ ] **Webhook emission wired up** — each system's `webhooks.ts` POSTs real
+      events to a configurable target (`WEBHOOK_URL`) so OpenFn can consume them.
+- [ ] **Per-system webhook event log table for debugging.**
 
-The notifications system (port 3005) is live and records notification delivery to citizens via email and SMS. OpenFn workflows will wire system events to notification creation. Future work:
+---
 
-- [ ] **Staff notification lookup UI** — portal page at `/staff/notifications` where staff can enter a citizen name or national ID and see all messages delivered to them, with delivery status, timestamps, and channel details
-- [ ] **Notification templates** — add a `templates` table so systems can reference named templates (e.g. "birth_confirmation_email", "vaccination_reminder_sms") instead of hardcoding message bodies in workflows
-- [ ] **Delivery simulation** — simulate realistic delivery delays, failures, and retries (currently all notifications are marked "sent" immediately)
-- [ ] **Notification preferences** — allow citizens to opt in/out of channels (email vs SMS) and notification categories
-- [ ] **Batch digest** — aggregate multiple notifications into a single daily/weekly digest email
-- [ ] **Audit trail** — track who/what triggered each notification (workflow ID, operator, timestamp)
+## Milestone 4 — Population system improvements
 
-### 4. Webhook Infrastructure
+Give staff real control over how the simulated population is constructed.
 
-The systems have webhook emitter stubs but they need to be wired up to actually POST events.
+- [ ] **Population management page** (`/staff/population`):
+  - Current population stats (citizens, households, births/deaths/marriages to date)
+  - **Generate new population** — trigger the generator with configurable options
+  - **Config options:** size, age distribution, geographic spread, household size range, language/ethnicity mix, pre-existing conditions rate, benefit eligibility rate
+  - **Delete population** — wipe all data across all systems (with confirmation)
+  - **Export / import config** — download config as JSON and re-run with the same parameters
+  - Log of recent generation runs (timestamp, config summary, outcome)
 
-- [ ] Each system's `webhooks.ts` needs a configurable target URL (env var `WEBHOOK_URL`)
-- [ ] Add retry logic (exponential backoff) for failed webhook deliveries
-- [ ] Add a webhook event log table per system for debugging
-- [ ] Test that creating a citizen actually fires `citizen.created` to the configured URL
+---
 
-### 5. Tests
+## Milestone 5 — Simulation system
 
-No tests exist yet. Priority areas:
+Build the engine that *runs the city-state* — firing events automatically,
+around the clock, even when nobody is watching. This is the load generator; the
+OpenFn workflows it exercises are built in Milestone 6.
 
-- [ ] System API tests (vitest + supertest) — happy path for each endpoint
+- [ ] **Simulation control API** on the engine (e.g. `POST /simulation/speed`,
+      `GET /simulation/status`, start / pause / reset).
+- [ ] **Simulation controls page** (`/staff/simulation`) in the portal:
+  - Speed selector: **Real-time (1×)** | **100×** | **1000×** (custom multiplier)
+  - Simulation clock display — simulated date/time vs. wall-clock time
+  - Start / pause / reset controls
+  - Live event feed — stream recent events (births, deaths, etc.) as they fire
+- [ ] **24/7 autonomous run** — leave the simulation running so events fire
+      continuously against the systems (and, once Milestone 6 lands, the OpenFn
+      workflows). _Technical approach TBD_ (long-running scheduler/worker,
+      durable clock, resumable state).
+- [ ] **Capture system-side performance** as the load runs:
+  - Latency percentiles (p50/p95/p99) per system endpoint
+  - Run at scale tiers and write up findings in `simulation/reports/`:
+    - Dev: 100 citizens, ~500 events
+    - Small: 10,000 citizens, ~50,000 events
+    - Medium: 100,000 citizens, ~500,000 events
+    - Large: 1,000,000 citizens, ~5,000,000 events
+
+---
+
+## Milestone 6 — OpenFn workflows
+
+The point of the whole exercise: wire the systems together with OpenFn workflows
+generated from the service-catalog prompts (Milestone 2), then put them under the
+continuous load from Milestone 5 and measure how OpenFn holds up.
+
+- [ ] **Build the workflows** — the connective tissue between systems, and the
+      thing actually under test:
+  - Event-driven: birth→citizen, newborn→patient+vaccinations, newborn→child-benefit, death→close records, marriage→link households+reassess, vaccination→reporting, enrollment→payments, any-event→notification
+  - Scheduled: daily age-based eligibility, weekly missed-vaccination follow-up, duplicate-citizen detection
+- [ ] **Point each system's `WEBHOOK_URL`** (wired in Milestone 3) at the
+      matching OpenFn trigger, and verify each workflow end-to-end with a single
+      event before running at scale.
+- [ ] **Measure OpenFn under load:**
+  - For each workflow: did OpenFn AI generate a working first draft from the prompt? How many manual edits were needed?
+  - Workflow metrics — success / failure / timeout counts, retry behaviour, latency per execution
+  - Error rate under the Milestone 5 load tiers; capture findings in `simulation/reports/`
+
+---
+
+## Milestone 7 — Build forms for services and connect to OpenFn
+
+Turn the service stubs from Milestone 2 into working services: replace each
+under-construction page with a real citizen-facing form and wire it through an
+OpenFn workflow. This ticks off checklist items 2 and 3 on every service stub.
+
+- [ ] **Build the user form per service** on the portal to initiate it —
+      gov.uk-style (one question per page, validation, check-your-answers),
+      replacing the under-construction page. (Checklist item 2.)
+- [ ] **Connect each form to the systems via an OpenFn workflow** — submitting
+      the form triggers the service's workflow (Milestone 6) rather than calling
+      systems directly, so the portal exercises the same integration path under
+      test. (Checklist item 3.)
+- [ ] **Confirmation page per service** — gov.uk-style confirmation panel with a
+      reference number once the workflow accepts the submission.
+- [ ] **Flip each service's catalog checklist to complete** as its form and
+      workflow connection land, so the service catalog reflects live status.
+
+---
+
+## Later / Backlog
+
+Worth doing, but not part of the seven milestones above.
+
+### Tests
+- [ ] System API tests (vitest + supertest) — happy path per endpoint
 - [ ] Cross-system integration tests — birth flow creates citizen, registers patient
 - [ ] Simulation smoke test — generate 10 citizens, run one year, verify counts
 - [ ] Portal build test — `next build` passes
 
-### 6. Seed Data
-
-Each system has seed scripts but they should be coordinated:
-
+### Seed data
 - [ ] Run seed scripts in order: identity → civil-registry → health → benefits
-- [ ] Add a root-level `npm run seed` that runs all seed scripts in sequence
+- [ ] Root-level `npm run seed` that runs all seeds in sequence
 - [ ] Ensure seed data is consistent across systems (same citizen IDs referenced)
 
-### 7. Portal Improvements
+### Webhook infrastructure (beyond the basic emission in Milestone 3)
+- [ ] Retry logic (exponential backoff) for failed deliveries
 
-- [x] Server-side API calls — staff dashboard converted to server component; all other pages proxy through `/api/proxy/[system]/[...path]` route to keep system URLs server-side.
+### Notification system enhancements
+- [ ] Staff notification lookup UI (`/staff/notifications`) — search by name / national ID, see delivery status, timestamps, channel
+- [ ] Notification templates table (named templates instead of hardcoded bodies)
+- [ ] Delivery simulation — realistic delays, failures, retries
+- [ ] Notification preferences — citizen opt in/out per channel and category
+- [ ] Batch digest — aggregate into daily/weekly digest emails
+- [ ] Audit trail — track what triggered each notification
+
+### Portal polish
 - [ ] Error states — handle systems being down gracefully on all pages
-- [ ] Confirmation pages — after form submission, show a gov.uk-style confirmation panel with a reference number
-- [ ] Mobile testing — verify responsive layout works
-- [ ] **Population management page** (`/staff/population`) — staff-facing control panel for the simulated population:
-  - Display current population stats (total citizens, households, births/deaths/marriages to date)
-  - **Delete population** — wipe all data across all systems (with a confirmation prompt)
-  - **Generate new population** — trigger the simulation's population generator with configurable options
-  - **Config options**: population size, age distribution, geographic spread, household size range, language/ethnicity mix, pre-existing conditions rate, benefit eligibility rate
-  - **Export config** — download current population config as JSON so it can be reproduced later
-  - **Import config** — upload a saved config JSON to re-run with the same parameters
-  - Show a log of recent generation runs (timestamp, config summary, outcome)
-- [ ] **Simulation controls page** (`/staff/simulation`) — real-time control of the simulation engine's time speed:
-  - Speed selector: **Real-time** (1x) | **100×** | **1000×** (custom multiplier input)
-  - Current simulation clock display — shows simulated date/time vs. wall clock time
-  - Start / pause / reset simulation controls
-  - Live event feed — stream recent simulation events (births, deaths, etc.) as they fire
-  - Simulation engine exposes a control API (e.g. `POST /simulation/speed`, `GET /simulation/status`) that the portal page calls
+- [ ] Mobile testing — verify responsive layout
 
-### 8. Scale Testing Infrastructure
+### Deployment
+- [ ] Fill in `docker-compose.yml`; add Dockerfiles per system
+- [ ] Nginx reverse proxy; deploy to VPS
+- [ ] OpenFn cloud connection; deploy portal to Vercel
 
-- [ ] Add `simulation/reports/` directory for markdown reports
-- [ ] Capture latency percentiles (p50, p95, p99) per system endpoint
-- [ ] Capture OpenFn workflow execution metrics (success/failure/timeout)
-- [ ] Run at each scale tier and document findings:
-  - Dev: 100 citizens, ~500 events
-  - Small: 10,000 citizens, ~50,000 events
-  - Medium: 100,000 citizens, ~500,000 events
-  - Large: 1,000,000 citizens, ~5,000,000 events
-
-### 9. Deployment
-
-- [ ] Fill in `docker-compose.yml` with system containers
-- [ ] Add Dockerfiles per system
-- [ ] Configure Nginx reverse proxy
-- [ ] Deploy to VPS
-- [ ] Set up OpenFn cloud connection
-- [ ] Deploy portal to Vercel
-
-### 10. Database Migration to Postgres
-
-For deployed/scale environments:
-
+### Database migration to Postgres
 - [ ] Add Postgres Drizzle configs alongside SQLite
 - [ ] Test each system with Postgres
 - [ ] Update docker-compose with Postgres containers
 
+---
+
 ## Key Decisions Still Open
 
-1. **OpenFn setup** — Are we using OpenFn cloud or self-hosted Lightning? This determines webhook URL configuration.
-2. **Auth** — The spec says auth is out of scope for now. Staff pages currently have no access control. When do we add it?
-3. **Real DPG swap** — When real systems (OpenCRVS, DHIS2, etc.) come online, the plan is to swap them in behind the same OpenFn workflows. Do we need to build adapter compatibility tests now?
+1. **OpenFn setup** — OpenFn cloud or self-hosted Lightning? Determines webhook URL configuration.
+2. **Auth** — Staff pages currently have no access control. When do we add it? (Tracked as a system-catalog stub in Milestone 1.)
+3. **Real DPG swap** — When real systems (OpenCRVS, DHIS2, etc.) come online, the plan is to swap them in behind the same OpenFn workflows. Do we need adapter compatibility tests now?
+</content>
+</invoke>
