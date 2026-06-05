@@ -60,7 +60,7 @@ export default function BookVaccination() {
       );
       if (!patientRes.ok) {
         // If no patient record, create one
-        const createRes = await fetch("http://localhost:3003/patients", {
+        const createRes = await fetch("/api/proxy/health/patients", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ citizen_id: citizenData.id }),
@@ -98,7 +98,7 @@ export default function BookVaccination() {
     setLoading(true);
     try {
       // Create an encounter for the vaccination
-      const encounterRes = await fetch("http://localhost:3003/encounters", {
+      const encounterRes = await fetch("/api/proxy/health/encounters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -118,7 +118,7 @@ export default function BookVaccination() {
       const encounter = await encounterRes.json();
 
       // Record the vaccination
-      const vacRes = await fetch("http://localhost:3003/vaccinations", {
+      const vacRes = await fetch("/api/proxy/health/vaccinations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

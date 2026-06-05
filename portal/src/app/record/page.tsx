@@ -88,13 +88,13 @@ export default function CheckMyRecord() {
       const [eventsRes, patientsRes, enrollmentsRes] = await Promise.allSettled(
         [
           fetch(
-            `http://localhost:3002/events?citizen_id=${encodeURIComponent(citizen.id)}`
+            `/api/proxy/civil-registry/events?citizen_id=${encodeURIComponent(citizen.id)}`
           ),
           fetch(
-            `http://localhost:3003/patients?citizen_id=${encodeURIComponent(citizen.id)}`
+            `/api/proxy/health/patients?citizen_id=${encodeURIComponent(citizen.id)}`
           ),
           fetch(
-            `http://localhost:3004/enrollments?citizen_id=${encodeURIComponent(citizen.id)}`
+            `/api/proxy/benefits/enrollments?citizen_id=${encodeURIComponent(citizen.id)}`
           ),
         ]
       );
@@ -121,10 +121,10 @@ export default function CheckMyRecord() {
       if (patient) {
         const [encRes, vacRes] = await Promise.allSettled([
           fetch(
-            `http://localhost:3003/encounters?patient_id=${encodeURIComponent(patient.id)}`
+            `/api/proxy/health/encounters?patient_id=${encodeURIComponent(patient.id)}`
           ),
           fetch(
-            `http://localhost:3003/vaccinations?patient_id=${encodeURIComponent(patient.id)}`
+            `/api/proxy/health/vaccinations?patient_id=${encodeURIComponent(patient.id)}`
           ),
         ]);
         encounters =
@@ -143,7 +143,7 @@ export default function CheckMyRecord() {
         const paymentResults = await Promise.allSettled(
           enrollments.map((e: { id: string }) =>
             fetch(
-              `http://localhost:3004/payments?enrollment_id=${encodeURIComponent(e.id)}`
+              `/api/proxy/benefits/payments?enrollment_id=${encodeURIComponent(e.id)}`
             )
           )
         );

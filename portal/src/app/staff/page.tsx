@@ -1,6 +1,6 @@
-"use client";
+import { identity, health } from "@/lib/services";
 
-import { useState, useEffect } from "react";
+export const dynamic = "force-dynamic";
 
 interface DashboardStats {
   totalCitizens: number | null;
@@ -9,101 +9,89 @@ interface DashboardStats {
   overdueVaccinations: number | null;
 }
 
-export default function StaffDashboard() {
-  const [stats, setStats] = useState<DashboardStats>({
+async function loadStats(): Promise<{
+  stats: DashboardStats;
+  errors: string[];
+}> {
+  const stats: DashboardStats = {
     totalCitizens: null,
     recentBirths: null,
     activeEnrollments: null,
     overdueVaccinations: null,
-  });
-  const [errors, setErrors] = useState<string[]>([]);
+  };
+  const errors: string[] = [];
 
-  useEffect(() => {
-    async function loadStats() {
-      const errs: string[] = [];
+  const citizenPromise = identity
+    .searchCitizens({ name: "" })
+    .then((data) => {
+      stats.totalCitizens = Array.isArray(data) ? data.length : 0;
+    })
+    .catch(() => {
+      errors.push("Identity service unavailable");
+    });
 
-      // Fetch citizens count
-      try {
-        const res = await fetch("http://localhost:3001/citizens/search?name=");
-        if (res.ok) {
-          const data = await res.json();
-          setStats((s) => ({
-            ...s,
-            totalCitizens: Array.isArray(data) ? data.length : 0,
-          }));
-        } else {
-          errs.push("Identity service unavailable");
+  const birthPromise = (async () => {
+    try {
+      const now = new Date();
+      const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const civilRegistryUrl =
+        process.env.CIVIL_REGISTRY_URL ?? "http://localhost:3002";
+      const res = await fetch(
+        `${civilRegistryUrl}/births?since=${encodeURIComponent(monthStart)}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        stats.recentBirths = Array.isArray(data) ? data.length : 0;
+      } else {
+        const fallback = await fetch(`${civilRegistryUrl}/births`);
+        if (fallback.ok) {
+          const data = await fallback.json();
+          stats.recentBirths = Array.isArray(data) ? data.length : 0;
         }
-      } catch {
-        errs.push("Identity service unavailable");
       }
-
-      // Fetch recent births (this month)
-      try {
-        const now = new Date();
-        const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-        const res = await fetch(
-          `http://localhost:3002/births?since=${encodeURIComponent(monthStart)}`
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setStats((s) => ({
-            ...s,
-            recentBirths: Array.isArray(data) ? data.length : 0,
-          }));
-        } else {
-          // Try a fallback - just get all births
-          const fallback = await fetch("http://localhost:3002/births");
-          if (fallback.ok) {
-            const data = await fallback.json();
-            setStats((s) => ({
-              ...s,
-              recentBirths: Array.isArray(data) ? data.length : 0,
-            }));
-          }
-        }
-      } catch {
-        errs.push("Civil registry service unavailable");
-      }
-
-      // Fetch overdue vaccinations
-      try {
-        const today = new Date().toISOString().split("T")[0];
-        const res = await fetch(
-          `http://localhost:3003/vaccinations/overdue?as_of=${encodeURIComponent(today)}`
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setStats((s) => ({
-            ...s,
-            overdueVaccinations: Array.isArray(data) ? data.length : 0,
-          }));
-        }
-      } catch {
-        errs.push("Health service unavailable");
-      }
-
-      // Fetch active enrollments
-      try {
-        const res = await fetch(
-          "http://localhost:3004/enrollments?status=active"
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setStats((s) => ({
-            ...s,
-            activeEnrollments: Array.isArray(data) ? data.length : 0,
-          }));
-        }
-      } catch {
-        errs.push("Benefits service unavailable");
-      }
-
-      if (errs.length > 0) setErrors(errs);
+    } catch {
+      errors.push("Civil registry service unavailable");
     }
+  })();
 
-    loadStats();
-  }, []);
+  const overduePromise = (async () => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const data = await health.getOverdueVaccinations(today);
+      stats.overdueVaccinations = Array.isArray(data) ? data.length : 0;
+    } catch {
+      errors.push("Health service unavailable");
+    }
+  })();
+
+  const enrollmentPromise = (async () => {
+    try {
+      // The client doesn't have a direct "list all active enrollments" method,
+      // so we'll hit the endpoint directly
+      const res = await fetch(
+        `${process.env.BENEFITS_URL ?? "http://localhost:3004"}/enrollments?status=active`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        stats.activeEnrollments = Array.isArray(data) ? data.length : 0;
+      }
+    } catch {
+      errors.push("Benefits service unavailable");
+    }
+  })();
+
+  await Promise.all([
+    citizenPromise,
+    birthPromise,
+    overduePromise,
+    enrollmentPromise,
+  ]);
+
+  return { stats, errors };
+}
+
+export default async function StaffDashboard() {
+  const { stats, errors } = await loadStats();
 
   return (
     <>
