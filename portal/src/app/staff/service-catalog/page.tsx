@@ -276,6 +276,42 @@ export default function ServiceCatalog() {
       ],
     },
     {
+      id: "notifications",
+      name: "Notifications",
+      description:
+        "Deliver email and SMS notifications to citizens when government service events occur. Tracks delivery status and provides a citizen-facing notification history.",
+      customerJourney: [
+        "Citizen completes a government service action (e.g. registers a birth, receives a vaccination, enrols in a benefit).",
+        "An OpenFn workflow triggers, looks up the citizen's contact details (email/phone) from the Identity service.",
+        "The workflow sends one or more notifications to the Notifications service with the citizen ID, channel, destination, and message.",
+        "The Notifications service records and simulates delivery of the message.",
+        "Citizen can view their notification history on the 'My notifications' portal page by entering their national ID.",
+      ],
+      systems: [
+        {
+          name: "Notifications",
+          role: "Primary. Stores notification records with channel (email/sms), destination, subject, body, source service, delivery status, and timestamps.",
+          port: 3005,
+        },
+        {
+          name: "Identity",
+          role: "Provides citizen contact information (email, phone_number) for notification delivery.",
+          port: 3001,
+        },
+      ],
+      simulationWorkflows: [
+        "No dedicated simulation script. Notifications are created by OpenFn workflows in response to events from other services. Seed data includes sample notifications for testing the portal UI.",
+      ],
+      openfnWorkflows: [
+        {
+          name: "Service event -> Send citizen notification",
+          trigger: "Webhook: any service event (birth.registered, enrollment.created, vaccination.administered, etc.)",
+          description:
+            "When a service event occurs, look up the citizen's contact details from the Identity service. If the citizen has an email or phone number, send a notification via the Notifications service with appropriate subject and body for the event type.",
+        },
+      ],
+    },
+    {
       id: "check-my-record",
       name: "Check My Record",
       description:
@@ -307,6 +343,11 @@ export default function ServiceCatalog() {
           name: "Benefits",
           role: "Active and past programme enrolments, payment history.",
           port: 3004,
+        },
+        {
+          name: "Notifications",
+          role: "Notification history: all messages sent to the citizen via email and SMS.",
+          port: 3005,
         },
       ],
       simulationWorkflows: [
@@ -350,12 +391,13 @@ export default function ServiceCatalog() {
       </p>
 
       <div className="govuk-inset-text">
-        <strong>Systems overview:</strong> SimDPG runs four microservices &mdash;{" "}
+        <strong>Systems overview:</strong> SimDPG runs five microservices &mdash;{" "}
         <strong>Identity</strong> (:3001) for citizen records,{" "}
         <strong>Civil Registry</strong> (:3002) for vital events,{" "}
-        <strong>Health</strong> (:3003) for patient care, and{" "}
-        <strong>Benefits</strong> (:3004) for social programmes. Services
-        communicate via webhooks routed through OpenFn workflows.
+        <strong>Health</strong> (:3003) for patient care,{" "}
+        <strong>Benefits</strong> (:3004) for social programmes, and{" "}
+        <strong>Notifications</strong> (:3005) for citizen communications.
+        Services communicate via webhooks routed through OpenFn workflows.
       </div>
 
       <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />

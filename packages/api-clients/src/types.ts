@@ -5,6 +5,8 @@ export interface Citizen {
   family_name: string;
   date_of_birth: string;
   sex: "male" | "female";
+  email: string | null;
+  phone_number: string | null;
   date_of_death: string | null;
   status: "alive" | "deceased";
   created_at: string;
@@ -38,6 +40,8 @@ export interface CreateCitizenInput {
   family_name: string;
   date_of_birth: string;
   sex: "male" | "female";
+  email?: string | null;
+  phone_number?: string | null;
   addresses?: Omit<Address, "id" | "citizen_id">[];
   household_id?: string;
   relationship?: "head" | "spouse" | "child" | "other";
@@ -48,6 +52,8 @@ export interface UpdateCitizenInput {
   family_name?: string;
   date_of_birth?: string;
   sex?: "male" | "female";
+  email?: string | null;
+  phone_number?: string | null;
   date_of_death?: string;
   status?: "alive" | "deceased";
 }
@@ -191,6 +197,34 @@ export interface HealthCheckResponse {
   status: "ok";
   service: string;
   version: string;
+}
+
+export interface Notification {
+  id: string;
+  citizen_id: string;
+  channel: "email" | "sms";
+  destination: string;
+  subject: string | null;
+  body: string;
+  source_service: string;
+  source_event: string | null;
+  status: "pending" | "sent" | "delivered" | "failed";
+  attempts: number;
+  sent_at: string | null;
+  delivered_at: string | null;
+  failed_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SendNotificationInput {
+  citizen_id: string;
+  channel: "email" | "sms";
+  destination: string;
+  subject?: string | null;
+  body: string;
+  source_service: string;
+  source_event?: string | null;
 }
 
 export interface ErrorResponse {

@@ -36,6 +36,12 @@ export default function Home() {
         "View your personal record across all government services.",
       href: "/record",
     },
+    {
+      title: "My notifications",
+      description:
+        "View messages sent to you by government services.",
+      href: "/notifications",
+    },
   ];
 
   return (

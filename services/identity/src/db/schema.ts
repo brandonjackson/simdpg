@@ -7,6 +7,8 @@ export const citizens = sqliteTable("citizens", {
   family_name: text("family_name").notNull(),
   date_of_birth: text("date_of_birth").notNull(),
   sex: text("sex", { enum: ["male", "female"] }).notNull(),
+  email: text("email"),
+  phone_number: text("phone_number"),
   date_of_death: text("date_of_death"),
   status: text("status", { enum: ["alive", "deceased"] })
     .notNull()

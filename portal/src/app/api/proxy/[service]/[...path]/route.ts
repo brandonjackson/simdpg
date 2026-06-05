@@ -6,6 +6,7 @@ const SERVICE_MAP: Record<string, string> = {
   "civil-registry": SERVICE_URLS.civilRegistry,
   health: SERVICE_URLS.health,
   benefits: SERVICE_URLS.benefits,
+  notifications: SERVICE_URLS.notifications,
 };
 
 async function proxy(

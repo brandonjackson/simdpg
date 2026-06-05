@@ -4,13 +4,15 @@
 
 - [x] Mono-repo scaffold with npm workspaces
 - [x] Identity service (citizens, households, addresses, search)
+- [x] Citizens have email and phone_number contact fields for notification delivery
 - [x] Civil Registry service (births, deaths, marriages, combined events)
 - [x] Health service (patients, encounters, vaccinations, overdue queries)
 - [x] Benefits service (programs, eligibility rules, enrollments, payments)
-- [x] Typed API clients package (`@simdpg/api-clients`)
-- [x] Gov.uk portal — citizen pages (birth/death/marriage registration, vaccination booking, benefit application, check my record)
+- [x] Notifications service (port 3005) — stores notification records sent to citizens via email/sms
+- [x] Typed API clients package (`@simdpg/api-clients`) — includes NotificationsClient
+- [x] Gov.uk portal — citizen pages (birth/death/marriage registration, vaccination booking, benefit application, check my record, my notifications)
 - [x] Gov.uk portal — staff pages (dashboard, search, citizen timeline)
-- [x] Simulation engine — population generator, 6 event scripts, runner with year/scale modes
+- [x] Simulation engine — population generator (with email/phone), 6 event scripts, runner with year/scale modes
 - [x] End-to-end verified: all services start, population generates, birth flow works cross-service
 
 ## What's Next (in priority order)
@@ -27,6 +29,7 @@ This is the core of what we're testing. 10 workflows that wire the services toge
 5. Marriage registered → link/merge households, reassess benefits
 6. Vaccination administered → update encounter records, push to reporting
 7. Enrollment created → schedule payments based on program rules
+8. Any service event → look up citizen contact info (email/phone) from identity, send notification via notifications service
 
 **Scheduled (cron):**
 8. Daily: age-based eligibility changes (turning 18 → terminate child benefit, check adult programs)
@@ -46,7 +49,18 @@ This is the core of what we're testing. 10 workflows that wire the services toge
 - [ ] Test each workflow end-to-end with a single event
 - [ ] Run simulation to test at scale
 
-### 2. Webhook Infrastructure
+### 2. Notification System — Future Enhancements
+
+The notifications service (port 3005) is live and records notification delivery to citizens via email and SMS. OpenFn workflows will wire service events to notification creation. Future work:
+
+- [ ] **Staff notification lookup UI** — portal page at `/staff/notifications` where staff can enter a citizen name or national ID and see all messages delivered to them, with delivery status, timestamps, and channel details
+- [ ] **Notification templates** — add a `templates` table so services can reference named templates (e.g. "birth_confirmation_email", "vaccination_reminder_sms") instead of hardcoding message bodies in workflows
+- [ ] **Delivery simulation** — simulate realistic delivery delays, failures, and retries (currently all notifications are marked "sent" immediately)
+- [ ] **Notification preferences** — allow citizens to opt in/out of channels (email vs SMS) and notification categories
+- [ ] **Batch digest** — aggregate multiple notifications into a single daily/weekly digest email
+- [ ] **Audit trail** — track who/what triggered each notification (workflow ID, operator, timestamp)
+
+### 3. Webhook Infrastructure
 
 The services have webhook emitter stubs but they need to be wired up to actually POST events.
 
