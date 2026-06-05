@@ -90,10 +90,8 @@ class Semaphore {
 async function fetchPopulation(identityUrl: string): Promise<Citizen[]> {
   const identity = new IdentityClient(identityUrl);
 
-  // Fetch all citizens via search with a broad query
-  // The identity service should return all citizens when no filter is applied
   try {
-    const citizens = await identity.searchCitizens({});
+    const citizens = await identity.listCitizens();
     log(`Fetched ${citizens.length} citizens from identity service`);
     return citizens;
   } catch (err) {
