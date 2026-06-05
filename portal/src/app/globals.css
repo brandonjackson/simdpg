@@ -1007,6 +1007,125 @@ a:focus {
   margin-bottom: 10px;
 }
 
+/* ===== TASK LIST (service build status) ===== */
+.govuk-task-list {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0;
+}
+
+.govuk-task-list__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--govuk-mid-grey);
+}
+
+.govuk-task-list__item:first-child {
+  border-top: 1px solid var(--govuk-mid-grey);
+}
+
+.govuk-task-list__name {
+  font-size: 19px;
+}
+
+.govuk-task-list__name a {
+  font-weight: 700;
+}
+
+.govuk-task-list__status {
+  font-size: 16px;
+  text-align: right;
+  min-width: 100px;
+}
+
+.govuk-task-list__status--completed {
+  color: var(--govuk-green);
+  font-weight: 700;
+}
+
+.govuk-task-list__status--not-started {
+  color: var(--govuk-dark-grey);
+}
+
+/* ===== SERVICE CATEGORY LIST (homepage) ===== */
+.govuk-service-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+}
+
+.govuk-service-list__item {
+  border-bottom: 1px solid var(--govuk-mid-grey);
+  padding: 12px 0;
+}
+
+.govuk-service-list__item:first-child {
+  border-top: 1px solid var(--govuk-mid-grey);
+}
+
+.govuk-service-list__link {
+  font-size: 19px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.govuk-service-list__link:hover {
+  text-decoration: underline;
+}
+
+.govuk-service-list__description {
+  font-size: 16px;
+  color: var(--govuk-dark-grey);
+  margin: 4px 0 0;
+}
+
+/* ===== COPY BUTTON ===== */
+.govuk-copy-container {
+  position: relative;
+  margin: 10px 0 20px;
+}
+
+.govuk-copy-container textarea {
+  font-family: monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  width: 100%;
+  max-width: 100%;
+  min-height: 200px;
+  padding: 15px;
+  border: 2px solid var(--govuk-mid-grey);
+  border-radius: 0;
+  background: var(--govuk-light-grey);
+  color: var(--govuk-black);
+  resize: vertical;
+}
+
+.govuk-copy-container textarea:focus {
+  outline: 3px solid var(--govuk-focus);
+  outline-offset: 0;
+  border-color: var(--govuk-black);
+}
+
+.govuk-copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--govuk-font);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border: 1px solid var(--govuk-mid-grey);
+  background: var(--govuk-white);
+  color: var(--govuk-black);
+  cursor: pointer;
+}
+
+.govuk-copy-button:hover {
+  background: var(--govuk-light-grey);
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 640px) {
   body {

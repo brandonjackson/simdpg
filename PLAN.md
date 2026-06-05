@@ -85,20 +85,26 @@ Make the portal show the *full* menu of services a citizen of the city-state
 would need, navigable to gov.uk standards, with every service backed by a stub
 page and a service-catalog entry — including the OpenFn business-logic prompt.
 
-- [ ] **Full service list on the portal.** Represent every service from
+- [x] **Full service list on the portal.** Represent every service from
       <https://brandonjackson.org/uds-tracker>, but include *only* the ones
       buildable with systems present in the systems catalog (Milestone 1).
-- [ ] **Align with the Digital Convergence Initiative.** Where a DCI standard
+      Added 5 new services: Apply for a national ID (Identity), Health guidance,
+      Personalised health advice, Survivor benefits, Government payments. Total:
+      13 services (7 built forms, 6 stubs) across 5 categories.
+- [x] **Align with the Digital Convergence Initiative.** Where a DCI standard
       service option exists, model our service on it (naming, scope, flow).
-- [ ] **Gov.uk navigation.** Organise services into clear categories, easy to
+      Each service has a `dciAlignment` field (CRVS, Foundational ID,
+      Immunization Registry, Social Protection, Digital Payments, etc.).
+- [x] **Gov.uk navigation.** Organise services into clear categories, easy to
       browse, following gov.uk best practice (task-based grouping, plain
-      language, clear hierarchy).
-- [ ] **Under-construction stub page per service.** Clicking a service shows a
+      language, clear hierarchy). Categories: Civil registration, Identity,
+      Health, Social protection and payments, Your record.
+- [x] **Under-construction stub page per service.** Clicking a service shows a
       checklist of its build state:
   1. Spec written ✅ — links to the service's entry in the staff service catalog
   2. Build the user form on the portal to initiate the service
   3. Connect the form to the systems using an OpenFn workflow
-- [ ] **Service-catalog entry per service** (extends the existing page). Each
+- [x] **Service-catalog entry per service** (extends the existing page). Each
       entry contains:
   - Overview of how the service works
   - The customer journey
