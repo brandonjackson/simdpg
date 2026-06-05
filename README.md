@@ -32,6 +32,31 @@ npm run dev
 
 This starts all four services and the portal. Open [http://localhost:3000](http://localhost:3000).
 
+### Populate with data
+
+Seed each service with sample records (works without services running):
+
+```bash
+npm run setup
+```
+
+Or generate a larger synthetic population (requires services to be running):
+
+```bash
+npm run dev:services   # in one terminal
+npm run setup:generate # in another — generates 100 citizens by default
+```
+
+Use `POPULATION_SIZE=1000 npm run setup:generate` for a custom size.
+
+### Reset everything
+
+```bash
+npm run reset
+```
+
+Deletes all SQLite databases. Restart services after if they're running.
+
 ## Project Structure
 
 ```
@@ -126,20 +151,14 @@ A Next.js app with gov.uk-inspired design (green header, breadcrumbs, one-questi
 
 ## Simulation Engine
 
-Generates a synthetic population and replays realistic life events through the service APIs.
+Generates a synthetic population and replays realistic life events through the service APIs. Requires services to be running.
 
 ```bash
-# Generate 100 citizens (default)
-npm run sim:generate -w @simdpg/simulation
+npm run setup:generate                              # Generate 100 citizens
+POPULATION_SIZE=10000 npm run setup:generate         # Custom size
 
-# Generate a custom population size
-POPULATION_SIZE=10000 npm run sim:generate -w @simdpg/simulation
-
-# Simulate one year of life events
-npm run sim:year -w @simdpg/simulation
-
-# Run at scale (multi-year, concurrent)
-YEARS=5 CONCURRENCY=10 npm run sim:scale -w @simdpg/simulation
+npm run sim:year -w @simdpg/simulation               # Simulate one year of life events
+YEARS=5 CONCURRENCY=10 npm run sim:scale -w @simdpg/simulation  # Multi-year at scale
 ```
 
 Event types: births, deaths, marriages, clinic visits, vaccinations, benefit claims — each at demographically realistic rates.
@@ -150,6 +169,9 @@ Event types: births, deaths, marriages, clinic visits, vaccinations, benefit cla
 |---|---|
 | `npm run dev` | Start all services + portal |
 | `npm run dev:services` | Start services only (no portal) |
+| `npm run setup` | Seed all services with sample data |
+| `npm run setup:generate` | Generate synthetic population (services must be running) |
+| `npm run reset` | Delete all databases (clean slate) |
 | `npm run build` | Build all workspaces |
 | `npm run test` | Run tests across all workspaces |
 
