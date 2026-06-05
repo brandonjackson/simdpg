@@ -5,7 +5,7 @@
  * runScale() - Run at configurable scale with concurrency control.
  */
 
-import { IdentityClient, SERVICE_URLS } from "@simdpg/api-clients";
+import { IdentityClient, SYSTEM_URLS } from "@simdpg/api-clients";
 import type { Citizen } from "@simdpg/api-clients";
 import { log, logError, sleep } from "./utils.js";
 import { Report } from "./report.js";
@@ -37,10 +37,10 @@ export interface ScaleConfig extends YearConfig {
 
 export function yearConfigFromEnv(): YearConfig {
   return {
-    identityUrl: process.env.IDENTITY_URL ?? SERVICE_URLS.identity,
-    civilRegistryUrl: process.env.CIVIL_REGISTRY_URL ?? SERVICE_URLS.civilRegistry,
-    healthUrl: process.env.HEALTH_URL ?? SERVICE_URLS.health,
-    benefitsUrl: process.env.BENEFITS_URL ?? SERVICE_URLS.benefits,
+    identityUrl: process.env.IDENTITY_URL ?? SYSTEM_URLS.identity,
+    civilRegistryUrl: process.env.CIVIL_REGISTRY_URL ?? SYSTEM_URLS.civilRegistry,
+    healthUrl: process.env.HEALTH_URL ?? SYSTEM_URLS.health,
+    benefitsUrl: process.env.BENEFITS_URL ?? SYSTEM_URLS.benefits,
   };
 }
 
@@ -84,7 +84,7 @@ class Semaphore {
 }
 
 // ---------------------------------------------------------------------------
-// Fetch current population from identity service
+// Fetch current population from identity system
 // ---------------------------------------------------------------------------
 
 async function fetchPopulation(identityUrl: string): Promise<Citizen[]> {
@@ -92,7 +92,7 @@ async function fetchPopulation(identityUrl: string): Promise<Citizen[]> {
 
   try {
     const citizens = await identity.listCitizens();
-    log(`Fetched ${citizens.length} citizens from identity service`);
+    log(`Fetched ${citizens.length} citizens from identity system`);
     return citizens;
   } catch (err) {
     logError("Failed to fetch population", err);

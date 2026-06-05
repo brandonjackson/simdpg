@@ -10,10 +10,10 @@
  *   POPULATION_SIZE    - Target population size (default: 100)
  *   CONCURRENCY        - Max concurrent requests for scale mode (default: 5)
  *   YEARS              - Number of years to simulate in scale mode (default: 1)
- *   IDENTITY_URL       - Identity service URL (default: http://localhost:3001)
- *   CIVIL_REGISTRY_URL - Civil registry service URL (default: http://localhost:3002)
- *   HEALTH_URL         - Health service URL (default: http://localhost:3003)
- *   BENEFITS_URL       - Benefits service URL (default: http://localhost:3004)
+ *   IDENTITY_URL       - Identity system URL (default: http://localhost:3001)
+ *   CIVIL_REGISTRY_URL - Civil registry system URL (default: http://localhost:3002)
+ *   HEALTH_URL         - Health system URL (default: http://localhost:3003)
+ *   BENEFITS_URL       - Benefits system URL (default: http://localhost:3004)
  */
 
 import { generate, configFromEnv } from "./generate.js";
@@ -55,10 +55,10 @@ async function main(): Promise<void> {
       log("  POPULATION_SIZE    - Target population size (default: 100)");
       log("  CONCURRENCY        - Max concurrent requests (default: 5)");
       log("  YEARS              - Years to simulate (default: 1)");
-      log("  IDENTITY_URL       - Identity service (default: http://localhost:3001)");
+      log("  IDENTITY_URL       - Identity system (default: http://localhost:3001)");
       log("  CIVIL_REGISTRY_URL - Civil registry (default: http://localhost:3002)");
-      log("  HEALTH_URL         - Health service (default: http://localhost:3003)");
-      log("  BENEFITS_URL       - Benefits service (default: http://localhost:3004)");
+      log("  HEALTH_URL         - Health system (default: http://localhost:3003)");
+      log("  BENEFITS_URL       - Benefits system (default: http://localhost:3004)");
       process.exit(1);
   }
 }

@@ -9,7 +9,7 @@ interface NotificationRecord {
   destination: string;
   subject: string | null;
   body: string;
-  source_service: string;
+  source_system: string;
   source_event: string | null;
   status: "pending" | "sent" | "delivered" | "failed";
   attempts: number;
@@ -156,7 +156,7 @@ export default function MyNotifications() {
                     <th className="govuk-table__header">Date</th>
                     <th className="govuk-table__header">Channel</th>
                     <th className="govuk-table__header">Subject / Message</th>
-                    <th className="govuk-table__header">Service</th>
+                    <th className="govuk-table__header">System</th>
                     <th className="govuk-table__header">Status</th>
                   </tr>
                 </thead>
@@ -183,7 +183,7 @@ export default function MyNotifications() {
                           : n.body}
                       </td>
                       <td className="govuk-table__cell">
-                        {n.source_service}
+                        {n.source_system}
                       </td>
                       <td className="govuk-table__cell">
                         <span className={`govuk-tag ${statusTag(n.status)}`}>

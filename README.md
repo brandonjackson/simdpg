@@ -1,25 +1,25 @@
 # SimDPG
 
-A simulated city-state's digital public infrastructure. Five government services (identity, civil registry, health, benefits, notifications), a gov.uk-style portal, and a population simulation engine — all wired together to stress-test [OpenFn](https://openfn.org) integration workflows before a national platform launch.
+A simulated city-state's digital public infrastructure. Five government systems (identity, civil registry, health, benefits, notifications), a gov.uk-style portal, and a population simulation engine — all wired together to stress-test [OpenFn](https://openfn.org) integration workflows before a national platform launch.
 
 ## Architecture
 
 ```
 Portal (Next.js :3000)
-  └── calls service APIs
+  └── calls system APIs
 
-Services
+Systems
   ├── Identity        :3001  (citizens, households, addresses)
   ├── Civil Registry  :3002  (births, deaths, marriages)
   ├── Health          :3003  (patients, encounters, vaccinations)
   ├── Benefits        :3004  (programs, eligibility, enrollments, payments)
   └── Notifications   :3005  (email/sms messages to citizens)
 
-Each service: Express + Drizzle ORM + SQLite
-Services communicate only via HTTP — no shared databases.
+Each system: Express + Drizzle ORM + SQLite
+Systems communicate only via HTTP — no shared databases.
 
 Simulation Engine
-  └── Generates synthetic population, replays life events through service APIs
+  └── Generates synthetic population, replays life events through system APIs
 ```
 
 ## Quick Start
@@ -31,20 +31,20 @@ npm install
 npm run dev
 ```
 
-This starts all five services and the portal. Open [http://localhost:3000](http://localhost:3000).
+This starts all five systems and the portal. Open [http://localhost:3000](http://localhost:3000).
 
 ### Populate with data
 
-Seed each service with sample records (works without services running):
+Seed each system with sample records (works without systems running):
 
 ```bash
 npm run setup
 ```
 
-Or generate a larger synthetic population (requires services to be running):
+Or generate a larger synthetic population (requires systems to be running):
 
 ```bash
-npm run dev:services   # in one terminal
+npm run dev:systems    # in one terminal
 npm run setup:generate # in another — generates 100 citizens by default
 ```
 
@@ -56,13 +56,13 @@ Use `POPULATION_SIZE=1000 npm run setup:generate` for a custom size.
 npm run reset
 ```
 
-Deletes all SQLite databases. Restart services after if they're running.
+Deletes all SQLite databases. Restart systems after if they're running.
 
 ## Project Structure
 
 ```
 simdpg/
-├── services/
+├── systems/
 │   ├── identity/          # Citizen identity (port 3001)
 │   ├── civil-registry/    # Vital events (port 3002)
 │   ├── health/            # Patient records (port 3003)
@@ -70,23 +70,23 @@ simdpg/
 ├── portal/                # Next.js gov.uk-style frontend (port 3000)
 ├── simulation/            # Population generator + event scripts
 ├── packages/
-│   └── api-clients/       # Typed HTTP clients for each service
+│   └── api-clients/       # Typed HTTP clients for each system
 ├── package.json           # Root workspace config
 └── tsconfig.json          # Shared TypeScript config
 ```
 
-## Services
+## Systems
 
-Each service is a standalone Express app with its own SQLite database, schema, seed data, and port. Any single service can be run in isolation:
+Each system is a standalone Express app with its own SQLite database, schema, seed data, and port. Any single system can be run in isolation:
 
 ```bash
-cd services/identity
+cd systems/identity
 npm run dev
 ```
 
-### Identity Service (:3001)
+### Identity System (:3001)
 
-The canonical citizen record. Every other service references citizens by the UUID issued here.
+The canonical citizen record. Every other system references citizens by the UUID issued here.
 
 | Endpoint | Description |
 |---|---|
@@ -98,9 +98,9 @@ The canonical citizen record. Every other service references citizens by the UUI
 | `POST /households` | Create household with members |
 | `GET /citizens/:id/household` | Get household members |
 
-### Civil Registry Service (:3002)
+### Civil Registry System (:3002)
 
-Official record of vital events. References identity service for citizen data.
+Official record of vital events. References identity system for citizen data.
 
 | Endpoint | Description |
 |---|---|
@@ -109,7 +109,7 @@ Official record of vital events. References identity service for citizen data.
 | `POST /marriages` | Register a marriage |
 | `GET /events?citizen_id=X` | All vital events for a citizen |
 
-### Health Service (:3003)
+### Health System (:3003)
 
 Patient records, encounters, and vaccination tracking.
 
@@ -121,7 +121,7 @@ Patient records, encounters, and vaccination tracking.
 | `POST /vaccinations` | Record a vaccination |
 | `GET /vaccinations/overdue?as_of=DATE` | Patients with overdue vaccinations |
 
-### Benefits Service (:3004)
+### Benefits System (:3004)
 
 Social protection programs, eligibility, enrollment, and payments.
 
@@ -133,7 +133,7 @@ Social protection programs, eligibility, enrollment, and payments.
 | `PATCH /enrollments/:id` | Update status (suspend, terminate) |
 | `POST /payments/schedule` | Schedule payments for an enrollment |
 
-All services emit webhook events (`citizen.created`, `birth.registered`, etc.) to a configurable URL for OpenFn integration.
+All systems emit webhook events (`citizen.created`, `birth.registered`, etc.) to a configurable URL for OpenFn integration.
 
 ## Portal
 
@@ -143,16 +143,16 @@ A Next.js app with gov.uk-inspired design (green header, breadcrumbs, one-questi
 - Register a birth, death, or marriage
 - Book a vaccination
 - Apply for a benefit
-- Check my record (cross-service summary by national ID)
+- Check my record (cross-system summary by national ID)
 
 **Staff-facing pages:**
-- Dashboard with service stats
+- Dashboard with system stats
 - Citizen search by name/DOB
-- Citizen timeline (events from all services in chronological order)
+- Citizen timeline (events from all systems in chronological order)
 
 ## Simulation Engine
 
-Generates a synthetic population and replays realistic life events through the service APIs. Requires services to be running.
+Generates a synthetic population and replays realistic life events through the system APIs. Requires systems to be running.
 
 ```bash
 npm run setup:generate                              # Generate 100 citizens
@@ -168,10 +168,10 @@ Event types: births, deaths, marriages, clinic visits, vaccinations, benefit cla
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start all services + portal |
-| `npm run dev:services` | Start services only (no portal) |
-| `npm run setup` | Seed all services with sample data |
-| `npm run setup:generate` | Generate synthetic population (services must be running) |
+| `npm run dev` | Start all systems + portal |
+| `npm run dev:systems` | Start systems only (no portal) |
+| `npm run setup` | Seed all systems with sample data |
+| `npm run setup:generate` | Generate synthetic population (systems must be running) |
 | `npm run reset` | Delete all databases (clean slate) |
 | `npm run build` | Build all workspaces |
 | `npm run test` | Run tests across all workspaces |
@@ -179,7 +179,7 @@ Event types: births, deaths, marriages, clinic visits, vaccinations, benefit cla
 ## Tech Stack
 
 - **Runtime:** Node.js with TypeScript
-- **Services:** Express, Drizzle ORM, better-sqlite3
+- **Systems:** Express, Drizzle ORM, better-sqlite3
 - **Portal:** Next.js 14, React 18
 - **Validation:** Zod
 - **Workspaces:** npm workspaces

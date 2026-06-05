@@ -1,4 +1,4 @@
-import { identity, health } from "@/lib/services";
+import { identity, health } from "@/lib/systems";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,7 @@ async function loadStats(): Promise<{
       stats.totalCitizens = Array.isArray(data) ? data.length : 0;
     })
     .catch(() => {
-      errors.push("Identity service unavailable");
+      errors.push("Identity system unavailable");
     });
 
   const birthPromise = (async () => {
@@ -50,7 +50,7 @@ async function loadStats(): Promise<{
         }
       }
     } catch {
-      errors.push("Civil registry service unavailable");
+      errors.push("Civil registry system unavailable");
     }
   })();
 
@@ -60,7 +60,7 @@ async function loadStats(): Promise<{
       const data = await health.getOverdueVaccinations(today);
       stats.overdueVaccinations = Array.isArray(data) ? data.length : 0;
     } catch {
-      errors.push("Health service unavailable");
+      errors.push("Health system unavailable");
     }
   })();
 
@@ -76,7 +76,7 @@ async function loadStats(): Promise<{
         stats.activeEnrollments = Array.isArray(data) ? data.length : 0;
       }
     } catch {
-      errors.push("Benefits service unavailable");
+      errors.push("Benefits system unavailable");
     }
   })();
 
@@ -115,7 +115,7 @@ export default async function StaffDashboard() {
       {errors.length > 0 && (
         <div className="govuk-error-summary" role="alert">
           <h2 className="govuk-error-summary__title">
-            Some services are unavailable
+            Some systems are unavailable
           </h2>
           <ul className="govuk-error-summary__list">
             {errors.map((err, i) => (

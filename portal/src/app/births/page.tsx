@@ -96,7 +96,7 @@ export default function RegisterBirth() {
     setError("");
     setLoading(true);
     try {
-      // First create the child citizen in the identity service
+      // First create the child citizen in the identity system
       const citizenRes = await fetch("/api/proxy/identity/citizens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
