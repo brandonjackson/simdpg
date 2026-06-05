@@ -85,6 +85,15 @@ function randomAddress() {
   };
 }
 
+function randomEmail(givenName: string, familyName: string): string {
+  const normalized = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
+  return `${normalized(givenName)}.${normalized(familyName)}${randomInt(1, 999)}@simmail.gov`;
+}
+
+function randomPhoneNumber(): string {
+  return `+1-555-${String(randomInt(1000, 9999))}`;
+}
+
 // ---------------------------------------------------------------------------
 // Household generation
 // ---------------------------------------------------------------------------
@@ -102,11 +111,14 @@ function planHousehold(): HouseholdPlan {
   // Head: adult 25-65
   const headAge = randomInt(25, 65);
   const headSex = randomSex();
+  const headGivenName = randomGivenName(headSex);
   const head: CreateCitizenInput = {
-    given_name: randomGivenName(headSex),
+    given_name: headGivenName,
     family_name: familyName,
     date_of_birth: dobForAge(headAge),
     sex: headSex,
+    email: Math.random() < 0.85 ? randomEmail(headGivenName, familyName) : null,
+    phone_number: Math.random() < 0.9 ? randomPhoneNumber() : null,
     addresses: [address],
   };
 
@@ -115,11 +127,14 @@ function planHousehold(): HouseholdPlan {
   if (Math.random() < 0.7) {
     const spouseSex: "male" | "female" = headSex === "male" ? "female" : "male";
     const spouseAge = headAge + randomInt(-5, 5);
+    const spouseGivenName = randomGivenName(spouseSex);
     spouse = {
-      given_name: randomGivenName(spouseSex),
+      given_name: spouseGivenName,
       family_name: familyName,
       date_of_birth: dobForAge(Math.max(18, spouseAge)),
       sex: spouseSex,
+      email: Math.random() < 0.85 ? randomEmail(spouseGivenName, familyName) : null,
+      phone_number: Math.random() < 0.9 ? randomPhoneNumber() : null,
       addresses: [address],
     };
   }
@@ -131,11 +146,15 @@ function planHousehold(): HouseholdPlan {
     const maxChildAge = Math.max(0, headAge - 18);
     const childAge = maxChildAge > 0 ? randomInt(0, Math.min(maxChildAge, 17)) : 0;
     const childSex = randomSex();
+    const childGivenName = randomGivenName(childSex);
+    const isAdult = childAge >= 18;
     children.push({
-      given_name: randomGivenName(childSex),
+      given_name: childGivenName,
       family_name: familyName,
       date_of_birth: dobForAge(childAge),
       sex: childSex,
+      email: isAdult && Math.random() < 0.7 ? randomEmail(childGivenName, familyName) : null,
+      phone_number: isAdult && Math.random() < 0.8 ? randomPhoneNumber() : null,
       addresses: [address],
     });
   }

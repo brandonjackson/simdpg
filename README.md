@@ -1,6 +1,6 @@
 # SimDPG
 
-A simulated city-state's digital public infrastructure. Four government services (identity, civil registry, health, benefits), a gov.uk-style portal, and a population simulation engine — all wired together to stress-test [OpenFn](https://openfn.org) integration workflows before a national platform launch.
+A simulated city-state's digital public infrastructure. Five government services (identity, civil registry, health, benefits, notifications), a gov.uk-style portal, and a population simulation engine — all wired together to stress-test [OpenFn](https://openfn.org) integration workflows before a national platform launch.
 
 ## Architecture
 
@@ -9,10 +9,11 @@ Portal (Next.js :3000)
   └── calls service APIs
 
 Services
-  ├── Identity       :3001  (citizens, households, addresses)
+  ├── Identity        :3001  (citizens, households, addresses)
   ├── Civil Registry  :3002  (births, deaths, marriages)
   ├── Health          :3003  (patients, encounters, vaccinations)
-  └── Benefits        :3004  (programs, eligibility, enrollments, payments)
+  ├── Benefits        :3004  (programs, eligibility, enrollments, payments)
+  └── Notifications   :3005  (email/sms messages to citizens)
 
 Each service: Express + Drizzle ORM + SQLite
 Services communicate only via HTTP — no shared databases.
@@ -30,7 +31,7 @@ npm install
 npm run dev
 ```
 
-This starts all four services and the portal. Open [http://localhost:3000](http://localhost:3000).
+This starts all five services and the portal. Open [http://localhost:3000](http://localhost:3000).
 
 ### Populate with data
 

@@ -32,19 +32,21 @@ interface SeedCitizen {
   family_name: string;
   date_of_birth: string;
   sex: "male" | "female";
+  email: string | null;
+  phone_number: string | null;
 }
 
 const seedCitizens: SeedCitizen[] = [
-  { id: uuidv4(), given_name: "Amara", family_name: "Okafor", date_of_birth: "1985-03-15", sex: "female" },
-  { id: uuidv4(), given_name: "Kofi", family_name: "Okafor", date_of_birth: "1983-07-22", sex: "male" },
-  { id: uuidv4(), given_name: "Zara", family_name: "Okafor", date_of_birth: "2010-01-10", sex: "female" },
-  { id: uuidv4(), given_name: "Liam", family_name: "Chen", date_of_birth: "1990-11-05", sex: "male" },
-  { id: uuidv4(), given_name: "Mei", family_name: "Chen", date_of_birth: "1992-06-18", sex: "female" },
-  { id: uuidv4(), given_name: "Tariq", family_name: "Hassan", date_of_birth: "1978-09-30", sex: "male" },
-  { id: uuidv4(), given_name: "Fatima", family_name: "Hassan", date_of_birth: "1980-12-02", sex: "female" },
-  { id: uuidv4(), given_name: "Omar", family_name: "Hassan", date_of_birth: "2005-04-14", sex: "male" },
-  { id: uuidv4(), given_name: "Nia", family_name: "Mensah", date_of_birth: "1995-08-21", sex: "female" },
-  { id: uuidv4(), given_name: "Kwame", family_name: "Adjei", date_of_birth: "2000-02-28", sex: "male" },
+  { id: uuidv4(), given_name: "Amara", family_name: "Okafor", date_of_birth: "1985-03-15", sex: "female", email: "amara.okafor@simmail.gov", phone_number: "+1-555-0101" },
+  { id: uuidv4(), given_name: "Kofi", family_name: "Okafor", date_of_birth: "1983-07-22", sex: "male", email: "kofi.okafor@simmail.gov", phone_number: "+1-555-0102" },
+  { id: uuidv4(), given_name: "Zara", family_name: "Okafor", date_of_birth: "2010-01-10", sex: "female", email: null, phone_number: null },
+  { id: uuidv4(), given_name: "Liam", family_name: "Chen", date_of_birth: "1990-11-05", sex: "male", email: "liam.chen@simmail.gov", phone_number: "+1-555-0201" },
+  { id: uuidv4(), given_name: "Mei", family_name: "Chen", date_of_birth: "1992-06-18", sex: "female", email: "mei.chen@simmail.gov", phone_number: "+1-555-0202" },
+  { id: uuidv4(), given_name: "Tariq", family_name: "Hassan", date_of_birth: "1978-09-30", sex: "male", email: "tariq.hassan@simmail.gov", phone_number: "+1-555-0301" },
+  { id: uuidv4(), given_name: "Fatima", family_name: "Hassan", date_of_birth: "1980-12-02", sex: "female", email: "fatima.hassan@simmail.gov", phone_number: "+1-555-0302" },
+  { id: uuidv4(), given_name: "Omar", family_name: "Hassan", date_of_birth: "2005-04-14", sex: "male", email: null, phone_number: "+1-555-0303" },
+  { id: uuidv4(), given_name: "Nia", family_name: "Mensah", date_of_birth: "1995-08-21", sex: "female", email: "nia.mensah@simmail.gov", phone_number: "+1-555-0401" },
+  { id: uuidv4(), given_name: "Kwame", family_name: "Adjei", date_of_birth: "2000-02-28", sex: "male", email: "kwame.adjei@simmail.gov", phone_number: null },
 ];
 
 const now = new Date().toISOString();
@@ -61,6 +63,8 @@ for (let i = 0; i < seedCitizens.length; i++) {
       family_name: c.family_name,
       date_of_birth: c.date_of_birth,
       sex: c.sex,
+      email: c.email,
+      phone_number: c.phone_number,
       status: "alive",
       created_at: now,
       updated_at: now,

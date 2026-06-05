@@ -10,6 +10,8 @@ interface Citizen {
   family_name: string;
   date_of_birth: string;
   sex: string;
+  email: string | null;
+  phone_number: string | null;
   status: string;
   date_of_death: string | null;
   addresses?: {
@@ -191,6 +193,26 @@ export default function CitizenTimeline() {
       // Benefits service unavailable
     }
 
+    try {
+      const notifRes = await fetch(
+        `/api/proxy/notifications/notifications?citizen_id=${id}`
+      );
+      if (notifRes.ok) {
+        const notifData = await notifRes.json();
+        for (const n of notifData) {
+          events.push({
+            date: n.created_at?.split("T")[0] || "",
+            type: "notification",
+            service: "Notifications",
+            summary: `${n.channel === "sms" ? "SMS" : "Email"} — ${n.subject || n.body.slice(0, 50)}`,
+            details: { channel: n.channel, destination: n.destination, status: n.status, source: n.source_service },
+          });
+        }
+      }
+    } catch {
+      // Notifications service unavailable
+    }
+
     events.sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
@@ -207,6 +229,7 @@ export default function CitizenTimeline() {
     "Civil Registry": "govuk-tag--purple",
     Health: "govuk-tag--green",
     Benefits: "govuk-tag--yellow",
+    Notifications: "govuk-tag--grey",
   };
 
   if (loading) {
@@ -276,6 +299,18 @@ export default function CitizenTimeline() {
             {citizen.sex.charAt(0).toUpperCase() + citizen.sex.slice(1)}
           </dd>
         </div>
+        {citizen.email && (
+          <div className="govuk-summary-list__row">
+            <dt className="govuk-summary-list__key">Email</dt>
+            <dd className="govuk-summary-list__value">{citizen.email}</dd>
+          </div>
+        )}
+        {citizen.phone_number && (
+          <div className="govuk-summary-list__row">
+            <dt className="govuk-summary-list__key">Phone</dt>
+            <dd className="govuk-summary-list__value">{citizen.phone_number}</dd>
+          </div>
+        )}
         {citizen.date_of_death && (
           <div className="govuk-summary-list__row">
             <dt className="govuk-summary-list__key">Date of death</dt>

@@ -36,6 +36,8 @@ export function ensureTables(): void {
       family_name     TEXT NOT NULL,
       date_of_birth   TEXT NOT NULL,
       sex             TEXT NOT NULL CHECK(sex IN ('male', 'female')),
+      email           TEXT,
+      phone_number    TEXT,
       date_of_death   TEXT,
       status          TEXT NOT NULL DEFAULT 'alive' CHECK(status IN ('alive', 'deceased')),
       created_at      TEXT NOT NULL,

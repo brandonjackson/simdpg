@@ -10,6 +10,8 @@ interface CitizenRecord {
     family_name: string;
     date_of_birth: string;
     sex: string;
+    email: string | null;
+    phone_number: string | null;
     status: string;
     created_at: string;
   };
@@ -59,6 +61,16 @@ interface CitizenRecord {
     scheduled_date: string;
     paid_date: string | null;
   }[];
+  notifications: {
+    id: string;
+    channel: string;
+    destination: string;
+    subject: string | null;
+    body: string;
+    source_service: string;
+    status: string;
+    created_at: string;
+  }[];
 }
 
 export default function CheckMyRecord() {
@@ -85,7 +97,7 @@ export default function CheckMyRecord() {
       const citizen = await citizenRes.json();
 
       // Step 2: Fetch all data in parallel
-      const [eventsRes, patientsRes, enrollmentsRes] = await Promise.allSettled(
+      const [eventsRes, patientsRes, enrollmentsRes, notificationsRes] = await Promise.allSettled(
         [
           fetch(
             `/api/proxy/civil-registry/events?citizen_id=${encodeURIComponent(citizen.id)}`
@@ -95,6 +107,9 @@ export default function CheckMyRecord() {
           ),
           fetch(
             `/api/proxy/benefits/enrollments?citizen_id=${encodeURIComponent(citizen.id)}`
+          ),
+          fetch(
+            `/api/proxy/notifications/notifications?citizen_id=${encodeURIComponent(citizen.id)}`
           ),
         ]
       );
@@ -113,6 +128,11 @@ export default function CheckMyRecord() {
       const enrollments =
         enrollmentsRes.status === "fulfilled" && enrollmentsRes.value.ok
           ? await enrollmentsRes.value.json()
+          : [];
+
+      const notificationsData =
+        notificationsRes.status === "fulfilled" && notificationsRes.value.ok
+          ? await notificationsRes.value.json()
           : [];
 
       // Step 3: If patient exists, fetch encounters and vaccinations
@@ -163,6 +183,7 @@ export default function CheckMyRecord() {
         vaccinations: Array.isArray(vaccinations) ? vaccinations : [],
         enrollments: Array.isArray(enrollments) ? enrollments : [],
         payments: Array.isArray(payments) ? payments : [],
+        notifications: Array.isArray(notificationsData) ? notificationsData : [],
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Lookup failed");
@@ -264,6 +285,22 @@ export default function CheckMyRecord() {
                   record.citizen.sex.slice(1)}
               </dd>
             </div>
+            {record.citizen.email && (
+              <div className="govuk-summary-list__row">
+                <dt className="govuk-summary-list__key">Email</dt>
+                <dd className="govuk-summary-list__value">
+                  {record.citizen.email}
+                </dd>
+              </div>
+            )}
+            {record.citizen.phone_number && (
+              <div className="govuk-summary-list__row">
+                <dt className="govuk-summary-list__key">Phone</dt>
+                <dd className="govuk-summary-list__value">
+                  {record.citizen.phone_number}
+                </dd>
+              </div>
+            )}
             <div className="govuk-summary-list__row">
               <dt className="govuk-summary-list__key">Status</dt>
               <dd className="govuk-summary-list__value">
@@ -472,6 +509,49 @@ export default function CheckMyRecord() {
                 </>
               )}
             </>
+          )}
+
+          {/* Notifications */}
+          <h2 className="govuk-heading-l">Notifications</h2>
+          {record.notifications.length === 0 ? (
+            <p className="govuk-body">No notifications sent.</p>
+          ) : (
+            <table className="govuk-table">
+              <thead>
+                <tr>
+                  <th className="govuk-table__header">Date</th>
+                  <th className="govuk-table__header">Channel</th>
+                  <th className="govuk-table__header">Subject</th>
+                  <th className="govuk-table__header">Service</th>
+                  <th className="govuk-table__header">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {record.notifications.map((n) => (
+                  <tr key={n.id}>
+                    <td className="govuk-table__cell">
+                      {new Date(n.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="govuk-table__cell">
+                      {n.channel === "sms" ? "SMS" : "Email"}
+                    </td>
+                    <td className="govuk-table__cell">
+                      {n.subject || n.body.slice(0, 60) + "..."}
+                    </td>
+                    <td className="govuk-table__cell">
+                      {n.source_service}
+                    </td>
+                    <td className="govuk-table__cell">
+                      <span
+                        className={`govuk-tag ${n.status === "delivered" ? "govuk-tag--green" : n.status === "sent" ? "govuk-tag--blue" : n.status === "failed" ? "govuk-tag--red" : ""}`}
+                      >
+                        {n.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
 
           <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
