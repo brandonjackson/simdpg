@@ -2,7 +2,7 @@
 
 A simulated city-state's digital public infrastructure, built to stress-test
 [OpenFn](https://openfn.org) integration workflows. This plan is organised into
-five milestones. Work that doesn't yet fit a milestone is collected under
+six milestones. Work that doesn't yet fit a milestone is collected under
 [Later / Backlog](#later--backlog).
 
 Two distinct catalogs live in the staff area and are referenced throughout:
@@ -123,6 +123,7 @@ system-catalog documentation.
       spec it targets.
 - [ ] **Webhook emission wired up** — each system's `webhooks.ts` POSTs real
       events to a configurable target (`WEBHOOK_URL`) so OpenFn can consume them.
+- [ ] **Per-system webhook event log table for debugging.**
 
 ---
 
@@ -143,7 +144,8 @@ Give staff real control over how the simulated population is constructed.
 ## Milestone 5 — Simulation system
 
 Build the engine that *runs the city-state* — firing events automatically,
-around the clock, even when nobody is watching, to stress-test OpenFn at load.
+around the clock, even when nobody is watching. This is the load generator; the
+OpenFn workflows it exercises are built in Milestone 6.
 
 - [ ] **Simulation control API** on the engine (e.g. `POST /simulation/speed`,
       `GET /simulation/status`, start / pause / reset).
@@ -153,17 +155,11 @@ around the clock, even when nobody is watching, to stress-test OpenFn at load.
   - Start / pause / reset controls
   - Live event feed — stream recent events (births, deaths, etc.) as they fire
 - [ ] **24/7 autonomous run** — leave the simulation running so events fire
-      continuously against the systems and OpenFn workflows. _Technical approach
-      TBD_ (long-running scheduler/worker, durable clock, resumable state).
-- [ ] **Build the OpenFn workflows** that the firing events exercise — generated
-      from the service-catalog prompts (Milestone 2). These are the connective
-      tissue between systems and the thing under test:
-  - Event-driven: birth→citizen, newborn→patient+vaccinations, newborn→child-benefit, death→close records, marriage→link households+reassess, vaccination→reporting, enrollment→payments, any-event→notification
-  - Scheduled: daily age-based eligibility, weekly missed-vaccination follow-up, duplicate-citizen detection
-- [ ] **Capture stress-test results:**
+      continuously against the systems (and, once Milestone 6 lands, the OpenFn
+      workflows). _Technical approach TBD_ (long-running scheduler/worker,
+      durable clock, resumable state).
+- [ ] **Capture system-side performance** as the load runs:
   - Latency percentiles (p50/p95/p99) per system endpoint
-  - OpenFn workflow metrics (success / failure / timeout, retry behaviour)
-  - For each workflow: did OpenFn AI generate a working first draft from the prompt? How many manual edits? Error rate under load?
   - Run at scale tiers and write up findings in `simulation/reports/`:
     - Dev: 100 citizens, ~500 events
     - Small: 10,000 citizens, ~50,000 events
@@ -172,9 +168,29 @@ around the clock, even when nobody is watching, to stress-test OpenFn at load.
 
 ---
 
+## Milestone 6 — OpenFn workflows
+
+The point of the whole exercise: wire the systems together with OpenFn workflows
+generated from the service-catalog prompts (Milestone 2), then put them under the
+continuous load from Milestone 5 and measure how OpenFn holds up.
+
+- [ ] **Build the workflows** — the connective tissue between systems, and the
+      thing actually under test:
+  - Event-driven: birth→citizen, newborn→patient+vaccinations, newborn→child-benefit, death→close records, marriage→link households+reassess, vaccination→reporting, enrollment→payments, any-event→notification
+  - Scheduled: daily age-based eligibility, weekly missed-vaccination follow-up, duplicate-citizen detection
+- [ ] **Point each system's `WEBHOOK_URL`** (wired in Milestone 3) at the
+      matching OpenFn trigger, and verify each workflow end-to-end with a single
+      event before running at scale.
+- [ ] **Measure OpenFn under load:**
+  - For each workflow: did OpenFn AI generate a working first draft from the prompt? How many manual edits were needed?
+  - Workflow metrics — success / failure / timeout counts, retry behaviour, latency per execution
+  - Error rate under the Milestone 5 load tiers; capture findings in `simulation/reports/`
+
+---
+
 ## Later / Backlog
 
-Worth doing, but not part of the five milestones above.
+Worth doing, but not part of the six milestones above.
 
 ### Tests
 - [ ] System API tests (vitest + supertest) — happy path per endpoint
@@ -189,7 +205,6 @@ Worth doing, but not part of the five milestones above.
 
 ### Webhook infrastructure (beyond the basic emission in Milestone 3)
 - [ ] Retry logic (exponential backoff) for failed deliveries
-- [ ] Per-system webhook event log table for debugging
 
 ### Notification system enhancements
 - [ ] Staff notification lookup UI (`/staff/notifications`) — search by name / national ID, see delivery status, timestamps, channel
