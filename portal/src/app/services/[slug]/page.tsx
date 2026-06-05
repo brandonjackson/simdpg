@@ -30,11 +30,9 @@ export default async function ServiceStub({
       </nav>
 
       <h1 className="govuk-heading-xl">{service.name}</h1>
-      <p className="govuk-body-l">{service.description}</p>
 
       <div className="govuk-inset-text">
-        This service is under construction. The checklist below shows the
-        current build status.
+        This service is under construction.
       </div>
 
       <h2 className="govuk-heading-m">Build status</h2>
@@ -82,54 +80,9 @@ export default async function ServiceStub({
         </li>
       </ul>
 
-      <h2 className="govuk-heading-m">About this service</h2>
-      <h3 className="govuk-heading-s">Customer journey</h3>
-      <ol className="govuk-body" style={{ paddingLeft: "20px" }}>
-        {service.customerJourney.map((step, i) => (
-          <li key={i} style={{ marginBottom: "8px" }}>
-            {step}
-          </li>
-        ))}
-      </ol>
-
-      <h3 className="govuk-heading-s">Systems involved</h3>
-      <table className="govuk-table">
-        <thead>
-          <tr>
-            <th className="govuk-table__header" style={{ width: "25%" }}>
-              System
-            </th>
-            <th className="govuk-table__header" style={{ width: "10%" }}>
-              Port
-            </th>
-            <th className="govuk-table__header">Role</th>
-          </tr>
-        </thead>
-        <tbody>
-          {service.systems.map((sys) => (
-            <tr key={sys.name}>
-              <td className="govuk-table__cell">
-                <strong>{sys.name}</strong>
-              </td>
-              <td className="govuk-table__cell">
-                <code>:{sys.port}</code>
-              </td>
-              <td className="govuk-table__cell">{sys.role}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
       <p className="govuk-body" style={{ marginTop: "30px" }}>
         <a href="/" className="govuk-link">
           Back to services
-        </a>
-        {" | "}
-        <a
-          href={`/staff/service-catalog#${service.id}`}
-          className="govuk-link"
-        >
-          View full spec in service catalog
         </a>
       </p>
     </>
