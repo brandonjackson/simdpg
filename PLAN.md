@@ -48,15 +48,32 @@ catalog** so the full landscape is visible before we deepen anything.
       (GovStack building blocks, DCI). Confirmed present: Identity, Civil
       Registry, Health, Benefits, Notifications. The information-mediator /
       exchange layer is played by OpenFn.
-- [ ] **Stub the components we don't have yet.** For each, add a systems-catalog
-      entry sketching what it will do, even though no code exists. Candidates to
-      assess and stub as appropriate:
-  - [ ] **Payments / payment rails** — Benefits currently *schedules* payments but nothing disburses them; a payments system is the obvious gap.
-  - [ ] **Authentication / single sign-on** — citizen and staff identity assurance (out of scope to build now, but belongs in the catalog).
-  - [ ] **Consent / data-sharing** — authorisation for cross-system data access.
-  - [ ] **Social registry / functional registry** — needs-based targeting that feeds Benefits eligibility.
-  - [ ] Any other building block the inventory surfaces (e.g. document/credential issuance).
+- [ ] **Stub the two components we're adding.** For each, add a systems-catalog
+      entry sketching what it will do, even though no code exists:
+  - [ ] **Payments** — Benefits *schedules* payments but nothing disburses them. The Payments system keeps a ledger with an account for the government (the disbursing treasury) and an account for every citizen. A payment is **mocked** — no real money moves; it only ever shows up as paired ledger entries (debit treasury, credit citizen). Crucially, the API **fails at random**, with failure modes and their rates set in a config file, using the most common error messages a real government payment gateway hits. The five simulated failures:
+    1. `INSUFFICIENT_FUNDS` — disbursing/treasury account lacks the balance for the transfer
+    2. `ACCOUNT_NOT_FOUND` — beneficiary account or bank details invalid or unknown
+    3. `GATEWAY_TIMEOUT` — upstream banking partner did not respond in time
+    4. `DUPLICATE_TRANSACTION` — a payment with this idempotency key was already processed
+    5. `SERVICE_UNAVAILABLE` — gateway temporarily unavailable / rate limited, retry later
+  - [ ] **Social registry** — needs-based targeting registry that feeds Benefits eligibility.
 - [ ] Each stub clearly marked as a sketch so it isn't mistaken for a working system.
+
+### Scope guard — do not add new systems lightly
+
+The system landscape is deliberately fixed: the five live systems (Identity,
+Civil Registry, Health, Benefits, Notifications) plus the two stubs above
+(Payments, Social Registry). **Claude should think about whether a given
+capability really needs a new system, but only add one beyond those already
+done or specified above if it is absolutely essential** — and call it out
+explicitly for sign-off rather than adding it silently.
+
+The following were considered and **deliberately excluded** for now. Don't
+reintroduce them as systems unless explicitly asked:
+
+- **Authentication / single sign-on** — citizen and staff identity assurance.
+- **Consent / data-sharing** — authorisation for cross-system data access.
+- **Document / credential issuance** — issuing certificates, IDs, or credentials.
 
 ---
 
