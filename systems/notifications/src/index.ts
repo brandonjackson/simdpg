@@ -1,6 +1,7 @@
 import express from "express";
 import { ensureTables } from "./db/index.js";
 import notificationsRouter from "./routes/notifications.js";
+import adminRouter from "./routes/admin.js";
 import { errorHandler } from "./middleware/error-handler.js";
 
 ensureTables();
@@ -15,6 +16,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/notifications", notificationsRouter);
+app.use("/admin", adminRouter);
 
 app.use(errorHandler);
 

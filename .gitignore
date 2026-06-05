@@ -11,6 +11,9 @@ out/
 .env.local
 .env.*.local
 
+# Population management run log (portal)
+.population-runs.json
+
 # SQLite databases
 *.sqlite
 *.sqlite-journal

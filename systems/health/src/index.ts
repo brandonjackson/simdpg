@@ -3,6 +3,7 @@ import { ensureTables } from "./db/index.js";
 import patientRoutes from "./routes/patients.js";
 import encounterRoutes from "./routes/encounters.js";
 import vaccinationRoutes from "./routes/vaccinations.js";
+import adminRoutes from "./routes/admin.js";
 import { errorHandler } from "./middleware/error-handler.js";
 
 // Ensure tables exist on startup
@@ -26,6 +27,7 @@ app.get("/health", (_req, res) => {
 app.use("/patients", patientRoutes);
 app.use("/encounters", encounterRoutes);
 app.use("/vaccinations", vaccinationRoutes);
+app.use("/admin", adminRoutes);
 
 // ---------------------------------------------------------------------------
 // Global error handler (must be registered last)

@@ -149,6 +149,15 @@ A Next.js app with gov.uk-inspired design (green header, breadcrumbs, one-questi
 - Dashboard with system stats
 - Citizen search by name/DOB
 - Citizen timeline (events from all systems in chronological order)
+- Population management (`/staff/population`) — view live stats across all
+  systems, generate a configurable synthetic population (size, age
+  distribution, geographic spread, household size, ethnicity mix, pre-existing
+  conditions rate, benefit eligibility rate), export/import that config as
+  JSON, wipe all data, and review a log of recent runs
+
+Each system also exposes admin endpoints used by the population page:
+`GET /admin/stats` (record counts) and `POST /admin/reset` (wipe that
+system's data — the Benefits system preserves its reference programmes).
 
 ## Simulation Engine
 

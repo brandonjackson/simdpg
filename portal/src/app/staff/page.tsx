@@ -200,6 +200,17 @@ export default async function StaffDashboard() {
             Record a vaccination for a patient.
           </p>
         </div>
+        <div className="govuk-card">
+          <h3 className="govuk-card__title">
+            <a href="/staff/population" className="govuk-link">
+              Population management
+            </a>
+          </h3>
+          <p className="govuk-card__description">
+            View population stats, generate a configurable population, or wipe
+            all data across systems.
+          </p>
+        </div>
       </div>
 
       <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />

@@ -150,13 +150,17 @@ system-catalog documentation.
 
 Give staff real control over how the simulated population is constructed.
 
-- [ ] **Population management page** (`/staff/population`):
-  - Current population stats (citizens, households, births/deaths/marriages to date)
-  - **Generate new population** — trigger the generator with configurable options
-  - **Config options:** size, age distribution, geographic spread, household size range, language/ethnicity mix, pre-existing conditions rate, benefit eligibility rate
-  - **Delete population** — wipe all data across all systems (with confirmation)
-  - **Export / import config** — download config as JSON and re-run with the same parameters
-  - Log of recent generation runs (timestamp, config summary, outcome)
+- [x] **Population management page** (`/staff/population`):
+  - [x] Current population stats (citizens, households, births/deaths/marriages to date) — aggregated from new per-system `GET /admin/stats` endpoints
+  - [x] **Generate new population** — triggers a configurable server-side generator (`portal/src/lib/population/generator.ts`) via `POST /api/population/generate`
+  - [x] **Config options:** size, age distribution (young/balanced/ageing), geographic spread (number of cities), household size range (children per household), language/ethnicity mix, pre-existing conditions rate (creates chronic-condition encounters), benefit eligibility rate (enrolls adults in a programme)
+  - [x] **Delete population** — `POST /api/population/delete` calls each system's `POST /admin/reset` to wipe all data (with a confirmation step). Benefit programmes are preserved as reference data.
+  - [x] **Export / import config** — download config as JSON and re-import to re-run with the same parameters
+  - [x] Log of recent generation runs (timestamp, config summary, outcome), persisted to `portal/.population-runs.json`
+
+> Note: language/ethnicity is used to weight name selection across cultural
+> groups; the Identity system has no ethnicity field, so it is not stored on
+> the citizen record — the mix is reported in the run summary instead.
 
 ---
 
