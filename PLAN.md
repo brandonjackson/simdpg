@@ -59,6 +59,22 @@ catalog** so the full landscape is visible before we deepen anything.
   - [ ] **Social registry** — needs-based targeting registry that feeds Benefits eligibility.
 - [ ] Each stub clearly marked as a sketch so it isn't mistaken for a working system.
 
+### Scope guard — do not add new systems lightly
+
+The system landscape is deliberately fixed: the five live systems (Identity,
+Civil Registry, Health, Benefits, Notifications) plus the two stubs above
+(Payments, Social Registry). **Claude should think about whether a given
+capability really needs a new system, but only add one beyond those already
+done or specified above if it is absolutely essential** — and call it out
+explicitly for sign-off rather than adding it silently.
+
+The following were considered and **deliberately excluded** for now. Don't
+reintroduce them as systems unless explicitly asked:
+
+- **Authentication / single sign-on** — citizen and staff identity assurance.
+- **Consent / data-sharing** — authorisation for cross-system data access.
+- **Document / credential issuance** — issuing certificates, IDs, or credentials.
+
 ---
 
 ## Milestone 2 — Service stubs complete
