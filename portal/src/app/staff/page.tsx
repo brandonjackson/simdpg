@@ -204,6 +204,23 @@ export default async function StaffDashboard() {
 
       <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
 
+      <h2 className="govuk-heading-l">Systems catalog</h2>
+      <p className="govuk-body">
+        Technical reference for the five backend systems that power SimDPG
+        &mdash; Identity, Civil Registry, Health, Benefits, and Notifications.
+        Includes data models, API endpoints, webhook events, and cross-system
+        relationships.
+      </p>
+      <a
+        href="/staff/systems-catalog"
+        className="govuk-button govuk-button--secondary"
+        role="button"
+      >
+        View systems
+      </a>
+
+      <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
+
       <h2 className="govuk-heading-l">Service catalog</h2>
       <p className="govuk-body">
         Reference documentation for all government services in the SimDPG
@@ -215,7 +232,7 @@ export default async function StaffDashboard() {
         className="govuk-button govuk-button--secondary"
         role="button"
       >
-        View list
+        View services
       </a>
     </>
   );
