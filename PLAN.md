@@ -41,23 +41,25 @@ Take stock of which DPI building blocks a credible city-state needs, confirm
 each has at least a presence in the repo, and stub the rest in the **systems
 catalog** so the full landscape is visible before we deepen anything.
 
-- [ ] **Add status badges to the systems catalog.** The catalog already lists
-      the five live systems; mark each entry built / stub / planned so the
-      not-yet-built components (added below) are clearly distinguished.
-- [ ] **Inventory critical DPI components** against common reference taxonomies
+- [x] **Add status badges to the systems catalog.** The catalog now marks each
+      entry built / stub / planned (with a status key) so the not-yet-built
+      components are clearly distinguished, in both the overview table and each
+      system's detail header.
+- [x] **Inventory critical DPI components** against common reference taxonomies
       (GovStack building blocks, DCI). Confirmed present: Identity, Civil
       Registry, Health, Benefits, Notifications. The information-mediator /
-      exchange layer is played by OpenFn.
-- [ ] **Stub the two components we're adding.** For each, add a systems-catalog
-      entry sketching what it will do, even though no code exists:
-  - [ ] **Payments** — Benefits *schedules* payments but nothing disburses them. The Payments system keeps a ledger with an account for the government (the disbursing treasury) and an account for every citizen. A payment is **mocked** — no real money moves; it only ever shows up as paired ledger entries (debit treasury, credit citizen). Crucially, the API **fails at random**, with failure modes and their rates set in a config file, using the most common error messages a real government payment gateway hits. The five simulated failures:
+      exchange layer is played by OpenFn. Captured as a "DPI building-block
+      inventory" table in the systems catalog, with a deliberately-excluded list.
+- [x] **Stub the two components we're adding.** Each has a systems-catalog entry
+      sketching what it will do, even though no code exists:
+  - [x] **Payments** — Benefits *schedules* payments but nothing disburses them. The Payments system keeps a ledger with an account for the government (the disbursing treasury) and an account for every citizen. A payment is **mocked** — no real money moves; it only ever shows up as paired ledger entries (debit treasury, credit citizen). Crucially, the API **fails at random**, with failure modes and their rates set in a config file, using the most common error messages a real government payment gateway hits. The five simulated failures:
     1. `INSUFFICIENT_FUNDS` — disbursing/treasury account lacks the balance for the transfer
     2. `ACCOUNT_NOT_FOUND` — beneficiary account or bank details invalid or unknown
     3. `GATEWAY_TIMEOUT` — upstream banking partner did not respond in time
     4. `DUPLICATE_TRANSACTION` — a payment with this idempotency key was already processed
     5. `SERVICE_UNAVAILABLE` — gateway temporarily unavailable / rate limited, retry later
-  - [ ] **Social registry** — needs-based targeting registry that feeds Benefits eligibility.
-- [ ] Each stub clearly marked as a sketch so it isn't mistaken for a working system.
+  - [x] **Social registry** — needs-based targeting registry that feeds Benefits eligibility.
+- [x] Each stub clearly marked as a sketch so it isn't mistaken for a working system.
 
 ### Scope guard — do not add new systems lightly
 
