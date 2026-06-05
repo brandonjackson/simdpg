@@ -1,9 +1,10 @@
-/**
- * Typed HTTP clients for SimDPG services.
- *
- * Each client will wrap fetch() with typed request/response bodies
- * for the corresponding service API.
- */
+export { IdentityClient } from "./identity.js";
+export { CivilRegistryClient } from "./civil-registry.js";
+export { HealthClient } from "./health.js";
+export { BenefitsClient } from "./benefits.js";
+export { BaseClient, ApiError } from "./base.js";
+
+export type * from "./types.js";
 
 export const SERVICE_URLS = {
   identity: process.env.IDENTITY_URL ?? "http://localhost:3001",
