@@ -12,6 +12,9 @@
     "predev": "npm run build -w @simdpg/api-clients",
     "dev": "concurrently -n identity,civil-registry,health,benefits,portal -c blue,green,yellow,magenta,cyan \"npm run dev -w @simdpg/identity\" \"npm run dev -w @simdpg/civil-registry\" \"npm run dev -w @simdpg/health\" \"npm run dev -w @simdpg/benefits\" \"npm run dev -w portal\"",
     "dev:services": "concurrently -n identity,civil-registry,health,benefits -c blue,green,yellow,magenta \"npm run dev -w @simdpg/identity\" \"npm run dev -w @simdpg/civil-registry\" \"npm run dev -w @simdpg/health\" \"npm run dev -w @simdpg/benefits\"",
+    "reset": "rm -f services/identity/data/*.sqlite* services/civil-registry/data/*.sqlite* services/health/data/*.sqlite* services/benefits/data/*.sqlite* && echo 'All databases deleted.'",
+    "setup": "npm run db:seed -w @simdpg/identity && npm run db:seed -w @simdpg/civil-registry && npm run db:seed -w @simdpg/health && npm run db:seed -w @simdpg/benefits && echo 'All services seeded.'",
+    "setup:generate": "npm run build -w @simdpg/api-clients && npm run sim:generate -w @simdpg/simulation",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
   },
