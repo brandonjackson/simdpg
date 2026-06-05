@@ -204,7 +204,11 @@ citizenRouter.get("/search", async (req, res, next) => {
     }
 
     const where =
-      conditions.length === 1 ? conditions[0]! : and(...conditions);
+      conditions.length === 0
+        ? undefined
+        : conditions.length === 1
+          ? conditions[0]!
+          : and(...conditions);
 
     const results = db.select().from(citizens).where(where).all();
 
