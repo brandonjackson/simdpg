@@ -1,0 +1,68 @@
+# SimDPG Docker Compose
+# Uncomment and configure services as they are implemented.
+
+version: "3.8"
+
+services: {}
+
+  # identity:
+  #   build:
+  #     context: .
+  #     dockerfile: services/identity/Dockerfile
+  #   ports:
+  #     - "3001:3001"
+  #   environment:
+  #     - PORT=3001
+  #   volumes:
+  #     - identity-data:/app/data
+
+  # civil-registry:
+  #   build:
+  #     context: .
+  #     dockerfile: services/civil-registry/Dockerfile
+  #   ports:
+  #     - "3002:3002"
+  #   environment:
+  #     - PORT=3002
+  #   volumes:
+  #     - civil-registry-data:/app/data
+
+  # health:
+  #   build:
+  #     context: .
+  #     dockerfile: services/health/Dockerfile
+  #   ports:
+  #     - "3003:3003"
+  #   environment:
+  #     - PORT=3003
+  #   volumes:
+  #     - health-data:/app/data
+
+  # benefits:
+  #   build:
+  #     context: .
+  #     dockerfile: services/benefits/Dockerfile
+  #   ports:
+  #     - "3004:3004"
+  #   environment:
+  #     - PORT=3004
+  #   volumes:
+  #     - benefits-data:/app/data
+
+  # portal:
+  #   build:
+  #     context: .
+  #     dockerfile: portal/Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - identity
+  #     - civil-registry
+  #     - health
+  #     - benefits
+
+# volumes:
+#   identity-data:
+#   civil-registry-data:
+#   health-data:
+#   benefits-data:
