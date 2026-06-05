@@ -7,7 +7,7 @@ export { BaseClient, ApiError } from "./base.js";
 
 export type * from "./types.js";
 
-export const SERVICE_URLS = {
+export const SYSTEM_URLS = {
   identity: process.env.IDENTITY_URL ?? "http://localhost:3001",
   civilRegistry: process.env.CIVIL_REGISTRY_URL ?? "http://localhost:3002",
   health: process.env.HEALTH_URL ?? "http://localhost:3003",

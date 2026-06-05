@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "services/*",
+    "systems/*",
     "packages/*",
     "portal",
     "simulation"
@@ -11,9 +11,9 @@
   "scripts": {
     "predev": "npm run build -w @simdpg/api-clients",
     "dev": "concurrently -n identity,civil-registry,health,benefits,notifications,portal -c blue,green,yellow,magenta,white,cyan \"npm run dev -w @simdpg/identity\" \"npm run dev -w @simdpg/civil-registry\" \"npm run dev -w @simdpg/health\" \"npm run dev -w @simdpg/benefits\" \"npm run dev -w @simdpg/notifications\" \"npm run dev -w portal\"",
-    "dev:services": "concurrently -n identity,civil-registry,health,benefits,notifications -c blue,green,yellow,magenta,white \"npm run dev -w @simdpg/identity\" \"npm run dev -w @simdpg/civil-registry\" \"npm run dev -w @simdpg/health\" \"npm run dev -w @simdpg/benefits\" \"npm run dev -w @simdpg/notifications\"",
-    "reset": "rm -f services/identity/data/*.sqlite* services/civil-registry/data/*.sqlite* services/health/data/*.sqlite* services/benefits/data/*.sqlite* services/notifications/data/*.sqlite* && echo 'All databases deleted. If services are running, restart them (npm run dev:services).'",
-    "setup": "npm run db:seed -w @simdpg/identity && npm run db:seed -w @simdpg/civil-registry && npm run db:seed -w @simdpg/health && npm run db:seed -w @simdpg/benefits && npm run db:seed -w @simdpg/notifications && echo 'All services seeded.'",
+    "dev:systems": "concurrently -n identity,civil-registry,health,benefits,notifications -c blue,green,yellow,magenta,white \"npm run dev -w @simdpg/identity\" \"npm run dev -w @simdpg/civil-registry\" \"npm run dev -w @simdpg/health\" \"npm run dev -w @simdpg/benefits\" \"npm run dev -w @simdpg/notifications\"",
+    "reset": "rm -f systems/identity/data/*.sqlite* systems/civil-registry/data/*.sqlite* systems/health/data/*.sqlite* systems/benefits/data/*.sqlite* systems/notifications/data/*.sqlite* && echo 'All databases deleted. If systems are running, restart them (npm run dev:systems).'",
+    "setup": "npm run db:seed -w @simdpg/identity && npm run db:seed -w @simdpg/civil-registry && npm run db:seed -w @simdpg/health && npm run db:seed -w @simdpg/benefits && npm run db:seed -w @simdpg/notifications && echo 'All systems seeded.'",
     "setup:generate": "node scripts/check-services.js && npm run build -w @simdpg/api-clients && npm run sim:generate -w @simdpg/simulation",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"

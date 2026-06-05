@@ -2,7 +2,7 @@
  * Clinic visit event generator.
  *
  * Rate: ~4 visits per citizen per year.
- * Creates encounter records (checkup or consultation) in the health service.
+ * Creates encounter records (checkup or consultation) in the health system.
  */
 
 import { HealthClient } from "@simdpg/api-clients";

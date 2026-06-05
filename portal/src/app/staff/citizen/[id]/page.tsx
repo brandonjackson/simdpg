@@ -26,7 +26,7 @@ interface Citizen {
 interface TimelineEvent {
   date: string;
   type: string;
-  service: string;
+  system: string;
   summary: string;
   details: Record<string, unknown>;
 }
@@ -67,12 +67,12 @@ export default function CitizenTimeline() {
       events.push({
         date: citizenData.created_at?.split("T")[0] || citizenData.date_of_birth,
         type: "registered",
-        service: "Identity",
+        system: "Identity",
         summary: "Citizen registered in identity system",
         details: { national_id: citizenData.national_id },
       });
     } catch {
-      setError("Identity service unavailable");
+      setError("Identity system unavailable");
       setLoading(false);
       return;
     }
@@ -87,7 +87,7 @@ export default function CitizenTimeline() {
           events.push({
             date: evt.date,
             type: evt.type,
-            service: "Civil Registry",
+            system: "Civil Registry",
             summary:
               evt.type === "birth"
                 ? "Birth registered"
@@ -113,7 +113,7 @@ export default function CitizenTimeline() {
           events.push({
             date: patient.registered_at?.split("T")[0] || "",
             type: "patient_registered",
-            service: "Health",
+            system: "Health",
             summary: "Registered as patient",
             details: { blood_type: patient.blood_type, patient_id: patient.id },
           });
@@ -127,7 +127,7 @@ export default function CitizenTimeline() {
               events.push({
                 date: enc.date,
                 type: `encounter_${enc.type}`,
-                service: "Health",
+                system: "Health",
                 summary: `${enc.type.charAt(0).toUpperCase() + enc.type.slice(1)} at ${enc.facility}`,
                 details: {
                   provider: enc.provider,
@@ -148,7 +148,7 @@ export default function CitizenTimeline() {
               events.push({
                 date: vac.date_administered,
                 type: "vaccination",
-                service: "Health",
+                system: "Health",
                 summary: `${vac.vaccine_name} dose ${vac.dose_number}`,
                 details: {
                   batch_number: vac.batch_number,
@@ -160,7 +160,7 @@ export default function CitizenTimeline() {
         }
       }
     } catch {
-      // Health service unavailable
+      // Health system unavailable
     }
 
     try {
@@ -174,7 +174,7 @@ export default function CitizenTimeline() {
           events.push({
             date: enr.enrolled_at?.split("T")[0] || "",
             type: "enrollment",
-            service: "Benefits",
+            system: "Benefits",
             summary: `Enrolled in ${enr.program_name || "program"}`,
             details: { status: enr.status, enrollment_id: enr.id },
           });
@@ -182,7 +182,7 @@ export default function CitizenTimeline() {
             events.push({
               date: enr.terminated_at.split("T")[0],
               type: "enrollment_terminated",
-              service: "Benefits",
+              system: "Benefits",
               summary: `Enrollment terminated: ${enr.program_name || "program"}`,
               details: { reason: enr.termination_reason, enrollment_id: enr.id },
             });
@@ -190,7 +190,7 @@ export default function CitizenTimeline() {
         }
       }
     } catch {
-      // Benefits service unavailable
+      // Benefits system unavailable
     }
 
     try {
@@ -203,14 +203,14 @@ export default function CitizenTimeline() {
           events.push({
             date: n.created_at?.split("T")[0] || "",
             type: "notification",
-            service: "Notifications",
+            system: "Notifications",
             summary: `${n.channel === "sms" ? "SMS" : "Email"} — ${n.subject || n.body.slice(0, 50)}`,
-            details: { channel: n.channel, destination: n.destination, status: n.status, source: n.source_service },
+            details: { channel: n.channel, destination: n.destination, status: n.status, source: n.source_system },
           });
         }
       }
     } catch {
-      // Notifications service unavailable
+      // Notifications system unavailable
     }
 
     events.sort(
@@ -224,7 +224,7 @@ export default function CitizenTimeline() {
     loadData();
   }, [loadData]);
 
-  const serviceColor: Record<string, string> = {
+  const systemColor: Record<string, string> = {
     Identity: "govuk-tag--blue",
     "Civil Registry": "govuk-tag--purple",
     Health: "govuk-tag--green",
@@ -375,7 +375,7 @@ export default function CitizenTimeline() {
       <h2 className="govuk-heading-l">Timeline</h2>
       <p className="govuk-body-s govuk-hint">
         {timeline.length} event{timeline.length !== 1 ? "s" : ""} across all
-        services, newest first.
+        systems, newest first.
       </p>
 
       {timeline.length === 0 ? (
@@ -386,8 +386,8 @@ export default function CitizenTimeline() {
             <div key={i} className="govuk-timeline__event">
               <div className="govuk-timeline__date">{evt.date}</div>
               <div className="govuk-timeline__content">
-                <span className={`govuk-tag ${serviceColor[evt.service] || ""}`}>
-                  {evt.service}
+                <span className={`govuk-tag ${systemColor[evt.system] || ""}`}>
+                  {evt.system}
                 </span>
                 <h3
                   className="govuk-heading-s"

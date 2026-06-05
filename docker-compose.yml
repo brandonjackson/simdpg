@@ -8,7 +8,7 @@ services: {}
   # identity:
   #   build:
   #     context: .
-  #     dockerfile: services/identity/Dockerfile
+  #     dockerfile: systems/identity/Dockerfile
   #   ports:
   #     - "3001:3001"
   #   environment:
@@ -19,7 +19,7 @@ services: {}
   # civil-registry:
   #   build:
   #     context: .
-  #     dockerfile: services/civil-registry/Dockerfile
+  #     dockerfile: systems/civil-registry/Dockerfile
   #   ports:
   #     - "3002:3002"
   #   environment:
@@ -30,7 +30,7 @@ services: {}
   # health:
   #   build:
   #     context: .
-  #     dockerfile: services/health/Dockerfile
+  #     dockerfile: systems/health/Dockerfile
   #   ports:
   #     - "3003:3003"
   #   environment:
@@ -41,7 +41,7 @@ services: {}
   # benefits:
   #   build:
   #     context: .
-  #     dockerfile: services/benefits/Dockerfile
+  #     dockerfile: systems/benefits/Dockerfile
   #   ports:
   #     - "3004:3004"
   #   environment:

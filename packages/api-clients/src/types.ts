@@ -195,7 +195,7 @@ export interface EligibilityResult {
 
 export interface HealthCheckResponse {
   status: "ok";
-  service: string;
+  system: string;
   version: string;
 }
 
@@ -206,7 +206,7 @@ export interface Notification {
   destination: string;
   subject: string | null;
   body: string;
-  source_service: string;
+  source_system: string;
   source_event: string | null;
   status: "pending" | "sent" | "delivered" | "failed";
   attempts: number;
@@ -223,7 +223,7 @@ export interface SendNotificationInput {
   destination: string;
   subject?: string | null;
   body: string;
-  source_service: string;
+  source_system: string;
   source_event?: string | null;
 }
 

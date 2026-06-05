@@ -8,7 +8,7 @@ export default function ServiceCatalog() {
       customerJourney: [
         "Parent or authorised person visits the portal and selects 'Register a birth'.",
         "Enters the child's details: given name, family name, date of birth, sex.",
-        "Enters the mother's national ID (looked up from Identity service).",
+        "Enters the mother's national ID (looked up from Identity system).",
         "Optionally enters the father's national ID.",
         "Enters the place of birth.",
         "Reviews the details and submits the registration.",
@@ -37,20 +37,20 @@ export default function ServiceCatalog() {
         },
       ],
       simulationWorkflows: [
-        "The birth.ts simulation script directly orchestrates all services: creates the citizen in Identity, registers them as a patient in Health, and registers the birth in Civil Registry. Rate: ~15 births per 1,000 population per year.",
+        "The birth.ts simulation script directly orchestrates all systems: creates the citizen in Identity, registers them as a patient in Health, and registers the birth in Civil Registry. Rate: ~15 births per 1,000 population per year.",
       ],
       openfnWorkflows: [
         {
           name: "Birth registered -> Create citizen",
           trigger: "Webhook: birth.registered",
           description:
-            "When a birth is registered in Civil Registry, create a corresponding citizen record in the Identity service with the child's details.",
+            "When a birth is registered in Civil Registry, create a corresponding citizen record in the Identity system with the child's details.",
         },
         {
           name: "Citizen created (newborn) -> Register patient & schedule vaccinations",
           trigger: "Webhook: citizen.created (where age < 1)",
           description:
-            "When a new citizen is created for a newborn, register them as a patient in the Health service and schedule age-appropriate vaccinations (BCG, OPV, DPT, Measles).",
+            "When a new citizen is created for a newborn, register them as a patient in the Health system and schedule age-appropriate vaccinations (BCG, OPV, DPT, Measles).",
         },
         {
           name: "Citizen created (newborn) -> Check child benefit eligibility",
@@ -64,7 +64,7 @@ export default function ServiceCatalog() {
       id: "death-registration",
       name: "Death Registration",
       description:
-        "Register a death, updating civil records and cascading closures across all government services.",
+        "Register a death, updating civil records and cascading closures across all government systems.",
       customerJourney: [
         "Family member or authorised person visits the portal and selects 'Register a death'.",
         "Enters the deceased citizen's national ID to look up their record.",
@@ -100,7 +100,7 @@ export default function ServiceCatalog() {
       ],
       openfnWorkflows: [
         {
-          name: "Death registered -> Close records across services",
+          name: "Death registered -> Close records across systems",
           trigger: "Webhook: death.registered",
           description:
             "When a death is registered, cascade the closure: update citizen status to 'deceased' in Identity, terminate all active benefit enrolments in Benefits, and mark the patient inactive in Health. Cancels any pending payments or scheduled vaccinations.",
@@ -145,7 +145,7 @@ export default function ServiceCatalog() {
           name: "Marriage registered -> Link households & reassess benefits",
           trigger: "Webhook: marriage.registered",
           description:
-            "When a marriage is registered, link or merge the two spouses' households in the Identity service. Then re-assess benefit eligibility for both spouses — combined household income or composition may affect programme eligibility.",
+            "When a marriage is registered, link or merge the two spouses' households in the Identity system. Then re-assess benefit eligibility for both spouses — combined household income or composition may affect programme eligibility.",
         },
       ],
     },
@@ -189,7 +189,7 @@ export default function ServiceCatalog() {
           name: "Weekly missed vaccination follow-up",
           trigger: "Scheduled: weekly cron",
           description:
-            "Query the Health service for overdue vaccinations (patients who have missed their next-dose-due date). Schedule consultation encounters for follow-up and generate a list for community health workers.",
+            "Query the Health system for overdue vaccinations (patients who have missed their next-dose-due date). Schedule consultation encounters for follow-up and generate a list for community health workers.",
         },
       ],
     },
@@ -226,7 +226,7 @@ export default function ServiceCatalog() {
           name: "Encounter completed -> Update patient records",
           trigger: "Webhook: encounter.completed",
           description:
-            "When a clinical encounter is completed, update the patient's record in the Health service and push the encounter data to reporting dashboards.",
+            "When a clinical encounter is completed, update the patient's record in the Health system and push the encounter data to reporting dashboards.",
         },
       ],
     },
@@ -282,15 +282,15 @@ export default function ServiceCatalog() {
         "Deliver email and SMS notifications to citizens when government service events occur. Tracks delivery status and provides a citizen-facing notification history.",
       customerJourney: [
         "Citizen completes a government service action (e.g. registers a birth, receives a vaccination, enrols in a benefit).",
-        "An OpenFn workflow triggers, looks up the citizen's contact details (email/phone) from the Identity service.",
-        "The workflow sends one or more notifications to the Notifications service with the citizen ID, channel, destination, and message.",
-        "The Notifications service records and simulates delivery of the message.",
+        "An OpenFn workflow triggers, looks up the citizen's contact details (email/phone) from the Identity system.",
+        "The workflow sends one or more notifications to the Notifications system with the citizen ID, channel, destination, and message.",
+        "The Notifications system records and simulates delivery of the message.",
         "Citizen can view their notification history on the 'My notifications' portal page by entering their national ID.",
       ],
       systems: [
         {
           name: "Notifications",
-          role: "Primary. Stores notification records with channel (email/sms), destination, subject, body, source service, delivery status, and timestamps.",
+          role: "Primary. Stores notification records with channel (email/sms), destination, subject, body, source system, delivery status, and timestamps.",
           port: 3005,
         },
         {
@@ -300,14 +300,14 @@ export default function ServiceCatalog() {
         },
       ],
       simulationWorkflows: [
-        "No dedicated simulation script. Notifications are created by OpenFn workflows in response to events from other services. Seed data includes sample notifications for testing the portal UI.",
+        "No dedicated simulation script. Notifications are created by OpenFn workflows in response to events from other systems. Seed data includes sample notifications for testing the portal UI.",
       ],
       openfnWorkflows: [
         {
-          name: "Service event -> Send citizen notification",
-          trigger: "Webhook: any service event (birth.registered, enrollment.created, vaccination.administered, etc.)",
+          name: "System event -> Send citizen notification",
+          trigger: "Webhook: any system event (birth.registered, enrollment.created, vaccination.administered, etc.)",
           description:
-            "When a service event occurs, look up the citizen's contact details from the Identity service. If the citizen has an email or phone number, send a notification via the Notifications service with appropriate subject and body for the event type.",
+            "When a system event occurs, look up the citizen's contact details from the Identity system. If the citizen has an email or phone number, send a notification via the Notifications system with appropriate subject and body for the event type.",
         },
       ],
     },
@@ -315,13 +315,13 @@ export default function ServiceCatalog() {
       id: "check-my-record",
       name: "Check My Record",
       description:
-        "Unified cross-service view of a citizen's record, aggregating data from all government services into a single timeline.",
+        "Unified cross-system view of a citizen's record, aggregating data from all government services into a single timeline.",
       customerJourney: [
         "Citizen visits the portal and selects 'Check my record'.",
         "Enters their national ID.",
-        "System looks up the citizen across all services.",
+        "System looks up the citizen across all systems.",
         "Citizen sees a unified view: personal details from Identity, vital events from Civil Registry, health encounters and vaccinations from Health, and benefit enrolments from Benefits.",
-        "All events are displayed on a chronological timeline with colour-coded service tags.",
+        "All events are displayed on a chronological timeline with colour-coded system tags.",
       ],
       systems: [
         {
@@ -351,14 +351,14 @@ export default function ServiceCatalog() {
         },
       ],
       simulationWorkflows: [
-        "No dedicated simulation script. This is a read-only aggregation service. The citizen timeline is populated by all other service events during simulation runs.",
+        "No dedicated simulation script. This is a read-only aggregation view. The citizen timeline is populated by all other system events during simulation runs.",
       ],
       openfnWorkflows: [
         {
           name: "Duplicate citizen detection",
           trigger: "Scheduled: periodic cron",
           description:
-            "Periodically scan the Identity service for potential duplicate citizen records using fuzzy matching on name, date of birth, and sex. Flag matches for manual review or auto-merge, cascading ID changes to Civil Registry, Health, and Benefits.",
+            "Periodically scan the Identity system for potential duplicate citizen records using fuzzy matching on name, date of birth, and sex. Flag matches for manual review or auto-merge, cascading ID changes to Civil Registry, Health, and Benefits.",
         },
       ],
     },
@@ -391,13 +391,13 @@ export default function ServiceCatalog() {
       </p>
 
       <div className="govuk-inset-text">
-        <strong>Systems overview:</strong> SimDPG runs five microservices &mdash;{" "}
+        <strong>Systems overview:</strong> SimDPG runs five systems &mdash;{" "}
         <strong>Identity</strong> (:3001) for citizen records,{" "}
         <strong>Civil Registry</strong> (:3002) for vital events,{" "}
         <strong>Health</strong> (:3003) for patient care,{" "}
         <strong>Benefits</strong> (:3004) for social programmes, and{" "}
         <strong>Notifications</strong> (:3005) for citizen communications.
-        Services communicate via webhooks routed through OpenFn workflows.
+        Systems communicate via webhooks routed through OpenFn workflows.
       </div>
 
       <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
@@ -425,7 +425,7 @@ export default function ServiceCatalog() {
             <thead>
               <tr>
                 <th className="govuk-table__header" style={{ width: "25%" }}>
-                  Service
+                  System
                 </th>
                 <th className="govuk-table__header" style={{ width: "10%" }}>
                   Port
@@ -491,7 +491,7 @@ export default function ServiceCatalog() {
       <h2 className="govuk-heading-l">Workflow summary</h2>
       <p className="govuk-body">
         The table below lists all OpenFn workflows required for the SimDPG
-        platform across all services.
+        platform across all systems.
       </p>
       <table className="govuk-table">
         <thead>

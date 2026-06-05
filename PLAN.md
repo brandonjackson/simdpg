@@ -3,33 +3,33 @@
 ## What's Done
 
 - [x] Mono-repo scaffold with npm workspaces
-- [x] Identity service (citizens, households, addresses, search)
+- [x] Identity system (citizens, households, addresses, search)
 - [x] Citizens have email and phone_number contact fields for notification delivery
-- [x] Civil Registry service (births, deaths, marriages, combined events)
-- [x] Health service (patients, encounters, vaccinations, overdue queries)
-- [x] Benefits service (programs, eligibility rules, enrollments, payments)
-- [x] Notifications service (port 3005) — stores notification records sent to citizens via email/sms
+- [x] Civil Registry system (births, deaths, marriages, combined events)
+- [x] Health system (patients, encounters, vaccinations, overdue queries)
+- [x] Benefits system (programs, eligibility rules, enrollments, payments)
+- [x] Notifications system (port 3005) — stores notification records sent to citizens via email/sms
 - [x] Typed API clients package (`@simdpg/api-clients`) — includes NotificationsClient
 - [x] Gov.uk portal — citizen pages (birth/death/marriage registration, vaccination booking, benefit application, check my record, my notifications)
 - [x] Gov.uk portal — staff pages (dashboard, search, citizen timeline)
 - [x] Simulation engine — population generator (with email/phone), 6 event scripts, runner with year/scale modes
-- [x] End-to-end verified: all services start, population generates, birth flow works cross-service
+- [x] End-to-end verified: all systems start, population generates, birth flow works cross-system
 
 ## What's Next (in priority order)
 
 ### 1. OpenFn Workflows (Part 3 of spec)
 
-This is the core of what we're testing. 10 workflows that wire the services together:
+This is the core of what we're testing. 10 workflows that wire the systems together:
 
 **Event-driven (triggered by webhooks):**
-1. Birth registered → create citizen in identity service
+1. Birth registered → create citizen in identity system
 2. Citizen created (newborn) → register as patient, schedule vaccinations
 3. Citizen created (newborn) → check child benefit eligibility, enroll if eligible
 4. Death registered → close records across identity, health, and benefits
 5. Marriage registered → link/merge households, reassess benefits
 6. Vaccination administered → update encounter records, push to reporting
 7. Enrollment created → schedule payments based on program rules
-8. Any service event → look up citizen contact info (email/phone) from identity, send notification via notifications service
+8. Any system event → look up citizen contact info (email/phone) from identity, send notification via notifications system
 
 **Scheduled (cron):**
 8. Daily: age-based eligibility changes (turning 18 → terminate child benefit, check adult programs)
@@ -43,7 +43,7 @@ This is the core of what we're testing. 10 workflows that wire the services toge
 - Latency per execution
 
 **Action items:**
-- [ ] Configure webhook URLs in each service to point to OpenFn endpoints
+- [ ] Configure webhook URLs in each system to point to OpenFn endpoints
 - [ ] Create each workflow in OpenFn (ideally using AI generation)
 - [ ] Document AI generation quality per workflow
 - [ ] Test each workflow end-to-end with a single event
@@ -51,10 +51,10 @@ This is the core of what we're testing. 10 workflows that wire the services toge
 
 ### 2. Notification System — Future Enhancements
 
-The notifications service (port 3005) is live and records notification delivery to citizens via email and SMS. OpenFn workflows will wire service events to notification creation. Future work:
+The notifications system (port 3005) is live and records notification delivery to citizens via email and SMS. OpenFn workflows will wire system events to notification creation. Future work:
 
 - [ ] **Staff notification lookup UI** — portal page at `/staff/notifications` where staff can enter a citizen name or national ID and see all messages delivered to them, with delivery status, timestamps, and channel details
-- [ ] **Notification templates** — add a `templates` table so services can reference named templates (e.g. "birth_confirmation_email", "vaccination_reminder_sms") instead of hardcoding message bodies in workflows
+- [ ] **Notification templates** — add a `templates` table so systems can reference named templates (e.g. "birth_confirmation_email", "vaccination_reminder_sms") instead of hardcoding message bodies in workflows
 - [ ] **Delivery simulation** — simulate realistic delivery delays, failures, and retries (currently all notifications are marked "sent" immediately)
 - [ ] **Notification preferences** — allow citizens to opt in/out of channels (email vs SMS) and notification categories
 - [ ] **Batch digest** — aggregate multiple notifications into a single daily/weekly digest email
@@ -62,41 +62,41 @@ The notifications service (port 3005) is live and records notification delivery 
 
 ### 3. Webhook Infrastructure
 
-The services have webhook emitter stubs but they need to be wired up to actually POST events.
+The systems have webhook emitter stubs but they need to be wired up to actually POST events.
 
-- [ ] Each service's `webhooks.ts` needs a configurable target URL (env var `WEBHOOK_URL`)
+- [ ] Each system's `webhooks.ts` needs a configurable target URL (env var `WEBHOOK_URL`)
 - [ ] Add retry logic (exponential backoff) for failed webhook deliveries
-- [ ] Add a webhook event log table per service for debugging
+- [ ] Add a webhook event log table per system for debugging
 - [ ] Test that creating a citizen actually fires `citizen.created` to the configured URL
 
 ### 3. Tests
 
 No tests exist yet. Priority areas:
 
-- [ ] Service API tests (vitest + supertest) — happy path for each endpoint
-- [ ] Cross-service integration tests — birth flow creates citizen, registers patient
+- [ ] System API tests (vitest + supertest) — happy path for each endpoint
+- [ ] Cross-system integration tests — birth flow creates citizen, registers patient
 - [ ] Simulation smoke test — generate 10 citizens, run one year, verify counts
 - [ ] Portal build test — `next build` passes
 
 ### 4. Seed Data
 
-Each service has seed scripts but they should be coordinated:
+Each system has seed scripts but they should be coordinated:
 
 - [ ] Run seed scripts in order: identity → civil-registry → health → benefits
 - [ ] Add a root-level `npm run seed` that runs all seed scripts in sequence
-- [ ] Ensure seed data is consistent across services (same citizen IDs referenced)
+- [ ] Ensure seed data is consistent across systems (same citizen IDs referenced)
 
 ### 5. Portal Improvements
 
-- [x] Server-side API calls — staff dashboard converted to server component; all other pages proxy through `/api/proxy/[service]/[...path]` route to keep service URLs server-side.
-- [ ] Error states — handle services being down gracefully on all pages
+- [x] Server-side API calls — staff dashboard converted to server component; all other pages proxy through `/api/proxy/[system]/[...path]` route to keep system URLs server-side.
+- [ ] Error states — handle systems being down gracefully on all pages
 - [ ] Confirmation pages — after form submission, show a gov.uk-style confirmation panel with a reference number
 - [ ] Mobile testing — verify responsive layout works
 
 ### 6. Scale Testing Infrastructure
 
 - [ ] Add `simulation/reports/` directory for markdown reports
-- [ ] Capture latency percentiles (p50, p95, p99) per service endpoint
+- [ ] Capture latency percentiles (p50, p95, p99) per system endpoint
 - [ ] Capture OpenFn workflow execution metrics (success/failure/timeout)
 - [ ] Run at each scale tier and document findings:
   - Dev: 100 citizens, ~500 events
@@ -106,8 +106,8 @@ Each service has seed scripts but they should be coordinated:
 
 ### 7. Deployment
 
-- [ ] Fill in `docker-compose.yml` with service containers
-- [ ] Add Dockerfiles per service
+- [ ] Fill in `docker-compose.yml` with system containers
+- [ ] Add Dockerfiles per system
 - [ ] Configure Nginx reverse proxy
 - [ ] Deploy to VPS
 - [ ] Set up OpenFn cloud connection
@@ -118,7 +118,7 @@ Each service has seed scripts but they should be coordinated:
 For deployed/scale environments:
 
 - [ ] Add Postgres Drizzle configs alongside SQLite
-- [ ] Test each service with Postgres
+- [ ] Test each system with Postgres
 - [ ] Update docker-compose with Postgres containers
 
 ## Key Decisions Still Open

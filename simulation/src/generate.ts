@@ -2,19 +2,19 @@
  * Population generator.
  *
  * Creates a seed population with realistic demographics by calling the
- * Identity service API.  Each citizen is also registered as a patient in
- * the Health service.
+ * Identity system API.  Each citizen is also registered as a patient in
+ * the Health system.
  *
  * Config via env vars:
  *   POPULATION_SIZE  - target number of citizens (default 100)
- *   IDENTITY_URL     - identity service base URL
- *   HEALTH_URL       - health service base URL
+ *   IDENTITY_URL     - identity system base URL
+ *   HEALTH_URL       - health system base URL
  */
 
 import {
   IdentityClient,
   HealthClient,
-  SERVICE_URLS,
+  SYSTEM_URLS,
 } from "@simdpg/api-clients";
 import type { Citizen, CreateCitizenInput } from "@simdpg/api-clients";
 import {
@@ -175,8 +175,8 @@ export interface GenerateConfig {
 export function configFromEnv(): GenerateConfig {
   return {
     populationSize: parseInt(process.env.POPULATION_SIZE ?? "100", 10),
-    identityUrl: process.env.IDENTITY_URL ?? SERVICE_URLS.identity,
-    healthUrl: process.env.HEALTH_URL ?? SERVICE_URLS.health,
+    identityUrl: process.env.IDENTITY_URL ?? SYSTEM_URLS.identity,
+    healthUrl: process.env.HEALTH_URL ?? SYSTEM_URLS.health,
   };
 }
 
@@ -186,8 +186,8 @@ export async function generate(config: GenerateConfig): Promise<Report> {
   const report = new Report();
 
   log(`Generating population of ~${config.populationSize} citizens...`);
-  log(`Identity service: ${config.identityUrl}`);
-  log(`Health service:   ${config.healthUrl}`);
+  log(`Identity system: ${config.identityUrl}`);
+  log(`Health system:   ${config.healthUrl}`);
 
   // Build household plans until we reach the target population size
   const plans: HouseholdPlan[] = [];
@@ -261,8 +261,8 @@ export async function generate(config: GenerateConfig): Promise<Report> {
 
   log(`Created ${allCitizens.length} citizens in ${householdsCreated} households`);
 
-  // Register each citizen as a patient in the health service
-  log("Registering citizens as patients in health service...");
+  // Register each citizen as a patient in the health system
+  log("Registering citizens as patients in health system...");
   let patientsRegistered = 0;
   for (const citizen of allCitizens) {
     try {

@@ -67,7 +67,7 @@ interface CitizenRecord {
     destination: string;
     subject: string | null;
     body: string;
-    source_service: string;
+    source_system: string;
     status: string;
     created_at: string;
   }[];
@@ -522,7 +522,7 @@ export default function CheckMyRecord() {
                   <th className="govuk-table__header">Date</th>
                   <th className="govuk-table__header">Channel</th>
                   <th className="govuk-table__header">Subject</th>
-                  <th className="govuk-table__header">Service</th>
+                  <th className="govuk-table__header">System</th>
                   <th className="govuk-table__header">Status</th>
                 </tr>
               </thead>
@@ -539,7 +539,7 @@ export default function CheckMyRecord() {
                       {n.subject || n.body.slice(0, 60) + "..."}
                     </td>
                     <td className="govuk-table__cell">
-                      {n.source_service}
+                      {n.source_system}
                     </td>
                     <td className="govuk-table__cell">
                       <span
