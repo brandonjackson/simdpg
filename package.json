@@ -1,0 +1,23 @@
+{
+  "name": "simdpg",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "packages/*",
+    "portal",
+    "simulation"
+  ],
+  "scripts": {
+    "predev": "npm run build -w @simdpg/api-clients",
+    "dev": "concurrently -n identity,civil-registry,health,benefits,portal -c blue,green,yellow,magenta,cyan \"npm run dev -w @simdpg/identity\" \"npm run dev -w @simdpg/civil-registry\" \"npm run dev -w @simdpg/health\" \"npm run dev -w @simdpg/benefits\" \"npm run dev -w portal\"",
+    "dev:services": "concurrently -n identity,civil-registry,health,benefits -c blue,green,yellow,magenta \"npm run dev -w @simdpg/identity\" \"npm run dev -w @simdpg/civil-registry\" \"npm run dev -w @simdpg/health\" \"npm run dev -w @simdpg/benefits\"",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "concurrently": "^9.0.0",
+    "typescript": "^5.6.0"
+  }
+}

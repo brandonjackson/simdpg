@@ -1,0 +1,57 @@
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const birthRegistrations = sqliteTable("birth_registrations", {
+  id: text("id").primaryKey(),
+  child_citizen_id: text("child_citizen_id").notNull(),
+  mother_citizen_id: text("mother_citizen_id").notNull(),
+  father_citizen_id: text("father_citizen_id"),
+  date_of_birth: text("date_of_birth").notNull(),
+  place_of_birth: text("place_of_birth").notNull(),
+  registration_date: text("registration_date").notNull(),
+  registrar_notes: text("registrar_notes"),
+  status: text("status", { enum: ["registered", "amended", "cancelled"] })
+    .notNull()
+    .default("registered"),
+  created_at: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+  updated_at: text("updated_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+export const deathRegistrations = sqliteTable("death_registrations", {
+  id: text("id").primaryKey(),
+  citizen_id: text("citizen_id").notNull(),
+  date_of_death: text("date_of_death").notNull(),
+  place_of_death: text("place_of_death").notNull(),
+  cause_of_death: text("cause_of_death"),
+  registration_date: text("registration_date").notNull(),
+  status: text("status", { enum: ["registered", "amended", "cancelled"] })
+    .notNull()
+    .default("registered"),
+  created_at: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+  updated_at: text("updated_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+export const marriageRegistrations = sqliteTable("marriage_registrations", {
+  id: text("id").primaryKey(),
+  spouse_1_citizen_id: text("spouse_1_citizen_id").notNull(),
+  spouse_2_citizen_id: text("spouse_2_citizen_id").notNull(),
+  date_of_marriage: text("date_of_marriage").notNull(),
+  place_of_marriage: text("place_of_marriage").notNull(),
+  registration_date: text("registration_date").notNull(),
+  status: text("status", { enum: ["registered", "divorced", "annulled"] })
+    .notNull()
+    .default("registered"),
+  created_at: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+  updated_at: text("updated_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
