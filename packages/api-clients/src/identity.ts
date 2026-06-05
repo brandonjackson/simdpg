@@ -37,8 +37,8 @@ export class IdentityClient extends BaseClient {
     dob?: string;
   }): Promise<Citizen[]> {
     const query = new URLSearchParams();
-    if (params.name) query.set("name", params.name);
-    if (params.dob) query.set("dob", params.dob);
+    if (params.name !== undefined) query.set("name", params.name);
+    if (params.dob !== undefined) query.set("dob", params.dob);
     return this.get(`/citizens/search?${query.toString()}`);
   }
 

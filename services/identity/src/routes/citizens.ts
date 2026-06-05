@@ -182,7 +182,7 @@ citizenRouter.get("/search", async (req, res, next) => {
   try {
     const { name, dob } = req.query;
 
-    if (!name && !dob) {
+    if (name === undefined && dob === undefined) {
       res.status(400).json({ error: "Provide at least 'name' or 'dob' query parameter" });
       return;
     }
