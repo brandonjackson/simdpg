@@ -201,6 +201,22 @@ export default async function StaffDashboard() {
           </p>
         </div>
       </div>
+
+      <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
+
+      <h2 className="govuk-heading-l">Service catalog</h2>
+      <p className="govuk-body">
+        Reference documentation for all government services in the SimDPG
+        platform, including customer journeys, backing systems, and OpenFn
+        workflow specifications.
+      </p>
+      <a
+        href="/staff/service-catalog"
+        className="govuk-button govuk-button--secondary"
+        role="button"
+      >
+        View list
+      </a>
     </>
   );
 }
