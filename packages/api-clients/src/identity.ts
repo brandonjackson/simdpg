@@ -28,6 +28,10 @@ export class IdentityClient extends BaseClient {
     return this.get(`/citizens?national_id=${encodeURIComponent(nationalId)}`);
   }
 
+  listCitizens(): Promise<Citizen[]> {
+    return this.get("/citizens");
+  }
+
   searchCitizens(params: {
     name?: string;
     dob?: string;

@@ -79,6 +79,28 @@ async function getCitizenWithAddresses(citizenId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// GET /citizens — list all
+// ---------------------------------------------------------------------------
+citizenRouter.get("/", async (req, res, next) => {
+  try {
+    const rows = db.select().from(citizens).all();
+
+    const enriched = rows.map((c) => {
+      const addrs = db
+        .select()
+        .from(addresses)
+        .where(eq(addresses.citizen_id, c.id))
+        .all();
+      return { ...c, addresses: addrs };
+    });
+
+    res.json(enriched);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // POST /citizens — create
 // ---------------------------------------------------------------------------
 citizenRouter.post("/", async (req, res, next) => {
