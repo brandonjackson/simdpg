@@ -10,7 +10,7 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
