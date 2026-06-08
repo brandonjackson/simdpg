@@ -1,6 +1,6 @@
 # SimDPG
 
-A simulated city-state's digital public infrastructure. Six government systems (identity, civil registry, health, benefits, notifications, social registry), a gov.uk-style portal, and a population simulation engine — all wired together to stress-test [OpenFn](https://openfn.org) integration workflows before a national platform launch.
+A simulated city-state's digital public infrastructure. Seven government systems (identity, civil registry, health, benefits, notifications, payments, social registry), a gov.uk-style portal, and a population simulation engine — all wired together to stress-test [OpenFn](https://openfn.org) integration workflows before a national platform launch.
 
 ## Architecture
 
@@ -14,6 +14,7 @@ Systems
   ├── Health          :3003  (patients, encounters, vaccinations)
   ├── Benefits        :3004  (programs, eligibility, enrollments, payments)
   ├── Notifications   :3005  (email/sms messages to citizens)
+  ├── Payments        :3006  (treasury/citizen accounts, ledger, disbursements)
   └── Social Registry :3007  (needs assessments, targeting profiles)
 
 Each system: Express + Drizzle ORM + SQLite
@@ -69,6 +70,7 @@ simdpg/
 │   ├── health/            # Patient records (port 3003)
 │   ├── benefits/          # Social protection (port 3004)
 │   ├── notifications/     # Email/SMS messaging (port 3005)
+│   ├── payments/          # Mock disbursement ledger (port 3006)
 │   └── social-registry/   # Needs-based targeting (port 3007)
 ├── portal/                # Next.js gov.uk-style frontend (port 3000)
 ├── simulation/            # Population generator + event scripts
@@ -135,6 +137,35 @@ Social protection programs, eligibility, enrollment, and payments.
 | `POST /enrollments` | Enroll a citizen |
 | `PATCH /enrollments/:id` | Update status (suspend, terminate) |
 | `POST /payments/schedule` | Schedule payments for an enrollment |
+
+### Payments System (:3006)
+
+The disbursing layer that Benefits lacks on its own: Benefits *schedules*
+payments, but Payments actually *pays them out*. It keeps a double-entry ledger
+with one account for the government (the disbursing treasury) and one account
+per citizen. A disbursement is **mocked** — no real money moves; a completed
+payment only ever appears as paired ledger entries (debit treasury, credit
+citizen).
+
+Crucially, the disbursement API **fails at random** to behave like a real
+government payment gateway. Failure modes and their rates live in
+`systems/payments/src/payments.config.ts`; each disbursement may return one of
+five gateway-style errors instead of completing: `INSUFFICIENT_FUNDS`,
+`ACCOUNT_NOT_FOUND`, `GATEWAY_TIMEOUT`, `DUPLICATE_TRANSACTION`, or
+`SERVICE_UNAVAILABLE`. Set `PAYMENTS_DISABLE_FAILURES=1` to turn the random
+failures off (the genuine balance and account checks still apply). This lets
+OpenFn workflows exercise retries, idempotency, and failure notifications
+exactly as they would against a live banking partner.
+
+| Endpoint | Description |
+|---|---|
+| `POST /accounts` | Open an account (treasury or citizen); idempotent per owner |
+| `GET /accounts?owner_type=&owner_id=` | List accounts |
+| `GET /accounts/:id` | Get an account with its current balance |
+| `GET /accounts/:id/ledger` | List ledger entries for an account |
+| `POST /payments` | Request a disbursement (requires an idempotency key); may fail at random |
+| `GET /payments?account_id=&enrollment_id=&status=` | List payments |
+| `GET /payments/:id` | Get a payment with its ledger entries |
 
 ### Social Registry System (:3007)
 

@@ -27,6 +27,7 @@ Two distinct catalogs live in the staff area and are referenced throughout:
 - [x] Health system (patients, encounters, vaccinations, overdue queries)
 - [x] Benefits system (programs, eligibility rules, enrollments, payments)
 - [x] Notifications system (port 3005) — records email/sms notifications to citizens
+- [x] Payments system (port 3006) — mock disbursement ledger (treasury + per-citizen accounts, double-entry ledger, idempotent disbursements that fail at random per a config file); graduated from the Milestone 1 stub to a fully built system
 - [x] Social Registry system (port 3007) — needs-based targeting registry: household PMT assessments, weighted vulnerability indicators, targeting profiles consumed by Benefits, and recertification
 - [x] Typed API clients package (`@simdpg/api-clients`)
 - [x] Gov.uk portal — citizen pages (birth/death/marriage, vaccination booking, benefit application, check my record, my notifications)
@@ -53,7 +54,7 @@ catalog** so the full landscape is visible before we deepen anything.
       inventory" table in the systems catalog, with a deliberately-excluded list.
 - [x] **Stub the two components we're adding.** Each has a systems-catalog entry
       sketching what it will do, even though no code exists:
-  - [x] **Payments** — Benefits *schedules* payments but nothing disburses them. The Payments system keeps a ledger with an account for the government (the disbursing treasury) and an account for every citizen. A payment is **mocked** — no real money moves; it only ever shows up as paired ledger entries (debit treasury, credit citizen). Crucially, the API **fails at random**, with failure modes and their rates set in a config file, using the most common error messages a real government payment gateway hits. The five simulated failures:
+  - [x] **Payments** — _stub sketched here in Milestone 1; since fully **built** (port :3006) — see What's Done._ Benefits *schedules* payments but nothing disburses them. The Payments system keeps a ledger with an account for the government (the disbursing treasury) and an account for every citizen. A payment is **mocked** — no real money moves; it only ever shows up as paired ledger entries (debit treasury, credit citizen). Crucially, the API **fails at random**, with failure modes and their rates set in a config file, using the most common error messages a real government payment gateway hits. The five simulated failures:
     1. `INSUFFICIENT_FUNDS` — disbursing/treasury account lacks the balance for the transfer
     2. `ACCOUNT_NOT_FOUND` — beneficiary account or bank details invalid or unknown
     3. `GATEWAY_TIMEOUT` — upstream banking partner did not respond in time
@@ -64,9 +65,9 @@ catalog** so the full landscape is visible before we deepen anything.
 
 ### Scope guard — do not add new systems lightly
 
-The system landscape is deliberately fixed: the six live systems (Identity,
-Civil Registry, Health, Benefits, Notifications, Social Registry) plus the
-Payments stub above. **Claude should think about whether a given
+The system landscape is deliberately fixed: the seven live systems (Identity,
+Civil Registry, Health, Benefits, Notifications, Payments, Social Registry).
+**Claude should think about whether a given
 capability really needs a new system, but only add one beyond those already
 done or specified above if it is absolutely essential** — and call it out
 explicitly for sign-off rather than adding it silently.

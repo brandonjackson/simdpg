@@ -10,6 +10,7 @@ const SYSTEMS: { label: string; url: string }[] = [
   { label: "Health", url: SYSTEM_URLS.health },
   { label: "Benefits", url: SYSTEM_URLS.benefits },
   { label: "Notifications", url: SYSTEM_URLS.notifications },
+  { label: "Payments", url: SYSTEM_URLS.payments },
   { label: "Social Registry", url: SYSTEM_URLS.socialRegistry },
 ];
 

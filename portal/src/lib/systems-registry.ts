@@ -284,19 +284,16 @@ export const SYSTEMS: SystemEntry[] = [
     id: "payments",
     name: "Payments",
     port: 3006,
-    status: "stub",
+    status: "built",
     buildingBlock: "Payments",
-    tagColour: "grey",
-    sketch: true,
-    sketchNote:
-      "Sketch only — no code exists yet. This entry describes what the Payments system will do once built (planned port :3006). Benefits already schedules payments but nothing disburses them; Payments closes that gap.",
+    tagColour: "red",
     summary:
       "Mock disbursement ledger. Holds a treasury account and a per-citizen account, moves money only as paired ledger entries, and fails at random to mimic a real payment gateway.",
     description:
-      "The Payments system is the disbursing layer that Benefits currently lacks: Benefits schedules payments, but no system actually pays them out. Payments keeps a double-entry ledger with one account for the government (the disbursing treasury) and one account for every citizen. A disbursement is mocked — no real money moves; it only ever appears as a paired ledger entry (debit treasury, credit citizen). Crucially, the API fails at random to behave like a real government payment gateway: failure modes and their rates are set in a config file (see below), so OpenFn workflows must handle retries, idempotency, and failure notifications exactly as they would against a live banking partner.",
-    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript (planned)",
+      "The Payments system is the disbursing layer that Benefits lacks on its own: Benefits schedules payments, but no system actually pays them out. Payments keeps a double-entry ledger with one account for the government (the disbursing treasury) and one account for every citizen. A disbursement is mocked — no real money moves; it only ever appears as a paired ledger entry (debit treasury, credit citizen). Crucially, the API fails at random to behave like a real government payment gateway: failure modes and their rates are set in a config file (see below), so OpenFn workflows must handle retries, idempotency, and failure notifications exactly as they would against a live banking partner.",
+    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript",
     config:
-      "Failure rates are configurable in payments.config.ts. Each disbursement rolls against these rates and may return one of five gateway-style errors instead of completing — matching the most common error messages a real government payment gateway hits.",
+      "Failure rates are configurable in systems/payments/src/payments.config.ts. Each disbursement rolls against these rates and may return one of five gateway-style errors instead of completing — matching the most common error messages a real government payment gateway hits. Set PAYMENTS_DISABLE_FAILURES=1 to turn off random failures (the genuine balance and account checks still apply).",
     failureModes: [
       {
         code: "INSUFFICIENT_FUNDS",
@@ -326,17 +323,17 @@ export const SYSTEMS: SystemEntry[] = [
     ],
     entities: [
       {
-        name: "Accounts (proposed)",
+        name: "Accounts",
         fields:
-          "id (UUID), owner_type (treasury/citizen), owner_id (citizen_id, or 'treasury'), balance, currency (SIM), status (active/closed), created_at, updated_at",
+          "id (UUID), owner_type (treasury/citizen), owner_id (citizen_id, or 'treasury'; unique), balance, currency (SIM), status (active/closed), created_at, updated_at",
       },
       {
-        name: "Payments (proposed)",
+        name: "Payments",
         fields:
           "id, idempotency_key (unique), from_account_id (treasury), to_account_id (citizen), amount, currency (SIM), enrollment_id (optional, from Benefits), reference, status (pending/completed/failed), failure_code, failure_message, created_at, completed_at",
       },
       {
-        name: "Ledger Entries (proposed)",
+        name: "Ledger Entries",
         fields:
           "id, payment_id, account_id, direction (debit/credit), amount, currency (SIM), created_at — every completed payment writes two rows (debit treasury, credit citizen)",
       },
@@ -355,7 +352,7 @@ export const SYSTEMS: SystemEntry[] = [
       { event: "payment.completed", description: "Fired when a disbursement succeeds (paired ledger entries written)" },
       { event: "payment.failed", description: "Fired when a disbursement fails, carrying the failure_code for retry logic" },
     ],
-    seedData: "None yet — sketch only. When built: a funded treasury account plus an account per seeded citizen.",
+    seedData: "1 treasury account (funded with 1,000,000 SIM), 5 citizen accounts, 2 completed disbursements + 1 failed disbursement",
     relationships: [
       "Opens a citizen account when Identity emits citizen.created",
       "Receives disbursement requests for scheduled Benefits payments (enrollment_id links back to Benefits)",

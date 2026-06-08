@@ -1,0 +1,454 @@
+openapi: 3.0.3
+info:
+  title: SimDPG Payments System
+  version: 0.1.0
+  license:
+    name: MIT
+  description: |
+    Mock disbursement layer for the SimDPG city-state. Benefits *schedules*
+    payments; Payments *pays them out*. It keeps a double-entry ledger with one
+    account for the government (the disbursing treasury) and one account per
+    citizen. A disbursement is **mocked** — no real money moves; a completed
+    payment only ever shows up as paired ledger entries (debit treasury, credit
+    citizen).
+
+    Crucially, the disbursement API **fails at random**, mimicking a real
+    government payment gateway. Failure modes and their rates are set in a config
+    file; each disbursement may return one of five gateway-style errors
+    (`INSUFFICIENT_FUNDS`, `ACCOUNT_NOT_FOUND`, `GATEWAY_TIMEOUT`,
+    `DUPLICATE_TRANSACTION`, `SERVICE_UNAVAILABLE`) instead of completing, so
+    integration workflows must handle retries, idempotency, and failure
+    notifications. Models the GovStack / DCI **Digital Payments** building block.
+
+    All responses use DCI API conventions: a standard error envelope, list
+    pagination (`{ data, meta }`), `X-Request-ID` propagation, and ISO 8601
+    timestamps.
+servers:
+  - url: http://localhost:3006
+    description: Local development
+tags:
+  - name: Payments
+    description: Request and track disbursements (treasury → citizen).
+  - name: Accounts
+    description: Treasury and citizen ledger accounts.
+  - name: Admin
+    description: Operational endpoints (stats, webhook log, reset).
+  - name: System
+    description: Health and documentation.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [System]
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  system: { type: string, example: payments }
+                  version: { type: string, example: 0.1.0 }
+  /accounts:
+    get:
+      operationId: listAccounts
+      tags: [Accounts]
+      summary: List accounts (optionally filtered by owner)
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: owner_type
+          in: query
+          required: false
+          schema: { type: string, enum: [treasury, citizen] }
+          description: Filter accounts by owner type.
+        - name: owner_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter accounts by owner ID (citizen_id or "treasury").
+      responses:
+        "200":
+          description: A page of accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Account" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: openAccount
+      tags: [Accounts]
+      summary: Open an account (treasury or citizen)
+      description: |
+        Idempotent per owner — opening an account for an owner that already has
+        one returns the existing account (HTTP 200) instead of creating a
+        duplicate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OpenAccount" }
+      responses:
+        "200":
+          description: The existing account (idempotent open)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "201":
+          description: Account opened
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /accounts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getAccount
+      tags: [Accounts]
+      summary: Get an account with its current balance
+      responses:
+        "200":
+          description: The account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{id}/ledger:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: listAccountLedger
+      tags: [Accounts]
+      summary: List ledger entries for an account (newest first)
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of ledger entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/LedgerEntry" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payments:
+    get:
+      operationId: listPayments
+      tags: [Payments]
+      summary: List payments (filter by account, enrollment, or status)
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: account_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Filter to payments touching this account (from or to).
+        - name: enrollment_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter payments by the Benefits enrollment they disburse.
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [pending, completed, failed] }
+          description: Filter payments by status.
+      responses:
+        "200":
+          description: A page of payments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Payment" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: requestDisbursement
+      tags: [Payments]
+      summary: Request a disbursement (treasury → citizen)
+      description: |
+        Mocked: no real money moves. On success the system writes paired ledger
+        entries (debit treasury, credit citizen) and bumps both balances.
+        Requires an idempotency key — replaying a completed key returns the
+        original payment (HTTP 200). The gateway **fails at random**: a failure
+        records the payment with status `failed` and a gateway error code, emits
+        `payment.failed`, and responds with the matching HTTP error status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RequestDisbursement" }
+      responses:
+        "200":
+          description: Idempotent replay of an already-completed payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentWithLedger" }
+        "201":
+          description: Disbursement completed (paired ledger entries written)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentWithLedger" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "402":
+          description: INSUFFICIENT_FUNDS — treasury lacks the balance
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: ACCOUNT_NOT_FOUND — beneficiary/treasury account invalid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "409":
+          description: DUPLICATE_TRANSACTION — idempotency key already processed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "503":
+          description: SERVICE_UNAVAILABLE — gateway temporarily unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "504":
+          description: GATEWAY_TIMEOUT — upstream banking partner timed out
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /payments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getPayment
+      tags: [Payments]
+      summary: Get a payment with its ledger entries
+      responses:
+        "200":
+          description: The payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentWithLedger" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [Admin]
+      summary: Account, payment and ledger-entry counts
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  accounts: { type: integer }
+                  payments: { type: integer }
+                  ledger_entries: { type: integer }
+  /admin/webhooks:
+    get:
+      operationId: listWebhookEvents
+      tags: [Admin]
+      summary: Paginated log of emitted webhook events
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of webhook events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/WebhookEvent" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+  /admin/reset:
+    post:
+      operationId: resetSystem
+      tags: [Admin]
+      summary: Wipe all accounts, payments, and ledger entries
+      responses:
+        "200":
+          description: Reset complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  reset: { type: boolean }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: 1-based page number.
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: Items per page (max 100).
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Conflict:
+      description: Conflicting request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: GATEWAY_TIMEOUT }
+            message: { type: string }
+            details:
+              type: object
+              nullable: true
+              additionalProperties: true
+              description: Optional machine-readable detail (e.g. payment_id).
+    ListMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+    Account:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        owner_type: { type: string, enum: [treasury, citizen] }
+        owner_id:
+          type: string
+          description: citizen_id, or "treasury" for the disbursing account.
+        balance: { type: number }
+        currency: { type: string, example: SIM }
+        status: { type: string, enum: [active, closed] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    OpenAccount:
+      type: object
+      required: [owner_type]
+      properties:
+        owner_type: { type: string, enum: [treasury, citizen] }
+        owner_id:
+          type: string
+          description: Required for citizen accounts; defaults to "treasury".
+        initial_balance: { type: number, minimum: 0, default: 0 }
+        currency: { type: string, default: SIM }
+    LedgerEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        payment_id: { type: string, format: uuid }
+        account_id: { type: string, format: uuid }
+        direction: { type: string, enum: [debit, credit] }
+        amount: { type: number }
+        currency: { type: string, example: SIM }
+        created_at: { type: string, format: date-time }
+    Payment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        idempotency_key: { type: string }
+        from_account_id: { type: string, format: uuid, nullable: true }
+        to_account_id: { type: string, format: uuid, nullable: true }
+        amount: { type: number }
+        currency: { type: string, example: SIM }
+        enrollment_id: { type: string, nullable: true }
+        reference: { type: string, nullable: true }
+        status: { type: string, enum: [pending, completed, failed] }
+        failure_code:
+          type: string
+          nullable: true
+          enum:
+            - INSUFFICIENT_FUNDS
+            - ACCOUNT_NOT_FOUND
+            - GATEWAY_TIMEOUT
+            - DUPLICATE_TRANSACTION
+            - SERVICE_UNAVAILABLE
+        failure_message: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+    PaymentWithLedger:
+      allOf:
+        - $ref: "#/components/schemas/Payment"
+        - type: object
+          properties:
+            ledger_entries:
+              type: array
+              items: { $ref: "#/components/schemas/LedgerEntry" }
+    RequestDisbursement:
+      type: object
+      required: [idempotency_key, to_account_id, amount]
+      properties:
+        idempotency_key:
+          type: string
+          description: Replaying a completed key returns the original payment.
+        to_account_id: { type: string, format: uuid }
+        from_account_id:
+          type: string
+          format: uuid
+          description: Source account; defaults to the treasury account.
+        amount: { type: number, minimum: 0, exclusiveMinimum: true }
+        currency: { type: string, default: SIM }
+        enrollment_id:
+          type: string
+          description: Optional link back to the Benefits enrollment.
+        reference: { type: string }
+    WebhookEvent:
+      type: object
+      description: DCI / CloudEvents-style event envelope emitted to WEBHOOK_URL.
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, example: payment.completed }
+        source: { type: string, example: payments }
+        time: { type: string, format: date-time }
+        data: { type: object, additionalProperties: true }
+        status: { type: string, enum: [pending, delivered, failed, skipped] }
+        error: { type: string, nullable: true }

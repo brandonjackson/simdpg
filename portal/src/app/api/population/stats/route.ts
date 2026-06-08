@@ -9,6 +9,7 @@ const SYSTEMS: { key: string; url: string }[] = [
   { key: "health", url: SYSTEM_URLS.health },
   { key: "benefits", url: SYSTEM_URLS.benefits },
   { key: "notifications", url: SYSTEM_URLS.notifications },
+  { key: "payments", url: SYSTEM_URLS.payments },
   { key: "socialRegistry", url: SYSTEM_URLS.socialRegistry },
 ];
 
@@ -18,6 +19,7 @@ const LABELS: Record<string, string> = {
   health: "Health",
   benefits: "Benefits",
   notifications: "Notifications",
+  payments: "Payments",
   socialRegistry: "Social Registry",
 };
 
