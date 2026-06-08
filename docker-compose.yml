@@ -1,68 +1,122 @@
-# SimDPG Docker Compose
-# Uncomment and configure services as they are implemented.
+# SimDPG — production-like local stack.
+#
+#   docker compose up --build      start all systems + portal
+#   docker compose down            stop (data volumes preserved)
+#   docker compose down -v         stop and wipe all SQLite data
+#
+# Every service uses the same image (root Dockerfile); SERVICE_DIR/START_CMD
+# select which workspace runs. Systems are independent — they don't call each
+# other — so only the portal needs the cross-service *_URL vars. SEED_CMD seeds
+# each system's database once, on a fresh volume.
 
-version: "3.8"
+x-build: &build
+  context: .
+  dockerfile: Dockerfile
 
-services: {}
+services:
+  identity:
+    build: *build
+    environment:
+      SERVICE_DIR: systems/identity
+      SEED_CMD: npm run db:seed -w @simdpg/identity
+      PORT: 3001
+    ports: ["3001:3001"]
+    volumes: ["identity-data:/app/systems/identity/data"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
-  # identity:
-  #   build:
-  #     context: .
-  #     dockerfile: systems/identity/Dockerfile
-  #   ports:
-  #     - "3001:3001"
-  #   environment:
-  #     - PORT=3001
-  #   volumes:
-  #     - identity-data:/app/data
+  civil-registry:
+    build: *build
+    environment:
+      SERVICE_DIR: systems/civil-registry
+      SEED_CMD: npm run db:seed -w @simdpg/civil-registry
+      PORT: 3002
+    ports: ["3002:3002"]
+    volumes: ["civil-registry-data:/app/systems/civil-registry/data"]
 
-  # civil-registry:
-  #   build:
-  #     context: .
-  #     dockerfile: systems/civil-registry/Dockerfile
-  #   ports:
-  #     - "3002:3002"
-  #   environment:
-  #     - PORT=3002
-  #   volumes:
-  #     - civil-registry-data:/app/data
+  health:
+    build: *build
+    environment:
+      SERVICE_DIR: systems/health
+      SEED_CMD: npm run db:seed -w @simdpg/health
+      PORT: 3003
+    ports: ["3003:3003"]
+    volumes: ["health-data:/app/systems/health/data"]
 
-  # health:
-  #   build:
-  #     context: .
-  #     dockerfile: systems/health/Dockerfile
-  #   ports:
-  #     - "3003:3003"
-  #   environment:
-  #     - PORT=3003
-  #   volumes:
-  #     - health-data:/app/data
+  benefits:
+    build: *build
+    environment:
+      SERVICE_DIR: systems/benefits
+      SEED_CMD: npm run db:seed -w @simdpg/benefits
+      PORT: 3004
+    ports: ["3004:3004"]
+    volumes: ["benefits-data:/app/systems/benefits/data"]
 
-  # benefits:
-  #   build:
-  #     context: .
-  #     dockerfile: systems/benefits/Dockerfile
-  #   ports:
-  #     - "3004:3004"
-  #   environment:
-  #     - PORT=3004
-  #   volumes:
-  #     - benefits-data:/app/data
+  notifications:
+    build: *build
+    environment:
+      SERVICE_DIR: systems/notifications
+      SEED_CMD: npm run db:seed -w @simdpg/notifications
+      PORT: 3005
+    ports: ["3005:3005"]
+    volumes: ["notifications-data:/app/systems/notifications/data"]
 
-  # portal:
-  #   build:
-  #     context: .
-  #     dockerfile: portal/Dockerfile
-  #   ports:
-  #     - "3000:3000"
-  #   depends_on:
-  #     - identity
-  #     - civil-registry
-  #     - health
-  #     - benefits
+  payments:
+    build: *build
+    environment:
+      SERVICE_DIR: systems/payments
+      SEED_CMD: npm run db:seed -w @simdpg/payments
+      PORT: 3006
+    ports: ["3006:3006"]
+    volumes: ["payments-data:/app/systems/payments/data"]
 
-# volumes:
-#   identity-data:
-#   civil-registry-data:
-#   health-data:
-#   benefits-data:
+  social-registry:
+    build: *build
+    environment:
+      SERVICE_DIR: systems/social-registry
+      SEED_CMD: npm run db:seed -w @simdpg/social-registry
+      PORT: 3007
+    ports: ["3007:3007"]
+    volumes: ["social-registry-data:/app/systems/social-registry/data"]
+
+  portal:
+    build: *build
+    environment:
+      SERVICE_DIR: portal
+      START_CMD: npm run start
+      PORT: 3000
+      IDENTITY_URL: http://identity:3001
+      CIVIL_REGISTRY_URL: http://civil-registry:3002
+      HEALTH_URL: http://health:3003
+      BENEFITS_URL: http://benefits:3004
+      NOTIFICATIONS_URL: http://notifications:3005
+      PAYMENTS_URL: http://payments:3006
+      SOCIAL_REGISTRY_URL: http://social-registry:3007
+    ports: ["3000:3000"]
+    depends_on:
+      identity:
+        condition: service_healthy
+      civil-registry:
+        condition: service_started
+      health:
+        condition: service_started
+      benefits:
+        condition: service_started
+      notifications:
+        condition: service_started
+      payments:
+        condition: service_started
+      social-registry:
+        condition: service_started
+
+volumes:
+  identity-data:
+  civil-registry-data:
+  health-data:
+  benefits-data:
+  notifications-data:
+  payments-data:
+  social-registry-data:
