@@ -47,42 +47,43 @@ docker compose up                 # start all 7 systems + portal (reuses the ima
 ## Railway
 
 One project, **8 services** (7 systems + portal), all deployed from this repo.
+Railway's monorepo detection creates one service per workspace and names each
+after the workspace (`@simdpg/identity`, `@simdpg/portal`, …) — **leave those
+names as they are.** No renaming, no editing private-networking names, ever.
 
-The image **configures itself from the Railway service name** (`RAILWAY_SERVICE_NAME`),
-so the easiest, least error-prone setup is:
+**It configures itself.** The image derives everything from the Railway service
+name (`RAILWAY_SERVICE_NAME`, scope stripped) and the portal discovers the other
+services from its own private domain. So you set **no** `SERVICE_DIR`,
+`START_CMD`, `SEED_CMD`, `PORT`, or `*_URL` variables. Concretely:
 
-> **Name each service exactly after its workspace:** `identity`, `civil-registry`,
-> `health`, `benefits`, `notifications`, `payments`, `social-registry`, `portal`.
-> (A `@simdpg/identity` style name works too — the scope is stripped.)
+- Each **system** runs its workspace, listens on its canonical port (3001–3007)
+  regardless of the Railway-injected `PORT`, and seeds its database once.
+- The **portal** runs Next.js on Railway's injected port and computes each
+  system's private URL from its own `RAILWAY_PRIVATE_DOMAIN` — working with
+  whatever naming scheme Railway used (`simdpgidentity.railway.internal` for
+  `@simdpg/identity` names, `identity.railway.internal` for plain names).
 
-With the right name, `SERVICE_DIR`, `START_CMD`, `SEED_CMD`, and the system `PORT`
-are all derived automatically — **you set none of them**. A service whose name has
-no mapping refuses to start (rather than silently running the default identity
-system), so a misnamed service fails loudly.
-
-For **every** service set:
+For **every** service, just set:
 
 - **Root Directory:** `/` (the monorepo root — required so the workspace install/build works)
 - **Builder:** Dockerfile  •  **Dockerfile Path:** `Dockerfile`
 
-For each **system** service (`identity` … `social-registry`):
+For each **system** service, also add:
 
-- **Volume:** mount at `/app/systems/<name>/data` (e.g. `/app/systems/identity/data`)
-- Listens privately on its canonical port (3001–3007); no public domain needed.
+- **Volume:** mount at `/app/systems/<workspace>/data` (e.g. `/app/systems/identity/data`)
 
-For the **portal** service:
+For the **portal** service, also:
 
-- **Public domain:** add one and accept Railway's auto-detected port ("Railway magic").
-  Do **not** pin `PORT` — Next.js binds Railway's injected port and the domain routes to it.
-- **Variables: none required.** The portal detects Railway and derives each system's
-  URL as `http://<service>.railway.internal:<port>` from the same name+port
-  convention — **so there are no `*_URL` variables to set**, as long as the system
-  services are named cleanly (`identity`, `civil-registry`, …).
+- **Public domain:** add one and accept Railway's auto-detected port. Do **not**
+  pin `PORT`.
 
-> Manual `SERVICE_DIR` / `START_CMD` / `PORT` still override the name-based
-> defaults if you ever need a custom setup. Likewise, an explicit `IDENTITY_URL`
-> (etc.) on the portal overrides the derived URL — useful if a system service is
-> named differently or you want to point at its public domain.
+Delete the non-server services Railway auto-creates (`@simdpg/system-kit`,
+`@simdpg/api-clients`, `@simdpg/simulation`) — they aren't web servers.
+
+> **Escape hatches (rarely needed):** explicit `SERVICE_DIR` / `START_CMD` still
+> win, and an explicit `IDENTITY_URL` (etc.) on the portal overrides the derived
+> URL — e.g. to point at a system's public domain. The system `PORT` is always
+> pinned from the service name so the portal can reach it.
 
 ### Optional: webhooks for OpenFn
 
