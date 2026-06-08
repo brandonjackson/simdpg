@@ -9,20 +9,38 @@ export { BaseClient, ApiError } from "./base.js";
 
 export type * from "./types.js";
 
-// On Railway, every service shares a project and reaches the others over the
-// private network at `http://<service-name>.railway.internal:<port>`. As long
-// as the system services are named after their workspace (identity,
-// civil-registry, ...), we can derive those URLs from the same name+port
-// convention the runtime uses — so the portal needs zero per-service URL vars.
-// An explicit *_URL env var always wins; off Railway we default to localhost.
+// On Railway, services reach each other privately at `<slug>.railway.internal`,
+// where Railway derives <slug> from the service name. We don't want to assume a
+// particular naming scheme (so nobody ever has to rename a service), so instead
+// we read THIS service's own private domain — RAILWAY_PRIVATE_DOMAIN, e.g.
+// "simdpgportal.railway.internal" or "portal.railway.internal" — and swap the
+// "portal" segment for each system's workspace name. That yields the correct
+// sibling host whatever the scheme:
+//   portal.railway.internal       -> identity.railway.internal
+//   simdpgportal.railway.internal -> simdpgidentity.railway.internal
+// No renaming and no per-service URL config. An explicit *_URL still wins, and
+// off Railway we fall back to localhost.
 const onRailway = Boolean(process.env.RAILWAY_ENVIRONMENT_NAME);
+
+function railwayHostFor(service: string): string | null {
+  const own = process.env.RAILWAY_PRIVATE_DOMAIN; // this service's private domain
+  if (!own) return null;
+  const dot = own.indexOf(".");
+  const slug = dot === -1 ? own : own.slice(0, dot); // e.g. "simdpgportal"
+  const suffix = dot === -1 ? ".railway.internal" : own.slice(dot);
+  if (!slug.endsWith("portal")) return null; // unexpected name -> caller falls back
+  const prefix = slug.slice(0, -"portal".length); // "" or "simdpg"
+  return `${prefix}${service}${suffix}`;
+}
 
 function systemUrl(envVar: string, service: string, port: number): string {
   const explicit = process.env[envVar];
   if (explicit) return explicit;
-  return onRailway
-    ? `http://${service}.railway.internal:${port}`
-    : `http://localhost:${port}`;
+  if (onRailway) {
+    const host = railwayHostFor(service) ?? `${service}.railway.internal`;
+    return `http://${host}:${port}`;
+  }
+  return `http://localhost:${port}`;
 }
 
 export const SYSTEM_URLS = {
