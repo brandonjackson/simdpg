@@ -28,6 +28,10 @@ async function proxy(
     "Content-Type": "application/json",
   };
 
+  // Forward the caller's X-Request-ID so the system can honour it (DCI traceability).
+  const requestId = request.headers.get("x-request-id");
+  if (requestId) headers["X-Request-ID"] = requestId;
+
   const init: RequestInit = {
     method: request.method,
     headers,
@@ -40,9 +44,15 @@ async function proxy(
   try {
     const res = await fetch(url.toString(), init);
     const data = await res.text();
+    const responseHeaders: Record<string, string> = {
+      "Content-Type": res.headers.get("Content-Type") || "application/json",
+    };
+    // Echo the system's X-Request-ID back so the sandbox can display it.
+    const echoedRequestId = res.headers.get("x-request-id");
+    if (echoedRequestId) responseHeaders["X-Request-ID"] = echoedRequestId;
     return new NextResponse(data, {
       status: res.status,
-      headers: { "Content-Type": res.headers.get("Content-Type") || "application/json" },
+      headers: responseHeaders,
     });
   } catch {
     return NextResponse.json({ error: "System unavailable" }, { status: 502 });

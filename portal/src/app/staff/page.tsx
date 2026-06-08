@@ -217,10 +217,12 @@ export default async function StaffDashboard() {
 
       <h2 className="govuk-heading-l">Systems catalog</h2>
       <p className="govuk-body">
-        Technical reference for the five backend systems that power SimDPG
-        &mdash; Identity, Civil Registry, Health, Benefits, and Notifications.
-        Includes data models, API endpoints, webhook events, and cross-system
-        relationships.
+        Technical reference for the backend systems that power SimDPG &mdash;
+        Identity, Civil Registry, Health, Benefits, and Notifications, plus the
+        Payments and Social Registry stubs. Each system has its own page with
+        data models, API endpoints, webhook events, cross-system relationships,
+        and an <strong>interactive API sandbox</strong> for sending live
+        requests.
       </p>
       <a
         href="/staff/systems-catalog"
