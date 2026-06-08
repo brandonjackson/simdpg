@@ -8,14 +8,19 @@
 # select which workspace runs. Systems are independent — they don't call each
 # other — so only the portal needs the cross-service *_URL vars. SEED_CMD seeds
 # each system's database once, on a fresh volume.
+#
+# All services share one image name (simdpg:latest) so the heavy build runs
+# ONCE and is reused by every service, instead of being rebuilt per service.
 
-x-build: &build
-  context: .
-  dockerfile: Dockerfile
+x-app: &app
+  image: simdpg:latest
+  build:
+    context: .
+    dockerfile: Dockerfile
 
 services:
   identity:
-    build: *build
+    <<: *app
     environment:
       SERVICE_DIR: systems/identity
       SEED_CMD: npm run db:seed -w @simdpg/identity
@@ -29,7 +34,7 @@ services:
       retries: 5
 
   civil-registry:
-    build: *build
+    <<: *app
     environment:
       SERVICE_DIR: systems/civil-registry
       SEED_CMD: npm run db:seed -w @simdpg/civil-registry
@@ -38,7 +43,7 @@ services:
     volumes: ["civil-registry-data:/app/systems/civil-registry/data"]
 
   health:
-    build: *build
+    <<: *app
     environment:
       SERVICE_DIR: systems/health
       SEED_CMD: npm run db:seed -w @simdpg/health
@@ -47,7 +52,7 @@ services:
     volumes: ["health-data:/app/systems/health/data"]
 
   benefits:
-    build: *build
+    <<: *app
     environment:
       SERVICE_DIR: systems/benefits
       SEED_CMD: npm run db:seed -w @simdpg/benefits
@@ -56,7 +61,7 @@ services:
     volumes: ["benefits-data:/app/systems/benefits/data"]
 
   notifications:
-    build: *build
+    <<: *app
     environment:
       SERVICE_DIR: systems/notifications
       SEED_CMD: npm run db:seed -w @simdpg/notifications
@@ -65,7 +70,7 @@ services:
     volumes: ["notifications-data:/app/systems/notifications/data"]
 
   payments:
-    build: *build
+    <<: *app
     environment:
       SERVICE_DIR: systems/payments
       SEED_CMD: npm run db:seed -w @simdpg/payments
@@ -74,7 +79,7 @@ services:
     volumes: ["payments-data:/app/systems/payments/data"]
 
   social-registry:
-    build: *build
+    <<: *app
     environment:
       SERVICE_DIR: systems/social-registry
       SEED_CMD: npm run db:seed -w @simdpg/social-registry
@@ -83,7 +88,7 @@ services:
     volumes: ["social-registry-data:/app/systems/social-registry/data"]
 
   portal:
-    build: *build
+    <<: *app
     environment:
       SERVICE_DIR: portal
       START_CMD: npm run start
