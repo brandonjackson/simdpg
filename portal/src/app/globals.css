@@ -751,6 +751,10 @@ a:focus {
   background: #912b88;
 }
 
+.govuk-tag--orange {
+  background: #b58840;
+}
+
 /* ===== CARDS (home page) ===== */
 .govuk-card-grid {
   display: grid;
@@ -1217,4 +1221,99 @@ a:focus {
   .govuk-textarea {
     max-width: 100%;
   }
+
+  .api-sandbox__request-line {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+/* ===== API SANDBOX ===== */
+.api-sandbox {
+  border: 1px solid var(--govuk-mid-grey);
+  border-top: 5px solid var(--govuk-blue);
+  background: var(--govuk-light-grey);
+  padding: 20px 25px;
+  margin: 15px 0 25px;
+}
+
+.api-sandbox .govuk-button {
+  margin-bottom: 10px;
+}
+
+.api-sandbox__request-line {
+  display: flex;
+  gap: 15px;
+  align-items: flex-end;
+  margin-bottom: 5px;
+}
+
+.api-sandbox__request-line .govuk-select {
+  min-width: 110px;
+}
+
+.api-sandbox__path {
+  display: flex;
+  align-items: stretch;
+}
+
+.api-sandbox__base {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  font-family: monospace;
+  font-weight: 700;
+  background: var(--govuk-black);
+  color: var(--govuk-white);
+  border: 2px solid var(--govuk-black);
+  border-right: none;
+  white-space: nowrap;
+}
+
+.api-sandbox__path .govuk-input {
+  font-family: monospace;
+  margin: 0;
+  border-radius: 0;
+}
+
+.api-sandbox__hint {
+  color: var(--govuk-dark-grey);
+  margin-bottom: 15px;
+}
+
+.api-sandbox__body {
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.api-sandbox__response {
+  margin-top: 15px;
+  border-top: 1px solid var(--govuk-mid-grey);
+  padding-top: 15px;
+}
+
+.api-sandbox__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  margin-bottom: 10px;
+}
+
+.api-sandbox__pre {
+  background: var(--govuk-black);
+  color: #c5e478;
+  padding: 15px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  max-height: 480px;
+}
+
+.api-sandbox__pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
 }

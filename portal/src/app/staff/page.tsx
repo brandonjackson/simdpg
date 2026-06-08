@@ -217,10 +217,12 @@ export default async function StaffDashboard() {
 
       <h2 className="govuk-heading-l">Systems catalog</h2>
       <p className="govuk-body">
-        Technical reference for the five backend systems that power SimDPG
-        &mdash; Identity, Civil Registry, Health, Benefits, and Notifications.
-        Includes data models, API endpoints, webhook events, and cross-system
-        relationships.
+        Technical reference for the backend systems that power SimDPG &mdash;
+        Identity, Civil Registry, Health, Benefits, and Notifications, plus the
+        Payments and Social Registry stubs. Each system has its own page with
+        data models, API endpoints, webhook events, cross-system relationships,
+        and an <strong>interactive API sandbox</strong> for sending live
+        requests.
       </p>
       <a
         href="/staff/systems-catalog"
@@ -228,6 +230,22 @@ export default async function StaffDashboard() {
         role="button"
       >
         View systems
+      </a>
+
+      <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
+
+      <h2 className="govuk-heading-l">API sandbox</h2>
+      <p className="govuk-body">
+        Send and receive live API requests to any system from one place &mdash;
+        explore how the systems work, inspect responses, and try out the
+        endpoints OpenFn workflows will call.
+      </p>
+      <a
+        href="/staff/sandbox"
+        className="govuk-button govuk-button--secondary"
+        role="button"
+      >
+        Open API sandbox
       </a>
 
       <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />

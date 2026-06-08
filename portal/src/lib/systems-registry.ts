@@ -1,0 +1,442 @@
+export type SystemStatus = "built" | "stub" | "planned";
+
+export interface SystemEndpoint {
+  method: string;
+  path: string;
+  description: string;
+}
+
+export interface SystemEntry {
+  id: string;
+  name: string;
+  port: number;
+  status: SystemStatus;
+  buildingBlock: string;
+  tagColour: string;
+  sketch?: boolean;
+  sketchNote?: string;
+  config?: string;
+  failureModes?: { code: string; description: string }[];
+  summary: string;
+  description: string;
+  techStack: string;
+  entities: { name: string; fields: string }[];
+  endpoints: SystemEndpoint[];
+  webhooks: { event: string; description: string }[];
+  seedData: string;
+  relationships: string[];
+}
+
+export const SYSTEMS: SystemEntry[] = [
+  {
+    id: "identity",
+    name: "Identity",
+    port: 3001,
+    status: "built",
+    buildingBlock: "Foundational ID / Registration",
+    tagColour: "blue",
+    summary:
+      "The single source of truth for citizen records. Every other system references citizens by their Identity-issued ID.",
+    description:
+      "The Identity system is the foundational registry of all citizens. It assigns each person a unique national ID (format SIM-XXXXXX), stores their personal details, contact information, and tracks their lifecycle status. It also manages household composition, linking citizens into family units with defined relationships.",
+    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript",
+    entities: [
+      {
+        name: "Citizens",
+        fields:
+          "id (UUID), national_id (unique, SIM-XXXXXX), given_name, family_name, date_of_birth, sex (male/female), email, phone_number, date_of_death, status (alive/deceased), created_at, updated_at",
+      },
+      {
+        name: "Addresses",
+        fields:
+          "id, citizen_id, type (residential/mailing), line_1, line_2, city, postal_code, from_date, to_date",
+      },
+      {
+        name: "Household Members",
+        fields:
+          "id, household_id, citizen_id, relationship (head/spouse/child/other), from_date, to_date",
+      },
+    ],
+    endpoints: [
+      { method: "GET", path: "/citizens", description: "List all citizens with addresses" },
+      { method: "GET", path: "/citizens/search?name=&dob=", description: "Fuzzy search by name and/or date of birth" },
+      { method: "GET", path: "/citizens?national_id=X", description: "Lookup citizen by national ID" },
+      { method: "GET", path: "/citizens/:id", description: "Get single citizen with addresses" },
+      { method: "POST", path: "/citizens", description: "Create new citizen with optional addresses" },
+      { method: "PATCH", path: "/citizens/:id", description: "Update citizen details or status" },
+      { method: "GET", path: "/citizens/:id/household", description: "Get all members of a citizen's household" },
+      { method: "POST", path: "/households", description: "Create new household with members" },
+      { method: "PATCH", path: "/households/:id/members", description: "Add or remove household members" },
+    ],
+    webhooks: [
+      { event: "citizen.created", description: "Fired when a new citizen record is created" },
+      { event: "citizen.updated", description: "Fired when citizen details are changed" },
+      { event: "citizen.deceased", description: "Fired when status changes from alive to deceased" },
+    ],
+    seedData: "10 sample citizens, 3 households, 11 addresses",
+    relationships: [
+      "Referenced by every other system via citizen_id",
+      "Civil Registry links births, deaths, and marriages to citizens",
+      "Health links patients to citizens",
+      "Benefits links enrollments to citizens",
+      "Notifications links messages to citizens",
+    ],
+  },
+  {
+    id: "civil-registry",
+    name: "Civil Registry",
+    port: 3002,
+    status: "built",
+    buildingBlock: "Civil Registration",
+    tagColour: "purple",
+    summary:
+      "Records vital life events: births, deaths, and marriages. Emits events that trigger cascading actions in other systems.",
+    description:
+      "The Civil Registry is the official record of vital events in citizens' lives. When a birth, death, or marriage is registered, the system stores the event details and emits a webhook. These webhooks are the primary triggers for cross-system workflows: a birth registration creates a citizen and patient, a death registration cascades closures, and a marriage links households.",
+    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript",
+    entities: [
+      {
+        name: "Birth Registrations",
+        fields:
+          "id, child_citizen_id, mother_citizen_id, father_citizen_id (optional), date_of_birth, place_of_birth, registration_date, registrar_notes, status (registered/amended/cancelled), created_at, updated_at",
+      },
+      {
+        name: "Death Registrations",
+        fields:
+          "id, citizen_id, date_of_death, place_of_death, cause_of_death, registration_date, status (registered/amended/cancelled), created_at, updated_at",
+      },
+      {
+        name: "Marriage Registrations",
+        fields:
+          "id, spouse_1_citizen_id, spouse_2_citizen_id, date_of_marriage, place_of_marriage, registration_date, status (registered/divorced/annulled), created_at, updated_at",
+      },
+    ],
+    endpoints: [
+      { method: "POST", path: "/births", description: "Register a birth" },
+      { method: "GET", path: "/births", description: "List births, optionally filter by citizen_id or since date" },
+      { method: "GET", path: "/births/:id", description: "Get single birth record" },
+      { method: "POST", path: "/deaths", description: "Register a death" },
+      { method: "GET", path: "/deaths", description: "List deaths, optionally filter by citizen_id" },
+      { method: "GET", path: "/deaths/:id", description: "Get single death record" },
+      { method: "POST", path: "/marriages", description: "Register a marriage" },
+      { method: "GET", path: "/marriages", description: "List marriages, optionally filter by citizen_id (finds either spouse)" },
+      { method: "GET", path: "/marriages/:id", description: "Get single marriage record" },
+      { method: "GET", path: "/events", description: "Query all vital events (aggregated view)" },
+    ],
+    webhooks: [
+      { event: "birth.registered", description: "Fired when a new birth is registered" },
+      { event: "death.registered", description: "Fired when a death is registered" },
+      { event: "marriage.registered", description: "Fired when a marriage is registered" },
+    ],
+    seedData: "5 births, 2 deaths, 3 marriages",
+    relationships: [
+      "References citizen IDs from Identity for all parties",
+      "birth.registered triggers citizen creation in Identity",
+      "death.registered triggers cascading closures in Identity, Health, and Benefits",
+      "marriage.registered triggers household linking in Identity and benefit reassessment in Benefits",
+    ],
+  },
+  {
+    id: "health",
+    name: "Health",
+    port: 3003,
+    status: "built",
+    buildingBlock: "Health (sector system)",
+    tagColour: "green",
+    summary:
+      "Manages patient records, clinical encounters, and vaccination schedules. Tracks overdue vaccinations for follow-up.",
+    description:
+      "The Health system manages the clinical side of citizen care. Citizens are registered as patients (linked by citizen_id), and their encounters — check-ups, consultations, emergency visits, and vaccinations — are tracked over time. The vaccination module maintains dose schedules and can report on overdue vaccinations, enabling public health follow-up.",
+    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript",
+    entities: [
+      {
+        name: "Patients",
+        fields:
+          "id (UUID), citizen_id, blood_type (A+/A-/B+/B-/AB+/AB-/O+/O-), allergies (JSON array), registered_at, status (active/deceased/inactive), created_at, updated_at",
+      },
+      {
+        name: "Encounters",
+        fields:
+          "id, patient_id, type (checkup/emergency/vaccination/consultation), date, facility, provider, diagnosis, notes, status (completed/scheduled/cancelled), created_at, updated_at",
+      },
+      {
+        name: "Vaccinations",
+        fields:
+          "id, patient_id, encounter_id (optional), vaccine_name, dose_number, date_administered, next_dose_due, batch_number, created_at, updated_at",
+      },
+    ],
+    endpoints: [
+      { method: "POST", path: "/patients", description: "Register a new patient" },
+      { method: "GET", path: "/patients", description: "List patients, optionally filter by citizen_id" },
+      { method: "GET", path: "/patients/:id", description: "Get single patient by UUID" },
+      { method: "POST", path: "/encounters", description: "Record a clinical encounter" },
+      { method: "GET", path: "/encounters?patient_id=X", description: "Query encounters for a patient, optionally filter by type" },
+      { method: "GET", path: "/encounters/:id", description: "Get single encounter" },
+      { method: "POST", path: "/vaccinations", description: "Record a vaccination" },
+      { method: "GET", path: "/vaccinations?patient_id=X", description: "Get vaccination history for a patient" },
+      { method: "GET", path: "/vaccinations/overdue?as_of=DATE", description: "Query overdue vaccinations as of a given date" },
+    ],
+    webhooks: [
+      { event: "patient.registered", description: "Fired when a new patient is registered" },
+      { event: "encounter.completed", description: "Fired when an encounter is completed" },
+      { event: "vaccination.administered", description: "Fired when a vaccination is recorded" },
+    ],
+    seedData: "5 patients, 10 encounters, 8 vaccinations",
+    relationships: [
+      "References citizen_id from Identity for patient identification",
+      "New patients are created when newborns are registered (triggered by citizen.created)",
+      "Patient status set to deceased/inactive when death is registered",
+      "Vaccination schedules cancelled on death registration",
+    ],
+  },
+  {
+    id: "benefits",
+    name: "Benefits",
+    port: 3004,
+    status: "built",
+    buildingBlock: "Social Protection / Benefits",
+    tagColour: "yellow",
+    summary:
+      "Administers social protection programmes, manages citizen enrolments, and schedules payments.",
+    description:
+      "The Benefits system manages social protection programmes such as Child Benefit, Senior Pension, and Maternity Grant. It defines programme rules (eligibility criteria, payment amounts, frequency), tracks citizen enrolments, and schedules payments. Eligibility can be checked against programme rules, and enrolments are created or terminated based on life events from other systems.",
+    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript",
+    entities: [
+      {
+        name: "Programs",
+        fields:
+          "id, name, description, eligibility_rules (JSON), payment_amount, payment_frequency (monthly/one-time/quarterly), status (active/suspended/closed), created_at, updated_at",
+      },
+      {
+        name: "Enrollments",
+        fields:
+          "id, program_id, citizen_id, household_id (optional), status (pending/active/suspended/terminated), enrolled_at, terminated_at, termination_reason, created_at, updated_at",
+      },
+      {
+        name: "Payments",
+        fields:
+          "id, enrollment_id, amount, currency (SIM), status (scheduled/paid/failed), scheduled_date, paid_date, created_at, updated_at",
+      },
+    ],
+    endpoints: [
+      { method: "GET", path: "/programs", description: "List programmes, optionally filter by status" },
+      { method: "GET", path: "/programs/:id", description: "Get single programme with parsed eligibility rules" },
+      { method: "POST", path: "/programs", description: "Create a new programme" },
+      { method: "POST", path: "/enrollments", description: "Enrol a citizen in a programme" },
+      { method: "GET", path: "/enrollments", description: "List enrolments, optionally filter by citizen_id or status" },
+      { method: "GET", path: "/enrollments/:id", description: "Get single enrolment with full programme details" },
+      { method: "PATCH", path: "/enrollments/:id", description: "Update enrolment status (suspend, terminate)" },
+      { method: "GET", path: "/payments", description: "List payments, optionally filter by enrollment_id" },
+      { method: "POST", path: "/payments/schedule", description: "Create scheduled payments (supports bulk creation)" },
+      { method: "PATCH", path: "/payments/:id", description: "Update payment status (mark as paid or failed)" },
+      { method: "POST", path: "/eligibility/check", description: "Check citizen eligibility for a programme" },
+    ],
+    webhooks: [
+      { event: "enrollment.created", description: "Fired when a citizen is enrolled in a programme" },
+      { event: "enrollment.terminated", description: "Fired when an enrolment is terminated" },
+      { event: "payment.completed", description: "Fired when a payment is marked as paid" },
+    ],
+    seedData: "3 programmes (Child Benefit, Senior Pension, Maternity Grant), 5 enrolments, 10 payments",
+    relationships: [
+      "References citizen_id from Identity for enrolment and eligibility",
+      "Newborn citizens auto-checked for Child Benefit eligibility",
+      "All enrolments terminated when death is registered",
+      "Household-based eligibility reassessed when marriage is registered",
+    ],
+  },
+  {
+    id: "notifications",
+    name: "Notifications",
+    port: 3005,
+    status: "built",
+    buildingBlock: "Messaging / Notifications",
+    tagColour: "orange",
+    summary:
+      "Delivers email and SMS notifications to citizens when government service events occur. Tracks delivery status.",
+    description:
+      "The Notifications system is the citizen communication layer. When events occur across other systems (birth registered, benefit enrolled, vaccination administered), workflows send notifications to affected citizens via email or SMS. The system tracks delivery attempts and status, and citizens can view their full notification history through the portal.",
+    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript",
+    entities: [
+      {
+        name: "Notifications",
+        fields:
+          "id, citizen_id, channel (email/sms), destination, subject (optional), body, source_system, source_event, status (pending/sent/delivered/failed), attempts, sent_at, delivered_at, failed_reason, created_at, updated_at",
+      },
+    ],
+    endpoints: [
+      { method: "POST", path: "/notifications", description: "Send a single notification" },
+      { method: "POST", path: "/notifications/bulk", description: "Send up to 100 notifications in bulk" },
+      { method: "GET", path: "/notifications", description: "List notifications, filter by citizen_id, status, or source_system" },
+      { method: "GET", path: "/notifications/:id", description: "Get single notification" },
+    ],
+    webhooks: [
+      { event: "notification.sent", description: "Fired when a notification is sent" },
+      { event: "notification.bulk_sent", description: "Fired when a bulk batch is sent" },
+    ],
+    seedData: "6 sample notifications (email and SMS, various statuses)",
+    relationships: [
+      "References citizen_id from Identity for delivery targeting",
+      "Fetches contact details (email, phone) from Identity system",
+      "Triggered by events from all other systems via OpenFn workflows",
+    ],
+  },
+  {
+    id: "payments",
+    name: "Payments",
+    port: 3006,
+    status: "stub",
+    buildingBlock: "Payments",
+    tagColour: "grey",
+    sketch: true,
+    sketchNote:
+      "Sketch only — no code exists yet. This entry describes what the Payments system will do once built (planned port :3006). Benefits already schedules payments but nothing disburses them; Payments closes that gap.",
+    summary:
+      "Mock disbursement ledger. Holds a treasury account and a per-citizen account, moves money only as paired ledger entries, and fails at random to mimic a real payment gateway.",
+    description:
+      "The Payments system is the disbursing layer that Benefits currently lacks: Benefits schedules payments, but no system actually pays them out. Payments keeps a double-entry ledger with one account for the government (the disbursing treasury) and one account for every citizen. A disbursement is mocked — no real money moves; it only ever appears as a paired ledger entry (debit treasury, credit citizen). Crucially, the API fails at random to behave like a real government payment gateway: failure modes and their rates are set in a config file (see below), so OpenFn workflows must handle retries, idempotency, and failure notifications exactly as they would against a live banking partner.",
+    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript (planned)",
+    config:
+      "Failure rates are configurable in payments.config.ts. Each disbursement rolls against these rates and may return one of five gateway-style errors instead of completing — matching the most common error messages a real government payment gateway hits.",
+    failureModes: [
+      {
+        code: "INSUFFICIENT_FUNDS",
+        description:
+          "The disbursing/treasury account lacks the balance for the transfer.",
+      },
+      {
+        code: "ACCOUNT_NOT_FOUND",
+        description:
+          "The beneficiary account or bank details are invalid or unknown.",
+      },
+      {
+        code: "GATEWAY_TIMEOUT",
+        description:
+          "The upstream banking partner did not respond in time.",
+      },
+      {
+        code: "DUPLICATE_TRANSACTION",
+        description:
+          "A payment with this idempotency key was already processed.",
+      },
+      {
+        code: "SERVICE_UNAVAILABLE",
+        description:
+          "Gateway temporarily unavailable / rate limited — retry later.",
+      },
+    ],
+    entities: [
+      {
+        name: "Accounts (proposed)",
+        fields:
+          "id (UUID), owner_type (treasury/citizen), owner_id (citizen_id, or 'treasury'), balance, currency (SIM), status (active/closed), created_at, updated_at",
+      },
+      {
+        name: "Payments (proposed)",
+        fields:
+          "id, idempotency_key (unique), from_account_id (treasury), to_account_id (citizen), amount, currency (SIM), enrollment_id (optional, from Benefits), reference, status (pending/completed/failed), failure_code, failure_message, created_at, completed_at",
+      },
+      {
+        name: "Ledger Entries (proposed)",
+        fields:
+          "id, payment_id, account_id, direction (debit/credit), amount, currency (SIM), created_at — every completed payment writes two rows (debit treasury, credit citizen)",
+      },
+    ],
+    endpoints: [
+      { method: "POST", path: "/payments", description: "Request a disbursement (treasury → citizen). Requires an idempotency key. May fail at random per the configured failure modes." },
+      { method: "GET", path: "/payments", description: "List payments, filter by account, enrollment_id, or status" },
+      { method: "GET", path: "/payments/:id", description: "Get a single payment with its ledger entries" },
+      { method: "POST", path: "/accounts", description: "Open an account (treasury or for a new citizen)" },
+      { method: "GET", path: "/accounts", description: "List accounts, filter by owner_type or owner_id" },
+      { method: "GET", path: "/accounts/:id", description: "Get an account with its current balance" },
+      { method: "GET", path: "/accounts/:id/ledger", description: "List ledger entries for an account" },
+    ],
+    webhooks: [
+      { event: "account.opened", description: "Fired when a citizen or treasury account is opened" },
+      { event: "payment.completed", description: "Fired when a disbursement succeeds (paired ledger entries written)" },
+      { event: "payment.failed", description: "Fired when a disbursement fails, carrying the failure_code for retry logic" },
+    ],
+    seedData: "None yet — sketch only. When built: a funded treasury account plus an account per seeded citizen.",
+    relationships: [
+      "Opens a citizen account when Identity emits citizen.created",
+      "Receives disbursement requests for scheduled Benefits payments (enrollment_id links back to Benefits)",
+      "payment.failed is consumed by OpenFn for retry / backoff and citizen failure notifications",
+      "Treasury account represents the disbursing government; INSUFFICIENT_FUNDS models it running dry",
+    ],
+  },
+  {
+    id: "social-registry",
+    name: "Social Registry",
+    port: 3007,
+    status: "stub",
+    buildingBlock: "Registries (needs-based targeting)",
+    tagColour: "grey",
+    sketch: true,
+    sketchNote:
+      "Sketch only — no code exists yet. This entry describes the needs-based targeting registry that will feed Benefits eligibility once built (planned port :3007).",
+    summary:
+      "Needs-based targeting registry. Holds proxy-means-test scores and vulnerability indicators per household, and feeds Benefits eligibility decisions.",
+    description:
+      "The Social Registry is the needs-based targeting layer for social protection. It records welfare assessments per household — a proxy-means-test (PMT) score, income band, and vulnerability flags (disability, elderly, single-parent, dependents) — drawn from intake interviews and cross-system data. Benefits queries the registry when checking eligibility so that targeting is driven by assessed need rather than programme rules alone. Assessments expire and must be recertified, and household composition is kept current from Civil Registry life events.",
+    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript (planned)",
+    entities: [
+      {
+        name: "Assessments (proposed)",
+        fields:
+          "id (UUID), household_id (from Identity), head_citizen_id, pmt_score, income_band (low/medium/high), data_source (interview/imported/recertified), assessed_at, valid_until, status (active/expired/superseded), created_at, updated_at",
+      },
+      {
+        name: "Vulnerability Indicators (proposed)",
+        fields:
+          "id, assessment_id, indicator (disability/elderly/single_parent/chronic_illness/unemployed/dependents), value, weight",
+      },
+    ],
+    endpoints: [
+      { method: "POST", path: "/assessments", description: "Record a needs assessment for a household" },
+      { method: "GET", path: "/assessments", description: "List assessments, filter by household_id, citizen_id, or status" },
+      { method: "GET", path: "/assessments/:id", description: "Get a single assessment with its vulnerability indicators" },
+      { method: "GET", path: "/households/:id/targeting-profile", description: "Targeting profile (PMT score + flags) for a household, used by Benefits eligibility" },
+      { method: "GET", path: "/registry", description: "Query households by targeting criteria (e.g. income_band, vulnerability)" },
+      { method: "POST", path: "/recertify", description: "Re-run targeting for a household (issues a new assessment, supersedes the old)" },
+    ],
+    webhooks: [
+      { event: "assessment.completed", description: "Fired when a household needs assessment is recorded" },
+      { event: "targeting.updated", description: "Fired when a household's targeting profile changes (e.g. recertification)" },
+    ],
+    seedData: "None yet — sketch only. When built: one assessment per seeded household with realistic PMT scores.",
+    relationships: [
+      "References household_id and citizen_id from Identity",
+      "Feeds Benefits: eligibility checks query the household targeting profile rather than programme rules alone",
+      "Recertifies household composition from Civil Registry birth / death / marriage events",
+      "targeting.updated can trigger benefit re-assessment in Benefits via OpenFn",
+    ],
+  },
+];
+
+export const STATUS_BADGE: Record<
+  SystemStatus,
+  { label: string; colour: string }
+> = {
+  built: { label: "Built", colour: "govuk-tag--green" },
+  stub: { label: "Stub — sketch", colour: "govuk-tag--yellow" },
+  planned: { label: "Planned", colour: "govuk-tag--grey" },
+};
+
+export function methodColour(method: string): string {
+  switch (method) {
+    case "GET":
+      return "govuk-tag--green";
+    case "POST":
+      return "govuk-tag--blue";
+    case "PATCH":
+    case "PUT":
+      return "govuk-tag--yellow";
+    case "DELETE":
+      return "govuk-tag--red";
+    default:
+      return "";
+  }
+}
+
+export function getSystemById(id: string): SystemEntry | undefined {
+  return SYSTEMS.find((s) => s.id === id);
+}
