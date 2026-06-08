@@ -234,6 +234,22 @@ export default async function StaffDashboard() {
 
       <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
 
+      <h2 className="govuk-heading-l">API sandbox</h2>
+      <p className="govuk-body">
+        Send and receive live API requests to any system from one place &mdash;
+        explore how the systems work, inspect responses, and try out the
+        endpoints OpenFn workflows will call.
+      </p>
+      <a
+        href="/staff/sandbox"
+        className="govuk-button govuk-button--secondary"
+        role="button"
+      >
+        Open API sandbox
+      </a>
+
+      <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
+
       <h2 className="govuk-heading-l">Service catalog</h2>
       <p className="govuk-body">
         Reference documentation for all government services in the SimDPG
