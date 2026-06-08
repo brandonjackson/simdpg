@@ -27,6 +27,7 @@ Two distinct catalogs live in the staff area and are referenced throughout:
 - [x] Health system (patients, encounters, vaccinations, overdue queries)
 - [x] Benefits system (programs, eligibility rules, enrollments, payments)
 - [x] Notifications system (port 3005) — records email/sms notifications to citizens
+- [x] Social Registry system (port 3007) — needs-based targeting registry: household PMT assessments, weighted vulnerability indicators, targeting profiles consumed by Benefits, and recertification
 - [x] Typed API clients package (`@simdpg/api-clients`)
 - [x] Gov.uk portal — citizen pages (birth/death/marriage, vaccination booking, benefit application, check my record, my notifications)
 - [x] Gov.uk portal — staff pages (dashboard, search, citizen timeline, service catalog, systems catalog)
@@ -58,14 +59,14 @@ catalog** so the full landscape is visible before we deepen anything.
     3. `GATEWAY_TIMEOUT` — upstream banking partner did not respond in time
     4. `DUPLICATE_TRANSACTION` — a payment with this idempotency key was already processed
     5. `SERVICE_UNAVAILABLE` — gateway temporarily unavailable / rate limited, retry later
-  - [x] **Social registry** — needs-based targeting registry that feeds Benefits eligibility.
+  - [x] **Social registry** — needs-based targeting registry that feeds Benefits eligibility. _(Now built — see "What's Done". Records household PMT assessments and weighted vulnerability indicators, and serves a `GET /households/:id/targeting-profile` that Benefits consults during eligibility checks.)_
 - [x] Each stub clearly marked as a sketch so it isn't mistaken for a working system.
 
 ### Scope guard — do not add new systems lightly
 
-The system landscape is deliberately fixed: the five live systems (Identity,
-Civil Registry, Health, Benefits, Notifications) plus the two stubs above
-(Payments, Social Registry). **Claude should think about whether a given
+The system landscape is deliberately fixed: the six live systems (Identity,
+Civil Registry, Health, Benefits, Notifications, Social Registry) plus the
+Payments stub above. **Claude should think about whether a given
 capability really needs a new system, but only add one beyond those already
 done or specified above if it is absolutely essential** — and call it out
 explicitly for sign-off rather than adding it silently.

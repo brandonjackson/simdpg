@@ -1,6 +1,6 @@
 # SimDPG
 
-A simulated city-state's digital public infrastructure. Five government systems (identity, civil registry, health, benefits, notifications), a gov.uk-style portal, and a population simulation engine — all wired together to stress-test [OpenFn](https://openfn.org) integration workflows before a national platform launch.
+A simulated city-state's digital public infrastructure. Six government systems (identity, civil registry, health, benefits, notifications, social registry), a gov.uk-style portal, and a population simulation engine — all wired together to stress-test [OpenFn](https://openfn.org) integration workflows before a national platform launch.
 
 ## Architecture
 
@@ -13,7 +13,8 @@ Systems
   ├── Civil Registry  :3002  (births, deaths, marriages)
   ├── Health          :3003  (patients, encounters, vaccinations)
   ├── Benefits        :3004  (programs, eligibility, enrollments, payments)
-  └── Notifications   :3005  (email/sms messages to citizens)
+  ├── Notifications   :3005  (email/sms messages to citizens)
+  └── Social Registry :3007  (needs assessments, targeting profiles)
 
 Each system: Express + Drizzle ORM + SQLite
 Systems communicate only via HTTP — no shared databases.
@@ -66,7 +67,9 @@ simdpg/
 │   ├── identity/          # Citizen identity (port 3001)
 │   ├── civil-registry/    # Vital events (port 3002)
 │   ├── health/            # Patient records (port 3003)
-│   └── benefits/          # Social protection (port 3004)
+│   ├── benefits/          # Social protection (port 3004)
+│   ├── notifications/     # Email/SMS messaging (port 3005)
+│   └── social-registry/   # Needs-based targeting (port 3007)
 ├── portal/                # Next.js gov.uk-style frontend (port 3000)
 ├── simulation/            # Population generator + event scripts
 ├── packages/
@@ -132,6 +135,27 @@ Social protection programs, eligibility, enrollment, and payments.
 | `POST /enrollments` | Enroll a citizen |
 | `PATCH /enrollments/:id` | Update status (suspend, terminate) |
 | `POST /payments/schedule` | Schedule payments for an enrollment |
+
+### Social Registry System (:3007)
+
+Needs-based targeting registry. Records welfare assessments per household and
+exposes a targeting profile that Benefits consults during eligibility checks,
+so targeting is driven by assessed need rather than programme rules alone.
+
+| Endpoint | Description |
+|---|---|
+| `POST /assessments` | Record a needs assessment (PMT score + vulnerability indicators) for a household |
+| `GET /assessments?household_id=X` | List assessments, filter by household, citizen, or status |
+| `GET /assessments/:id` | Get a single assessment with its vulnerability indicators |
+| `GET /households/:id/targeting-profile` | Targeting profile (PMT score, income band, vulnerability flags, targeting band) used by Benefits |
+| `GET /registry?income_band=&vulnerability=&targeted=` | Query assessed households by targeting criteria |
+| `POST /recertify` | Re-run targeting for a household (issues a new assessment, supersedes the old) |
+
+A household is assigned a **targeting band** — `priority`, `eligible`, or
+`not_targeted` — from its proxy-means-test (PMT) score (0–100, lower = poorer)
+and the weighted sum of its vulnerability indicators (disability, elderly,
+single-parent, chronic illness, unemployed, dependents). Assessments carry a
+12-month validity window; an expired assessment is reported but never targets.
 
 ### Shared API conventions (DCI)
 

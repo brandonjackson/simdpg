@@ -25,9 +25,9 @@ export default function SystemsCatalog() {
       <p className="govuk-body-l">
         Technical reference for the backend systems of record that power SimDPG
         &mdash; the digital public infrastructure (DPI) building blocks of the
-        city-state. Five systems are <strong>built and live</strong>; two more
-        (Payments and Social Registry) are <strong>sketched as stubs</strong> so
-        the full landscape is visible before we deepen anything. Each system is
+        city-state. Six systems are <strong>built and live</strong>; one more
+        (Payments) is <strong>sketched as a stub</strong> so the full landscape
+        is visible before we deepen anything. Each system is
         an independent service with its own database, API, and webhook events,
         communicating through HTTP APIs and webhook events routed via OpenFn
         workflows.
@@ -287,8 +287,8 @@ export default function SystemsCatalog() {
           Digital Convergence Initiative (DCI)
         </a>{" "}
         &mdash; to confirm each needed component has at least a presence in the
-        repo. The system landscape is deliberately fixed: the five live systems,
-        plus the two stubs below. New systems are not added lightly.
+        repo. The system landscape is deliberately fixed: the six live systems,
+        plus the Payments stub below. New systems are not added lightly.
       </p>
       <table className="govuk-table">
         <thead>

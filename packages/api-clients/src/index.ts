@@ -3,6 +3,7 @@ export { CivilRegistryClient } from "./civil-registry.js";
 export { HealthClient } from "./health.js";
 export { BenefitsClient } from "./benefits.js";
 export { NotificationsClient } from "./notifications.js";
+export { SocialRegistryClient } from "./social-registry.js";
 export { BaseClient, ApiError } from "./base.js";
 
 export type * from "./types.js";
@@ -13,4 +14,5 @@ export const SYSTEM_URLS = {
   health: process.env.HEALTH_URL ?? "http://localhost:3003",
   benefits: process.env.BENEFITS_URL ?? "http://localhost:3004",
   notifications: process.env.NOTIFICATIONS_URL ?? "http://localhost:3005",
+  socialRegistry: process.env.SOCIAL_REGISTRY_URL ?? "http://localhost:3007",
 } as const;

@@ -1,0 +1,393 @@
+openapi: 3.0.3
+info:
+  title: SimDPG Social Registry System
+  version: 0.1.0
+  license:
+    name: MIT
+  description: |
+    Needs-based targeting registry for the SimDPG city-state. Records welfare
+    assessments per household — a proxy-means-test (PMT) score, income band,
+    and weighted vulnerability indicators — and exposes a targeting profile
+    that the Benefits system consults when deciding eligibility.
+
+    All responses use DCI API conventions: a standard error envelope, list
+    pagination (`{ data, meta }`), `X-Request-ID` propagation, and ISO 8601
+    timestamps.
+servers:
+  - url: http://localhost:3007
+    description: Local development
+tags:
+  - name: Assessments
+    description: Record and read household needs assessments.
+  - name: Targeting
+    description: Targeting profiles and registry queries used by Benefits.
+  - name: Admin
+    description: Operational endpoints (stats, webhook log, reset).
+  - name: System
+    description: Health and documentation.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [System]
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  system: { type: string, example: social-registry }
+                  version: { type: string, example: 0.1.0 }
+  /assessments:
+    get:
+      operationId: listAssessments
+      tags: [Assessments]
+      summary: List assessments
+      description: >
+        Returns a paginated list of assessments, optionally filtered by
+        household, the head citizen, or status.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: household_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter by household.
+        - name: citizen_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter by the household head's citizen id.
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [active, expired, superseded] }
+          description: Filter by assessment status.
+      responses:
+        "200":
+          description: A page of assessments
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssessmentList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: createAssessment
+      tags: [Assessments]
+      summary: Record a needs assessment for a household
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAssessment" }
+      responses:
+        "201":
+          description: Assessment recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Assessment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /assessments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getAssessment
+      tags: [Assessments]
+      summary: Get an assessment by UUID
+      responses:
+        "200":
+          description: The assessment with its vulnerability indicators
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Assessment" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /households/{id}/targeting-profile:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getTargetingProfile
+      tags: [Targeting]
+      summary: Targeting profile for a household
+      description: >
+        Returns the PMT score, income band, vulnerability flags, and targeting
+        determination for a household, derived from its most recent active
+        assessment. This is the endpoint Benefits calls during eligibility
+        checks. Returns `has_assessment: false` (HTTP 200) when the household
+        has never been assessed.
+      responses:
+        "200":
+          description: The household's targeting profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TargetingProfile" }
+  /registry:
+    get:
+      operationId: queryRegistry
+      tags: [Targeting]
+      summary: Query assessed households by targeting criteria
+      description: >
+        Returns a paginated list of targeting profiles (one per active
+        assessment) matching the supplied criteria.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: income_band
+          in: query
+          required: false
+          schema: { type: string, enum: [low, medium, high] }
+          description: Filter by income band.
+        - name: vulnerability
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [disability, elderly, single_parent, chronic_illness, unemployed, dependents]
+          description: Only households carrying this vulnerability flag.
+        - name: targeting_band
+          in: query
+          required: false
+          schema: { type: string, enum: [priority, eligible, not_targeted] }
+          description: Filter by targeting band.
+        - name: targeted
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: Filter by whether the household is targeted for assistance.
+      responses:
+        "200":
+          description: A page of targeting profiles
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TargetingProfileList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /recertify:
+    post:
+      operationId: recertifyHousehold
+      tags: [Targeting]
+      summary: Re-run targeting for a household
+      description: >
+        Issues a fresh assessment (data source `recertified`) and supersedes
+        the household's previous active assessment. Emits `targeting.updated`.
+        Accepts the same body as POST /assessments.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAssessment" }
+      responses:
+        "201":
+          description: New assessment issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Assessment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [Admin]
+      summary: Assessment counts for the dashboard
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  assessments: { type: integer }
+                  vulnerability_indicators: { type: integer }
+  /admin/webhooks:
+    get:
+      operationId: listWebhookEvents
+      tags: [Admin]
+      summary: Paginated log of emitted webhook events
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of webhook events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/WebhookEvent" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+  /admin/reset:
+    post:
+      operationId: resetSystem
+      tags: [Admin]
+      summary: Wipe all assessment data
+      responses:
+        "200":
+          description: Reset complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  reset: { type: boolean }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: 1-based page number.
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: Items per page (max 100).
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: NOT_FOUND }
+            message: { type: string }
+            details:
+              type: object
+              nullable: true
+              additionalProperties: true
+              description: Optional machine-readable detail (e.g. field errors).
+    ListMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+    VulnerabilityIndicator:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        indicator:
+          type: string
+          enum: [disability, elderly, single_parent, chronic_illness, unemployed, dependents]
+        value:
+          type: number
+          description: Magnitude (1 for boolean flags; a count for dependents).
+        weight:
+          type: number
+          description: Relative importance in the targeting score.
+    Assessment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        household_id: { type: string }
+        head_citizen_id: { type: string }
+        pmt_score:
+          type: number
+          description: Proxy-means-test score, 0–100. Lower = poorer.
+        income_band: { type: string, enum: [low, medium, high] }
+        data_source: { type: string, enum: [interview, imported, recertified] }
+        assessed_at: { type: string, format: date-time }
+        valid_until: { type: string, format: date-time }
+        status: { type: string, enum: [active, expired, superseded] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        indicators:
+          type: array
+          items: { $ref: "#/components/schemas/VulnerabilityIndicator" }
+    AssessmentList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Assessment" }
+        meta: { $ref: "#/components/schemas/ListMeta" }
+    CreateAssessment:
+      type: object
+      required: [household_id, head_citizen_id, pmt_score]
+      properties:
+        household_id: { type: string }
+        head_citizen_id: { type: string }
+        pmt_score: { type: number, minimum: 0, maximum: 100 }
+        income_band:
+          type: string
+          enum: [low, medium, high]
+          description: Derived from pmt_score when omitted.
+        data_source: { type: string, enum: [interview, imported, recertified] }
+        assessed_at: { type: string, format: date-time }
+        valid_until: { type: string, format: date-time }
+        indicators:
+          type: array
+          items:
+            type: object
+            required: [indicator]
+            properties:
+              indicator:
+                type: string
+                enum: [disability, elderly, single_parent, chronic_illness, unemployed, dependents]
+              value: { type: number }
+              weight:
+                type: number
+                description: Defaults to the indicator's standard weight when omitted.
+    TargetingProfile:
+      type: object
+      properties:
+        household_id: { type: string }
+        has_assessment: { type: boolean }
+        assessment_id: { type: string, format: uuid, nullable: true }
+        head_citizen_id: { type: string, nullable: true }
+        pmt_score: { type: number, nullable: true }
+        income_band: { type: string, enum: [low, medium, high], nullable: true }
+        vulnerability_flags:
+          type: array
+          items: { type: string }
+        vulnerability_score: { type: number }
+        targeting_band: { type: string, enum: [priority, eligible, not_targeted] }
+        targeted: { type: boolean }
+        assessed_at: { type: string, format: date-time, nullable: true }
+        valid_until: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [active, expired, superseded], nullable: true }
+        expired: { type: boolean }
+    TargetingProfileList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/TargetingProfile" }
+        meta: { $ref: "#/components/schemas/ListMeta" }
+    WebhookEvent:
+      type: object
+      description: DCI / CloudEvents-style event envelope emitted to WEBHOOK_URL.
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, example: assessment.completed }
+        source: { type: string, example: social-registry }
+        time: { type: string, format: date-time }
+        data: { type: object, additionalProperties: true }
+        status: { type: string, enum: [pending, delivered, failed, skipped] }
+        error: { type: string, nullable: true }

@@ -367,27 +367,24 @@ export const SYSTEMS: SystemEntry[] = [
     id: "social-registry",
     name: "Social Registry",
     port: 3007,
-    status: "stub",
+    status: "built",
     buildingBlock: "Registries (needs-based targeting)",
-    tagColour: "grey",
-    sketch: true,
-    sketchNote:
-      "Sketch only — no code exists yet. This entry describes the needs-based targeting registry that will feed Benefits eligibility once built (planned port :3007).",
+    tagColour: "pink",
     summary:
       "Needs-based targeting registry. Holds proxy-means-test scores and vulnerability indicators per household, and feeds Benefits eligibility decisions.",
     description:
-      "The Social Registry is the needs-based targeting layer for social protection. It records welfare assessments per household — a proxy-means-test (PMT) score, income band, and vulnerability flags (disability, elderly, single-parent, dependents) — drawn from intake interviews and cross-system data. Benefits queries the registry when checking eligibility so that targeting is driven by assessed need rather than programme rules alone. Assessments expire and must be recertified, and household composition is kept current from Civil Registry life events.",
-    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript (planned)",
+      "The Social Registry is the needs-based targeting layer for social protection. It records welfare assessments per household — a proxy-means-test (PMT) score, income band, and weighted vulnerability flags (disability, elderly, single-parent, chronic illness, unemployed, dependents) — drawn from intake interviews and imported data. A household's targeting profile combines its PMT score and weighted vulnerability score into a targeting band (priority / eligible / not targeted) that Benefits consults during eligibility checks, so targeting is driven by assessed need rather than programme rules alone. Assessments carry a validity window and can be recertified, which issues a fresh assessment and supersedes the old one.",
+    techStack: "Express.js, better-sqlite3, Drizzle ORM, TypeScript",
     entities: [
       {
-        name: "Assessments (proposed)",
+        name: "Assessments",
         fields:
-          "id (UUID), household_id (from Identity), head_citizen_id, pmt_score, income_band (low/medium/high), data_source (interview/imported/recertified), assessed_at, valid_until, status (active/expired/superseded), created_at, updated_at",
+          "id (UUID), household_id (from Identity), head_citizen_id, pmt_score (0–100, lower = poorer), income_band (low/medium/high), data_source (interview/imported/recertified), assessed_at, valid_until, status (active/expired/superseded), created_at, updated_at",
       },
       {
-        name: "Vulnerability Indicators (proposed)",
+        name: "Vulnerability Indicators",
         fields:
-          "id, assessment_id, indicator (disability/elderly/single_parent/chronic_illness/unemployed/dependents), value, weight",
+          "id, assessment_id, indicator (disability/elderly/single_parent/chronic_illness/unemployed/dependents), value (magnitude), weight",
       },
     ],
     endpoints: [
@@ -402,12 +399,12 @@ export const SYSTEMS: SystemEntry[] = [
       { event: "assessment.completed", description: "Fired when a household needs assessment is recorded" },
       { event: "targeting.updated", description: "Fired when a household's targeting profile changes (e.g. recertification)" },
     ],
-    seedData: "None yet — sketch only. When built: one assessment per seeded household with realistic PMT scores.",
+    seedData: "4 household assessments with a realistic PMT spread (priority / eligible / not-targeted) and 5 vulnerability indicators",
     relationships: [
       "References household_id and citizen_id from Identity",
-      "Feeds Benefits: eligibility checks query the household targeting profile rather than programme rules alone",
-      "Recertifies household composition from Civil Registry birth / death / marriage events",
-      "targeting.updated can trigger benefit re-assessment in Benefits via OpenFn",
+      "Feeds Benefits: eligibility checks query GET /households/:id/targeting-profile rather than programme rules alone",
+      "assessment.completed lets Benefits (via OpenFn) re-evaluate a household's eligibility",
+      "Recertification can be driven by Civil Registry birth / death / marriage events; targeting.updated triggers benefit re-assessment in Benefits via OpenFn",
     ],
   },
 ];
