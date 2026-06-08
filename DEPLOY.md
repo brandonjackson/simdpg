@@ -74,26 +74,15 @@ For the **portal** service:
 
 - **Public domain:** add one and accept Railway's auto-detected port ("Railway magic").
   Do **not** pin `PORT` — Next.js binds Railway's injected port and the domain routes to it.
-- **Variables:** the seven `*_URL`s below (this is the only required manual config).
+- **Variables: none required.** The portal detects Railway and derives each system's
+  URL as `http://<service>.railway.internal:<port>` from the same name+port
+  convention — **so there are no `*_URL` variables to set**, as long as the system
+  services are named cleanly (`identity`, `civil-registry`, …).
 
 > Manual `SERVICE_DIR` / `START_CMD` / `PORT` still override the name-based
-> defaults if you ever need a custom setup.
-
-Set these `*_URL` variables on the **portal** service (the system ports are the
-fixed 3001–3007 the image pins):
-
-```
-IDENTITY_URL=http://identity.railway.internal:3001
-CIVIL_REGISTRY_URL=http://civil-registry.railway.internal:3002
-HEALTH_URL=http://health.railway.internal:3003
-BENEFITS_URL=http://benefits.railway.internal:3004
-NOTIFICATIONS_URL=http://notifications.railway.internal:3005
-PAYMENTS_URL=http://payments.railway.internal:3006
-SOCIAL_REGISTRY_URL=http://social-registry.railway.internal:3007
-```
-
-> If a `*_URL` is missing on the portal it silently falls back to `localhost` and
-> will fail in production. Set all seven.
+> defaults if you ever need a custom setup. Likewise, an explicit `IDENTITY_URL`
+> (etc.) on the portal overrides the derived URL — useful if a system service is
+> named differently or you want to point at its public domain.
 
 ### Optional: webhooks for OpenFn
 

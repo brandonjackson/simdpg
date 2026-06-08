@@ -1,3 +1,4 @@
+import { SYSTEM_URLS } from "@simdpg/api-clients";
 import { identity, health } from "@/lib/systems";
 
 export const dynamic = "force-dynamic";
@@ -34,8 +35,7 @@ async function loadStats(): Promise<{
     try {
       const now = new Date();
       const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-      const civilRegistryUrl =
-        process.env.CIVIL_REGISTRY_URL ?? "http://localhost:3002";
+      const civilRegistryUrl = SYSTEM_URLS.civilRegistry;
       const res = await fetch(
         `${civilRegistryUrl}/births?since=${encodeURIComponent(monthStart)}`
       );
@@ -69,7 +69,7 @@ async function loadStats(): Promise<{
       // The client doesn't have a direct "list all active enrollments" method,
       // so we'll hit the endpoint directly
       const res = await fetch(
-        `${process.env.BENEFITS_URL ?? "http://localhost:3004"}/enrollments?status=active`
+        `${SYSTEM_URLS.benefits}/enrollments?status=active`
       );
       if (res.ok) {
         const data = await res.json();
