@@ -23,6 +23,7 @@ const SYSTEMS = [
   { name: "health", entry: "systems/health/src/index.ts", spec: "systems/health/openapi.yaml" },
   { name: "benefits", entry: "systems/benefits/src/index.ts", spec: "systems/benefits/openapi.yaml" },
   { name: "notifications", entry: "systems/notifications/src/index.ts", spec: "systems/notifications/openapi.yaml" },
+  { name: "payments", entry: "systems/payments/src/index.ts", spec: "systems/payments/openapi.yaml" },
   { name: "social-registry", entry: "systems/social-registry/src/index.ts", spec: "systems/social-registry/openapi.yaml" },
 ];
 

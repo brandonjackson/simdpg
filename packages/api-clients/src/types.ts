@@ -288,6 +288,68 @@ export interface SendNotificationInput {
   source_event?: string | null;
 }
 
+export interface Account {
+  id: string;
+  owner_type: "treasury" | "citizen";
+  owner_id: string;
+  balance: number;
+  currency: string;
+  status: "active" | "closed";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LedgerEntry {
+  id: string;
+  payment_id: string;
+  account_id: string;
+  direction: "debit" | "credit";
+  amount: number;
+  currency: string;
+  created_at: string;
+}
+
+export type PaymentFailureCode =
+  | "INSUFFICIENT_FUNDS"
+  | "ACCOUNT_NOT_FOUND"
+  | "GATEWAY_TIMEOUT"
+  | "DUPLICATE_TRANSACTION"
+  | "SERVICE_UNAVAILABLE";
+
+export interface Disbursement {
+  id: string;
+  idempotency_key: string;
+  from_account_id: string | null;
+  to_account_id: string | null;
+  amount: number;
+  currency: string;
+  enrollment_id: string | null;
+  reference: string | null;
+  status: "pending" | "completed" | "failed";
+  failure_code: PaymentFailureCode | null;
+  failure_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+  ledger_entries?: LedgerEntry[];
+}
+
+export interface OpenAccountInput {
+  owner_type: "treasury" | "citizen";
+  owner_id?: string;
+  initial_balance?: number;
+  currency?: string;
+}
+
+export interface RequestDisbursementInput {
+  idempotency_key: string;
+  to_account_id: string;
+  from_account_id?: string;
+  amount: number;
+  currency?: string;
+  enrollment_id?: string;
+  reference?: string;
+}
+
 /** DCI error envelope returned by every system. */
 export interface ErrorResponse {
   error: {

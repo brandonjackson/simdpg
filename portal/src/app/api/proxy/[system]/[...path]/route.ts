@@ -7,6 +7,7 @@ const SYSTEM_MAP: Record<string, string> = {
   health: SYSTEM_URLS.health,
   benefits: SYSTEM_URLS.benefits,
   notifications: SYSTEM_URLS.notifications,
+  payments: SYSTEM_URLS.payments,
   "social-registry": SYSTEM_URLS.socialRegistry,
 };
 

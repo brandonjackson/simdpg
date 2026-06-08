@@ -25,9 +25,8 @@ export default function SystemsCatalog() {
       <p className="govuk-body-l">
         Technical reference for the backend systems of record that power SimDPG
         &mdash; the digital public infrastructure (DPI) building blocks of the
-        city-state. Six systems are <strong>built and live</strong>; one more
-        (Payments) is <strong>sketched as a stub</strong> so the full landscape
-        is visible before we deepen anything. Each system is
+        city-state. All seven systems are <strong>built and live</strong>. Each
+        system is
         an independent service with its own database, API, and webhook events,
         communicating through HTTP APIs and webhook events routed via OpenFn
         workflows.
