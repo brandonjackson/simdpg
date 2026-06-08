@@ -1,8 +1,13 @@
 # SimDPG — production-like local stack.
 #
-#   docker compose up --build      start all systems + portal
-#   docker compose down            stop (data volumes preserved)
-#   docker compose down -v         stop and wipe all SQLite data
+#   docker build -t simdpg:latest .   build the shared image ONCE
+#   docker compose up                 start all systems + portal (reuses image)
+#   docker compose down               stop (data volumes preserved)
+#   docker compose down -v            stop and wipe all SQLite data
+#
+# Build the image first rather than `docker compose up --build`: without the
+# Buildx/BuildKit plugin, Compose's legacy builder rebuilds this image once per
+# service in parallel (7x npm ci -> OOM). See DEPLOY.md.
 #
 # Every service uses the same image (root Dockerfile); SERVICE_DIR/START_CMD
 # select which workspace runs. Systems are independent — they don't call each
