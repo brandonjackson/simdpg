@@ -7,11 +7,15 @@ Railway.
 
 | Variable     | Purpose                                                          | Example                              |
 | ------------ | ---------------------------------------------------------------- | ------------------------------------ |
-| `SERVICE_DIR`| Workspace dir to run from (required)                             | `systems/identity`, `portal`         |
-| `START_CMD`  | Start command (default `node dist/index.js`)                     | `npm run start` (portal)             |
+| `SERVICE_DIR`| Workspace dir to run from. On Railway, derived from the service name | `systems/identity`, `portal`     |
+| `START_CMD`  | Start command (default `node dist/index.js`; derived on Railway) | `npm run start` (portal)             |
 | `SEED_CMD`   | Optional. Seed the DB **once** on a fresh volume (systems only)  | `npm run db:seed -w @simdpg/identity`|
-| `PORT`       | Port to listen on                                                | `3001` … `3007`, portal: any         |
+| `PORT`       | Port to listen on (derived on Railway: 3001–3007; portal auto)   | `3001` … `3007`                      |
 | `*_URL`      | Cross-service URLs — only the **portal** needs these             | see below                            |
+
+On Railway, name a service after its workspace and `SERVICE_DIR`/`START_CMD`/
+`SEED_CMD`/`PORT` are filled in automatically (see the Railway section). Locally,
+docker-compose sets them explicitly.
 
 Systems are independent (they don't call each other — they only emit webhooks
 to an optional `WEBHOOK_URL`), so only the portal needs the `*_URL` variables.
@@ -43,30 +47,40 @@ docker compose up                 # start all 7 systems + portal (reuses the ima
 ## Railway
 
 One project, **8 services** (7 systems + portal), all deployed from this repo.
-For each service set:
+
+The image **configures itself from the Railway service name** (`RAILWAY_SERVICE_NAME`),
+so the easiest, least error-prone setup is:
+
+> **Name each service exactly after its workspace:** `identity`, `civil-registry`,
+> `health`, `benefits`, `notifications`, `payments`, `social-registry`, `portal`.
+> (A `@simdpg/identity` style name works too — the scope is stripped.)
+
+With the right name, `SERVICE_DIR`, `START_CMD`, `SEED_CMD`, and the system `PORT`
+are all derived automatically — **you set none of them**. A service whose name has
+no mapping refuses to start (rather than silently running the default identity
+system), so a misnamed service fails loudly.
+
+For **every** service set:
 
 - **Root Directory:** `/` (the monorepo root — required so the workspace install/build works)
 - **Builder:** Dockerfile  •  **Dockerfile Path:** `Dockerfile`
-- **Variables:** per the table below
-- **Volume** (systems only): mount at `/app/<SERVICE_DIR>/data`
-- **Networking:** systems stay private; give only the **portal** a public domain
 
-Systems reach nothing else, and the portal reaches systems over Railway's private
-network at `http://<service>.railway.internal:<PORT>`.
+For each **system** service (`identity` … `social-registry`):
 
-| Service          | `PORT` | `SERVICE_DIR`            | `SEED_CMD` (`npm run db:seed -w …`) | `START_CMD`      | Volume mount                         |
-| ---------------- | ------ | ------------------------ | ----------------------------------- | ---------------- | ------------------------------------ |
-| identity         | 3001   | systems/identity         | `@simdpg/identity`                  | *(default)*      | `/app/systems/identity/data`         |
-| civil-registry   | 3002   | systems/civil-registry   | `@simdpg/civil-registry`            | *(default)*      | `/app/systems/civil-registry/data`   |
-| health           | 3003   | systems/health           | `@simdpg/health`                    | *(default)*      | `/app/systems/health/data`           |
-| benefits         | 3004   | systems/benefits         | `@simdpg/benefits`                  | *(default)*      | `/app/systems/benefits/data`         |
-| notifications    | 3005   | systems/notifications    | `@simdpg/notifications`             | *(default)*      | `/app/systems/notifications/data`    |
-| payments         | 3006   | systems/payments         | `@simdpg/payments`                  | *(default)*      | `/app/systems/payments/data`         |
-| social-registry  | 3007   | systems/social-registry  | `@simdpg/social-registry`           | *(default)*      | `/app/systems/social-registry/data`  |
-| portal           | *(let Railway inject)* | portal     | *(none)*                            | `npm run start`  | *(none)*                             |
+- **Volume:** mount at `/app/systems/<name>/data` (e.g. `/app/systems/identity/data`)
+- Listens privately on its canonical port (3001–3007); no public domain needed.
 
-Set these `*_URL` variables on the **portal** service (pin each system's `PORT`
-so the internal URLs are stable):
+For the **portal** service:
+
+- **Public domain:** add one and accept Railway's auto-detected port ("Railway magic").
+  Do **not** pin `PORT` — Next.js binds Railway's injected port and the domain routes to it.
+- **Variables:** the seven `*_URL`s below (this is the only required manual config).
+
+> Manual `SERVICE_DIR` / `START_CMD` / `PORT` still override the name-based
+> defaults if you ever need a custom setup.
+
+Set these `*_URL` variables on the **portal** service (the system ports are the
+fixed 3001–3007 the image pins):
 
 ```
 IDENTITY_URL=http://identity.railway.internal:3001
