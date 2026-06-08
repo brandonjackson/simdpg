@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { notFound, getPagination, listResponse } from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { birthRegistrations } from "../db/schema.js";
 import { emitWebhook } from "../webhooks.js";
@@ -97,8 +98,7 @@ router.get(
       .get();
 
     if (!record) {
-      res.status(404).json({ error: "Birth registration not found" });
-      return;
+      throw notFound("Birth registration not found");
     }
 
     res.json(record);
@@ -106,27 +106,35 @@ router.get(
 );
 
 /**
- * GET /births?citizen_id=X — find birth record where child_citizen_id = X.
+ * GET /births?citizen_id=X — find birth records where child_citizen_id = X.
  * GET /births — list all birth registrations.
  */
 router.get(
   "/",
   asyncHandler(async (req, res) => {
     const citizenId = req.query.citizen_id as string | undefined;
+    const { offset, limit, page, per_page } = getPagination(req);
 
-    if (citizenId) {
-      const records = db
-        .select()
+    const where = citizenId
+      ? eq(birthRegistrations.child_citizen_id, citizenId)
+      : undefined;
+
+    const total =
+      db
+        .select({ c: sql<number>`count(*)` })
         .from(birthRegistrations)
-        .where(eq(birthRegistrations.child_citizen_id, citizenId))
-        .all();
+        .where(where)
+        .get()?.c ?? 0;
 
-      res.json(records);
-      return;
-    }
+    const rows = db
+      .select()
+      .from(birthRegistrations)
+      .where(where)
+      .limit(limit)
+      .offset(offset)
+      .all();
 
-    const all = db.select().from(birthRegistrations).all();
-    res.json(all);
+    res.json(listResponse(rows, { page, per_page }, total));
   }),
 );
 

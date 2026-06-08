@@ -125,30 +125,35 @@ Turn the systems of record from minimal stubs into credible stand-ins for real
 DPGs: full read/write APIs, DCI-aligned data models, OpenAPI specs, and complete
 system-catalog documentation.
 
-- [ ] **Core read + write APIs** for each system of record, mirroring the public
+- [x] **Core read + write APIs** for each system of record, mirroring the public
       API functions of the equivalent real DPG (e.g. OpenCRVS for civil
-      registry, DHIS2 for health).
-- [ ] **DCI-aligned data model and naming.** Structure data models and function
-      names per Digital Convergence Initiative specs where relevant.
-- [ ] **DCI API conventions across all systems:**
-  - [ ] Standard HTTP status codes and error envelope `{ "error": { "code", "message", "details" } }`
-  - [ ] Standard pagination — list endpoints return `{ data: [], meta: { page, per_page, total } }`
-  - [ ] `X-Request-ID` header propagation for traceability
-  - [ ] ISO 8601 dates everywhere (audit existing fields for inconsistencies)
-  - [ ] Webhook payloads aligned to a DCI-style event schema (type, source, id, time, data)
-- [ ] **OpenAPI specs:**
-  - [ ] Author `openapi.yaml` per system, colocated at `systems/<name>/openapi.yaml`
-  - [ ] Validate specs in CI / `npm run lint` (e.g. `redocly lint`)
-  - [ ] Serve interactive docs at `GET /docs` per system (Scalar or Swagger UI)
-  - [ ] Keep specs in sync with routes (diff generated vs committed spec)
-- [ ] **Systems-catalog entries kept in sync.** The catalog already documents
-      how each built system works, its full API, and its core data structures —
-      keep these current as the APIs deepen, promote the Milestone 1 stubs as
-      they get built, and link each system to the DCI / GovStack building-block
-      spec it targets.
-- [ ] **Webhook emission wired up** — each system's `webhooks.ts` POSTs real
-      events to a configurable target (`WEBHOOK_URL`) so OpenFn can consume them.
-- [ ] **Per-system webhook event log table for debugging.**
+      registry, DHIS2 for health). List endpoints now paginate and every system
+      serves interactive docs.
+- [x] **DCI-aligned data model and naming.** Data models and responses follow
+      Digital Convergence Initiative conventions (shared envelopes, ISO dates,
+      DCI-style event payloads); building-block targets documented in the
+      systems catalog.
+- [x] **DCI API conventions across all systems** (shared `@simdpg/system-kit`):
+  - [x] Standard HTTP status codes and error envelope `{ "error": { "code", "message", "details" } }`
+  - [x] Standard pagination — list endpoints return `{ data: [], meta: { page, per_page, total } }`
+  - [x] `X-Request-ID` header propagation for traceability
+  - [x] ISO 8601 dates everywhere (audit existing fields for inconsistencies)
+  - [x] Webhook payloads aligned to a DCI-style event schema (id, type, source, time, data)
+- [x] **OpenAPI specs:**
+  - [x] Author `openapi.yaml` per system, colocated at `systems/<name>/openapi.yaml`
+  - [x] Validate specs in CI / `npm run lint` (`redocly lint`, wired into `.github/workflows/ci.yml`)
+  - [x] Serve interactive docs at `GET /docs` per system (Scalar) + raw spec at `GET /openapi.yaml`
+  - [x] Keep specs in sync with routes — `npm run check:routes` boots each app,
+        enumerates its registered routes, and fails CI if they diverge from the
+        documented paths in `openapi.yaml` (both directions).
+- [x] **Systems-catalog entries kept in sync.** Added an API-conventions section
+      documenting the shared DCI conventions, per-system `/docs` + `/openapi.yaml`
+      + `/admin/webhooks` links, and DCI / GovStack building-block references.
+      (Payments and Social Registry remain stubs — not built in this milestone.)
+- [x] **Webhook emission wired up** — each system's `webhooks.ts` POSTs real
+      DCI events to a configurable target (`WEBHOOK_URL`) so OpenFn can consume them.
+- [x] **Per-system webhook event log table for debugging** — `webhook_events`
+      table per system, queryable at `GET /admin/webhooks` with delivery status.
 
 ---
 

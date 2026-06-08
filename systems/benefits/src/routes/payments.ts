@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { notFound, getPagination, listResponse } from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { payments, enrollments } from "../db/schema.js";
 import { emitWebhook } from "../webhooks.js";
@@ -63,19 +64,25 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const enrollmentId = req.query.enrollment_id as string | undefined;
+    const { offset, limit, page, per_page } = getPagination(req);
 
-    if (enrollmentId) {
-      const rows = db
-        .select()
-        .from(payments)
-        .where(eq(payments.enrollment_id, enrollmentId))
-        .all();
-      res.json(rows);
-      return;
-    }
+    const where = enrollmentId
+      ? eq(payments.enrollment_id, enrollmentId)
+      : undefined;
 
-    const rows = db.select().from(payments).all();
-    res.json(rows);
+    const total =
+      db.select({ c: sql<number>`count(*)` }).from(payments).where(where).get()
+        ?.c ?? 0;
+
+    const rows = db
+      .select()
+      .from(payments)
+      .where(where)
+      .limit(limit)
+      .offset(offset)
+      .all();
+
+    res.json(listResponse(rows, { page, per_page }, total));
   }),
 );
 
@@ -95,8 +102,7 @@ router.post(
       .get();
 
     if (!enrollment) {
-      res.status(404).json({ error: "Enrollment not found" });
-      return;
+      throw notFound("Enrollment not found");
     }
 
     const startDate = body.start_date
@@ -153,8 +159,7 @@ router.patch(
       .get();
 
     if (!existing) {
-      res.status(404).json({ error: "Payment not found" });
-      return;
+      throw notFound("Payment not found");
     }
 
     const body = updatePaymentSchema.parse(req.body);

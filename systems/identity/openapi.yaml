@@ -1,0 +1,428 @@
+openapi: 3.0.3
+info:
+  title: SimDPG Identity System
+  version: 0.1.0
+  license:
+    name: MIT
+  description: |
+    Foundational identity registry for the SimDPG city-state — the canonical
+    citizen record. Every other system references citizens by the UUID issued
+    here. Models the GovStack / DCI **Foundational ID** building block.
+
+    All responses use DCI API conventions: a standard error envelope, list
+    pagination (`{ data, meta }`), `X-Request-ID` propagation, and ISO 8601
+    timestamps.
+servers:
+  - url: http://localhost:3001
+    description: Local development
+tags:
+  - name: Citizens
+    description: Create, read, update and search citizen records.
+  - name: Households
+    description: Group citizens into households.
+  - name: Admin
+    description: Operational endpoints (stats, webhook log, reset).
+  - name: System
+    description: Health and documentation.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [System]
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  system: { type: string, example: identity }
+                  version: { type: string, example: 0.1.0 }
+  /citizens:
+    get:
+      operationId: listCitizens
+      tags: [Citizens]
+      summary: List citizens (or look up by national ID)
+      description: >
+        With no query parameters, returns a paginated list of citizens.
+        With `national_id`, returns the single matching citizen.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: national_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: Look up a single citizen by national ID (e.g. SIM-000123).
+      responses:
+        "200":
+          description: A page of citizens, or a single citizen when national_id is given.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Citizen" }
+                      meta: { $ref: "#/components/schemas/ListMeta" }
+                  - $ref: "#/components/schemas/Citizen"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      operationId: createCitizen
+      tags: [Citizens]
+      summary: Create a citizen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCitizen" }
+      responses:
+        "201":
+          description: Citizen created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Citizen" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /citizens/search:
+    get:
+      operationId: searchCitizens
+      tags: [Citizens]
+      summary: Fuzzy search citizens by name and/or date of birth
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: dob
+          in: query
+          schema: { type: string, format: date }
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of matching citizens
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CitizenList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /citizens/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getCitizen
+      tags: [Citizens]
+      summary: Get a citizen by UUID
+      responses:
+        "200":
+          description: The citizen
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Citizen" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: updateCitizen
+      tags: [Citizens]
+      summary: Update a citizen (including marking deceased)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCitizen" }
+      responses:
+        "200":
+          description: The updated citizen
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Citizen" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /citizens/{id}/household:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getCitizenHousehold
+      tags: [Citizens, Households]
+      summary: Get the members of a citizen's household
+      responses:
+        "200":
+          description: Household membership
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  household_id: { type: string, format: uuid }
+                  members:
+                    type: array
+                    items: { $ref: "#/components/schemas/HouseholdMember" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /households:
+    post:
+      operationId: createHousehold
+      tags: [Households]
+      summary: Create a household with members
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [members]
+              properties:
+                members:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [citizen_id, relationship]
+                    properties:
+                      citizen_id: { type: string, format: uuid }
+                      relationship:
+                        type: string
+                        enum: [head, spouse, child, other]
+      responses:
+        "201":
+          description: Household created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  household_id: { type: string, format: uuid }
+                  members:
+                    type: array
+                    items: { $ref: "#/components/schemas/HouseholdMember" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /households/{id}/members:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    patch:
+      operationId: updateHouseholdMembers
+      tags: [Households]
+      summary: Add or remove household members
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                add:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      citizen_id: { type: string, format: uuid }
+                      relationship:
+                        type: string
+                        enum: [head, spouse, child, other]
+                remove:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Updated household membership
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  household_id: { type: string, format: uuid }
+                  members:
+                    type: array
+                    items: { $ref: "#/components/schemas/HouseholdMember" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [Admin]
+      summary: Record counts for the population dashboard
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  citizens: { type: integer }
+                  alive: { type: integer }
+                  deceased: { type: integer }
+                  households: { type: integer }
+  /admin/webhooks:
+    get:
+      operationId: listWebhookEvents
+      tags: [Admin]
+      summary: Paginated log of emitted webhook events
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of webhook events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/WebhookEvent" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+  /admin/reset:
+    post:
+      operationId: resetSystem
+      tags: [Admin]
+      summary: Wipe all citizen, address and household data
+      responses:
+        "200":
+          description: Reset complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  reset: { type: boolean }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: 1-based page number.
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: Items per page (max 100).
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: NOT_FOUND }
+            message: { type: string }
+            details:
+              type: object
+              nullable: true
+              additionalProperties: true
+              description: Optional machine-readable detail (e.g. field errors).
+    ListMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+    Address:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        citizen_id: { type: string, format: uuid }
+        type: { type: string, enum: [residential, mailing] }
+        line_1: { type: string }
+        line_2: { type: string, nullable: true }
+        city: { type: string }
+        postal_code: { type: string }
+        from_date: { type: string, format: date }
+        to_date: { type: string, format: date, nullable: true }
+    Citizen:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        national_id: { type: string, example: SIM-000123 }
+        given_name: { type: string }
+        family_name: { type: string }
+        date_of_birth: { type: string, format: date }
+        sex: { type: string, enum: [male, female] }
+        email: { type: string, nullable: true }
+        phone_number: { type: string, nullable: true }
+        date_of_death: { type: string, format: date, nullable: true }
+        status: { type: string, enum: [alive, deceased] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        addresses:
+          type: array
+          items: { $ref: "#/components/schemas/Address" }
+    CitizenList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Citizen" }
+        meta: { $ref: "#/components/schemas/ListMeta" }
+    HouseholdMember:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        household_id: { type: string, format: uuid }
+        citizen_id: { type: string, format: uuid }
+        relationship: { type: string, enum: [head, spouse, child, other] }
+        from_date: { type: string, format: date }
+        to_date: { type: string, format: date, nullable: true }
+    CreateCitizen:
+      type: object
+      required: [given_name, family_name, date_of_birth, sex]
+      properties:
+        given_name: { type: string }
+        family_name: { type: string }
+        date_of_birth: { type: string, format: date }
+        sex: { type: string, enum: [male, female] }
+        email: { type: string, nullable: true }
+        phone_number: { type: string, nullable: true }
+        household_id: { type: string, format: uuid }
+        relationship: { type: string, enum: [head, spouse, child, other] }
+        addresses:
+          type: array
+          items: { $ref: "#/components/schemas/Address" }
+    UpdateCitizen:
+      type: object
+      properties:
+        given_name: { type: string }
+        family_name: { type: string }
+        date_of_birth: { type: string, format: date }
+        sex: { type: string, enum: [male, female] }
+        email: { type: string, nullable: true }
+        phone_number: { type: string, nullable: true }
+        date_of_death: { type: string, format: date, nullable: true }
+        status: { type: string, enum: [alive, deceased] }
+    WebhookEvent:
+      type: object
+      description: DCI / CloudEvents-style event envelope emitted to WEBHOOK_URL.
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, example: citizen.created }
+        source: { type: string, example: identity }
+        time: { type: string, format: date-time }
+        data: { type: object, additionalProperties: true }
+        status: { type: string, enum: [pending, delivered, failed, skipped] }
+        error: { type: string, nullable: true }

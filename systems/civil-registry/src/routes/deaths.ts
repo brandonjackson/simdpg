@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { notFound, getPagination, listResponse } from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { deathRegistrations } from "../db/schema.js";
 import { emitWebhook } from "../webhooks.js";
@@ -93,8 +94,7 @@ router.get(
       .get();
 
     if (!record) {
-      res.status(404).json({ error: "Death registration not found" });
-      return;
+      throw notFound("Death registration not found");
     }
 
     res.json(record);
@@ -109,20 +109,28 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const citizenId = req.query.citizen_id as string | undefined;
+    const { offset, limit, page, per_page } = getPagination(req);
 
-    if (citizenId) {
-      const records = db
-        .select()
+    const where = citizenId
+      ? eq(deathRegistrations.citizen_id, citizenId)
+      : undefined;
+
+    const total =
+      db
+        .select({ c: sql<number>`count(*)` })
         .from(deathRegistrations)
-        .where(eq(deathRegistrations.citizen_id, citizenId))
-        .all();
+        .where(where)
+        .get()?.c ?? 0;
 
-      res.json(records);
-      return;
-    }
+    const rows = db
+      .select()
+      .from(deathRegistrations)
+      .where(where)
+      .limit(limit)
+      .offset(offset)
+      .all();
 
-    const all = db.select().from(deathRegistrations).all();
-    res.json(all);
+    res.json(listResponse(rows, { page, per_page }, total));
   }),
 );
 

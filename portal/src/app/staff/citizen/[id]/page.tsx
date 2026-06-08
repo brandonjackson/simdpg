@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
+import { listData } from "@/lib/api";
 
 interface Citizen {
   id: string;
@@ -82,7 +83,7 @@ export default function CitizenTimeline() {
         `/api/proxy/civil-registry/events?citizen_id=${id}`
       );
       if (eventsRes.ok) {
-        const vitalEvents = await eventsRes.json();
+        const vitalEvents = listData<any>(await eventsRes.json());
         for (const evt of vitalEvents) {
           events.push({
             date: evt.date,
@@ -107,8 +108,8 @@ export default function CitizenTimeline() {
         `/api/proxy/health/patients?citizen_id=${id}`
       );
       if (patientRes.ok) {
-        const patients = await patientRes.json();
-        const patient = Array.isArray(patients) ? patients[0] : patients;
+        const patients = listData<any>(await patientRes.json());
+        const patient = patients[0];
         if (patient) {
           events.push({
             date: patient.registered_at?.split("T")[0] || "",
@@ -122,7 +123,7 @@ export default function CitizenTimeline() {
             `/api/proxy/health/encounters?patient_id=${patient.id}`
           );
           if (encRes.ok) {
-            const encounters = await encRes.json();
+            const encounters = listData<any>(await encRes.json());
             for (const enc of encounters) {
               events.push({
                 date: enc.date,
@@ -143,7 +144,7 @@ export default function CitizenTimeline() {
             `/api/proxy/health/vaccinations?patient_id=${patient.id}`
           );
           if (vacRes.ok) {
-            const vaccinations = await vacRes.json();
+            const vaccinations = listData<any>(await vacRes.json());
             for (const vac of vaccinations) {
               events.push({
                 date: vac.date_administered,
@@ -168,7 +169,7 @@ export default function CitizenTimeline() {
         `/api/proxy/benefits/enrollments?citizen_id=${id}`
       );
       if (enrollRes.ok) {
-        const enrollmentData = await enrollRes.json();
+        const enrollmentData = listData<any>(await enrollRes.json());
         setEnrollments(enrollmentData);
         for (const enr of enrollmentData) {
           events.push({
@@ -198,7 +199,7 @@ export default function CitizenTimeline() {
         `/api/proxy/notifications/notifications?citizen_id=${id}`
       );
       if (notifRes.ok) {
-        const notifData = await notifRes.json();
+        const notifData = listData<any>(await notifRes.json());
         for (const n of notifData) {
           events.push({
             date: n.created_at?.split("T")[0] || "",

@@ -1,7 +1,13 @@
 import { Router } from "express";
-import { eq, and, lt, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import {
+  badRequest,
+  notFound,
+  getPagination,
+  listResponse,
+} from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { vaccinations, patients, encounters } from "../db/schema.js";
 import { emitWebhook } from "../webhooks.js";
@@ -58,8 +64,7 @@ router.post(
       .get();
 
     if (!patient) {
-      res.status(404).json({ error: "Patient not found" });
-      return;
+      throw notFound("Patient not found");
     }
 
     // Verify encounter exists if provided
@@ -71,8 +76,7 @@ router.post(
         .get();
 
       if (!encounter) {
-        res.status(404).json({ error: "Encounter not found" });
-        return;
+        throw notFound("Encounter not found");
       }
     }
 
@@ -118,19 +122,29 @@ router.get(
     const patientId = req.query.patient_id as string | undefined;
 
     if (!patientId) {
-      res
-        .status(400)
-        .json({ error: "patient_id query parameter is required" });
-      return;
+      throw badRequest("patient_id query parameter is required");
     }
+
+    const where = eq(vaccinations.patient_id, patientId);
+
+    const { offset, limit, page, per_page } = getPagination(req);
+
+    const total =
+      db
+        .select({ c: sql<number>`count(*)` })
+        .from(vaccinations)
+        .where(where)
+        .get()?.c ?? 0;
 
     const results = db
       .select()
       .from(vaccinations)
-      .where(eq(vaccinations.patient_id, patientId))
+      .where(where)
+      .limit(limit)
+      .offset(offset)
       .all();
 
-    res.json(results);
+    res.json(listResponse(results, { page, per_page }, total));
   }),
 );
 
@@ -146,17 +160,15 @@ router.get(
     const asOf = req.query.as_of as string | undefined;
 
     if (!asOf) {
-      res.status(400).json({ error: "as_of query parameter is required" });
-      return;
+      throw badRequest("as_of query parameter is required");
     }
 
     // Validate date format (basic check)
     if (!/^\d{4}-\d{2}-\d{2}/.test(asOf)) {
-      res
-        .status(400)
-        .json({ error: "as_of must be an ISO date (YYYY-MM-DD)" });
-      return;
+      throw badRequest("as_of must be an ISO date (YYYY-MM-DD)");
     }
+
+    const { offset, limit, page, per_page } = getPagination(req);
 
     // Find vaccinations where:
     //   1. next_dose_due IS NOT NULL
@@ -164,6 +176,24 @@ router.get(
     //   3. No later vaccination of the same vaccine_name exists for that patient
     //      (i.e., no vaccination with date_administered >= next_dose_due for that
     //       patient + vaccine_name combination)
+    const total =
+      (
+        db.get(sql`
+          SELECT count(*) AS c
+          FROM vaccinations v
+          INNER JOIN patients p ON p.id = v.patient_id
+          WHERE v.next_dose_due IS NOT NULL
+            AND v.next_dose_due < ${asOf}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM vaccinations v2
+              WHERE v2.patient_id = v.patient_id
+                AND v2.vaccine_name = v.vaccine_name
+                AND v2.date_administered >= v.next_dose_due
+            )
+        `) as { c: number } | undefined
+      )?.c ?? 0;
+
     const results = db.all(sql`
       SELECT
         v.patient_id,
@@ -182,9 +212,10 @@ router.get(
             AND v2.date_administered >= v.next_dose_due
         )
       ORDER BY v.next_dose_due ASC
+      LIMIT ${limit} OFFSET ${offset}
     `);
 
-    res.json(results);
+    res.json(listResponse(results, { page, per_page }, total));
   }),
 );
 

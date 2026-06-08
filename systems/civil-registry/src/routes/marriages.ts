@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { eq, or } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { notFound, getPagination, listResponse } from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { marriageRegistrations } from "../db/schema.js";
 import { emitWebhook } from "../webhooks.js";
@@ -93,8 +94,7 @@ router.get(
       .get();
 
     if (!record) {
-      res.status(404).json({ error: "Marriage registration not found" });
-      return;
+      throw notFound("Marriage registration not found");
     }
 
     res.json(record);
@@ -109,25 +109,31 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const citizenId = req.query.citizen_id as string | undefined;
+    const { offset, limit, page, per_page } = getPagination(req);
 
-    if (citizenId) {
-      const records = db
-        .select()
-        .from(marriageRegistrations)
-        .where(
-          or(
-            eq(marriageRegistrations.spouse_1_citizen_id, citizenId),
-            eq(marriageRegistrations.spouse_2_citizen_id, citizenId),
-          ),
+    const where = citizenId
+      ? or(
+          eq(marriageRegistrations.spouse_1_citizen_id, citizenId),
+          eq(marriageRegistrations.spouse_2_citizen_id, citizenId),
         )
-        .all();
+      : undefined;
 
-      res.json(records);
-      return;
-    }
+    const total =
+      db
+        .select({ c: sql<number>`count(*)` })
+        .from(marriageRegistrations)
+        .where(where)
+        .get()?.c ?? 0;
 
-    const all = db.select().from(marriageRegistrations).all();
-    res.json(all);
+    const rows = db
+      .select()
+      .from(marriageRegistrations)
+      .where(where)
+      .limit(limit)
+      .offset(offset)
+      .all();
+
+    res.json(listResponse(rows, { page, per_page }, total));
   }),
 );
 

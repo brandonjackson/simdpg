@@ -1,7 +1,13 @@
 import { Router } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import {
+  badRequest,
+  notFound,
+  getPagination,
+  listResponse,
+} from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { encounters, patients } from "../db/schema.js";
 import { emitWebhook } from "../webhooks.js";
@@ -62,8 +68,7 @@ router.post(
       .get();
 
     if (!patient) {
-      res.status(404).json({ error: "Patient not found" });
-      return;
+      throw notFound("Patient not found");
     }
 
     const id = uuidv4();
@@ -113,10 +118,7 @@ router.get(
     const type = req.query.type as string | undefined;
 
     if (!patientId) {
-      res
-        .status(400)
-        .json({ error: "patient_id query parameter is required" });
-      return;
+      throw badRequest("patient_id query parameter is required");
     }
 
     const conditions = [eq(encounters.patient_id, patientId)];
@@ -129,21 +131,33 @@ router.get(
         "consultation",
       ] as const;
       if (!validTypes.includes(type as (typeof validTypes)[number])) {
-        res.status(400).json({ error: `Invalid type: ${type}` });
-        return;
+        throw badRequest(`Invalid type: ${type}`);
       }
       conditions.push(
         eq(encounters.type, type as (typeof validTypes)[number]),
       );
     }
 
+    const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+
+    const { offset, limit, page, per_page } = getPagination(req);
+
+    const total =
+      db
+        .select({ c: sql<number>`count(*)` })
+        .from(encounters)
+        .where(where)
+        .get()?.c ?? 0;
+
     const results = db
       .select()
       .from(encounters)
-      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+      .where(where)
+      .limit(limit)
+      .offset(offset)
       .all();
 
-    res.json(results);
+    res.json(listResponse(results, { page, per_page }, total));
   }),
 );
 
@@ -162,8 +176,7 @@ router.get(
       .get();
 
     if (!encounter) {
-      res.status(404).json({ error: "Encounter not found" });
-      return;
+      throw notFound("Encounter not found");
     }
 
     res.json(encounter);

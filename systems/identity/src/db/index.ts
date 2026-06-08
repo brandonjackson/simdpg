@@ -65,9 +65,21 @@ export function ensureTables(): void {
       to_date         TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS webhook_events (
+      id          TEXT PRIMARY KEY,
+      type        TEXT NOT NULL,
+      source      TEXT NOT NULL,
+      time        TEXT NOT NULL,
+      data        TEXT NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'pending',
+      error       TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_citizens_national_id ON citizens(national_id);
     CREATE INDEX IF NOT EXISTS idx_addresses_citizen_id ON addresses(citizen_id);
     CREATE INDEX IF NOT EXISTS idx_household_members_household_id ON household_members(household_id);
     CREATE INDEX IF NOT EXISTS idx_household_members_citizen_id ON household_members(citizen_id);
+    CREATE INDEX IF NOT EXISTS idx_webhook_events_time ON webhook_events(time);
+    CREATE INDEX IF NOT EXISTS idx_webhook_events_type ON webhook_events(type);
   `);
 }

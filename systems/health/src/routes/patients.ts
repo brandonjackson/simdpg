@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { notFound, getPagination, listResponse } from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { patients } from "../db/schema.js";
 import { emitWebhook } from "../webhooks.js";
@@ -103,16 +104,26 @@ router.get(
         .get();
 
       if (!patient) {
-        res.status(404).json({ error: "Patient not found" });
-        return;
+        throw notFound("Patient not found");
       }
 
       res.json(patient);
       return;
     }
 
-    const all = db.select().from(patients).all();
-    res.json(all);
+    const { offset, limit, page, per_page } = getPagination(req);
+
+    const total =
+      db.select({ c: sql<number>`count(*)` }).from(patients).get()?.c ?? 0;
+
+    const rows = db
+      .select()
+      .from(patients)
+      .limit(limit)
+      .offset(offset)
+      .all();
+
+    res.json(listResponse(rows, { page, per_page }, total));
   }),
 );
 
@@ -131,8 +142,7 @@ router.get(
       .get();
 
     if (!patient) {
-      res.status(404).json({ error: "Patient not found" });
-      return;
+      throw notFound("Patient not found");
     }
 
     res.json(patient);

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { eq, and, sql } from "drizzle-orm";
+import { badRequest, notFound } from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { citizens, householdMembers } from "../db/schema.js";
 
@@ -64,10 +65,7 @@ householdRouter.post("/", async (req, res, next) => {
         .get();
 
       if (!citizen) {
-        res
-          .status(400)
-          .json({ error: `Citizen not found: ${member.citizen_id}` });
-        return;
+        throw badRequest(`Citizen not found: ${member.citizen_id}`);
       }
     }
 
@@ -106,8 +104,7 @@ householdRouter.patch("/:id/members", async (req, res, next) => {
       .get();
 
     if (!existing) {
-      res.status(404).json({ error: "Household not found" });
-      return;
+      throw notFound("Household not found");
     }
 
     const today = new Date().toISOString().split("T")[0];
@@ -136,10 +133,7 @@ householdRouter.patch("/:id/members", async (req, res, next) => {
         .get();
 
       if (!citizen) {
-        res
-          .status(400)
-          .json({ error: `Citizen not found: ${member.citizen_id}` });
-        return;
+        throw badRequest(`Citizen not found: ${member.citizen_id}`);
       }
 
       db.insert(householdMembers)

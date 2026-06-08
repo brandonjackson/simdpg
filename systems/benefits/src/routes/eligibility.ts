@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { notFound } from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { programs } from "../db/schema.js";
 
@@ -55,8 +56,7 @@ router.post(
       .get();
 
     if (!program) {
-      res.status(404).json({ error: "Program not found" });
-      return;
+      throw notFound("Program not found");
     }
 
     let parsedRules: Record<string, unknown> = {};

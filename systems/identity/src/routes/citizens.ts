@@ -2,6 +2,12 @@ import { Router } from "express";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { eq, like, or, sql, and } from "drizzle-orm";
+import {
+  badRequest,
+  notFound,
+  getPagination,
+  listResponse,
+} from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { citizens, addresses, householdMembers } from "../db/schema.js";
 import { emitWebhook } from "../webhooks.js";
@@ -87,7 +93,18 @@ async function getCitizenWithAddresses(citizenId: string) {
 // ---------------------------------------------------------------------------
 citizenRouter.get("/", async (req, res, next) => {
   try {
-    const rows = db.select().from(citizens).all();
+    const { offset, limit, page, per_page } = getPagination(req);
+
+    const total =
+      db.select({ c: sql<number>`count(*)` }).from(citizens).get()?.c ?? 0;
+
+    const rows = db
+      .select()
+      .from(citizens)
+      .orderBy(citizens.created_at)
+      .limit(limit)
+      .offset(offset)
+      .all();
 
     const enriched = rows.map((c) => {
       const addrs = db
@@ -98,7 +115,7 @@ citizenRouter.get("/", async (req, res, next) => {
       return { ...c, addresses: addrs };
     });
 
-    res.json(enriched);
+    res.json(listResponse(enriched, { page, per_page }, total));
   } catch (err) {
     next(err);
   }
@@ -113,10 +130,7 @@ citizenRouter.post("/", async (req, res, next) => {
 
     // Validate: if household_id provided, relationship is required
     if (body.household_id && !body.relationship) {
-      res
-        .status(400)
-        .json({ error: "relationship is required when household_id is provided" });
-      return;
+      throw badRequest("relationship is required when household_id is provided");
     }
 
     const id = uuidv4();
@@ -189,9 +203,10 @@ citizenRouter.get("/search", async (req, res, next) => {
     const { name, dob } = req.query;
 
     if (name === undefined && dob === undefined) {
-      res.status(400).json({ error: "Provide at least 'name' or 'dob' query parameter" });
-      return;
+      throw badRequest("Provide at least 'name' or 'dob' query parameter");
     }
+
+    const { offset, limit, page, per_page } = getPagination(req);
 
     const conditions = [];
 
@@ -216,7 +231,20 @@ citizenRouter.get("/search", async (req, res, next) => {
           ? conditions[0]!
           : and(...conditions);
 
-    const results = db.select().from(citizens).where(where).all();
+    const total =
+      db
+        .select({ c: sql<number>`count(*)` })
+        .from(citizens)
+        .where(where)
+        .get()?.c ?? 0;
+
+    const results = db
+      .select()
+      .from(citizens)
+      .where(where)
+      .limit(limit)
+      .offset(offset)
+      .all();
 
     // Attach addresses for each result
     const enriched = results.map((c) => {
@@ -228,7 +256,7 @@ citizenRouter.get("/search", async (req, res, next) => {
       return { ...c, addresses: addrs };
     });
 
-    res.json(enriched);
+    res.json(listResponse(enriched, { page, per_page }, total));
   } catch (err) {
     next(err);
   }
@@ -241,8 +269,7 @@ citizenRouter.get("/:id", async (req, res, next) => {
   try {
     const result = await getCitizenWithAddresses(req.params.id);
     if (!result) {
-      res.status(404).json({ error: "Citizen not found" });
-      return;
+      throw notFound("Citizen not found");
     }
     res.json(result);
   } catch (err) {
@@ -265,8 +292,7 @@ citizenRouter.patch("/:id", async (req, res, next) => {
       .get();
 
     if (!existing) {
-      res.status(404).json({ error: "Citizen not found" });
-      return;
+      throw notFound("Citizen not found");
     }
 
     const now = new Date().toISOString();
@@ -313,8 +339,7 @@ citizenRouter.get("/:id/household", async (req, res, next) => {
       .get();
 
     if (!membership) {
-      res.status(404).json({ error: "Citizen is not part of any household" });
-      return;
+      throw notFound("Citizen is not part of any household");
     }
 
     // Get all members of that household

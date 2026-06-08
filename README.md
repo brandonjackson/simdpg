@@ -133,7 +133,22 @@ Social protection programs, eligibility, enrollment, and payments.
 | `PATCH /enrollments/:id` | Update status (suspend, terminate) |
 | `POST /payments/schedule` | Schedule payments for an enrollment |
 
-All systems emit webhook events (`citizen.created`, `birth.registered`, etc.) to a configurable URL for OpenFn integration.
+### Shared API conventions (DCI)
+
+Every system follows a common set of [Digital Convergence Initiative](https://docs.dci.global/)-aligned conventions, provided by the shared `@simdpg/system-kit` package:
+
+- **Error envelope** — errors return `{ "error": { "code", "message", "details" } }` with a standard HTTP status.
+- **Pagination** — list endpoints accept `?page=&per_page=` and return `{ "data": [...], "meta": { "page", "per_page", "total" } }`.
+- **Traceability** — an `X-Request-ID` header is honoured if supplied (otherwise minted) and echoed on every response.
+- **ISO 8601 dates** throughout.
+- **DCI / CloudEvents-style webhooks** — events are emitted as `{ id, type, source, time, data }` to a configurable `WEBHOOK_URL` for OpenFn integration (`citizen.created`, `birth.registered`, etc.), and recorded in a per-system `webhook_events` log.
+- **OpenAPI** — each system ships an `openapi.yaml`, serves the raw spec at `GET /openapi.yaml`, and renders interactive docs at `GET /docs`.
+
+Each system also exposes `GET /admin/webhooks` — a paginated log of every event it has emitted, with delivery status — useful for debugging OpenFn integrations.
+
+Validate all specs with `npm run lint` (runs `redocly lint`). Confirm the specs
+still match the code with `npm run check:routes`, which boots each app and
+diffs its registered routes against the documented paths.
 
 ## Portal
 
@@ -183,6 +198,8 @@ Event types: births, deaths, marriages, clinic visits, vaccinations, benefit cla
 | `npm run setup:generate` | Generate synthetic population (systems must be running) |
 | `npm run reset` | Delete all databases (clean slate) |
 | `npm run build` | Build all workspaces |
+| `npm run lint` | Validate all systems' OpenAPI specs (`redocly lint`) |
+| `npm run check:routes` | Verify each app's routes match its OpenAPI spec |
 | `npm run test` | Run tests across all workspaces |
 
 ## Tech Stack

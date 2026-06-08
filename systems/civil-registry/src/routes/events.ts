@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { eq, or } from "drizzle-orm";
+import { badRequest, getPagination, listResponse } from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import {
   birthRegistrations,
@@ -52,11 +53,10 @@ router.get(
     const citizenId = req.query.citizen_id as string | undefined;
 
     if (!citizenId) {
-      res
-        .status(400)
-        .json({ error: "citizen_id query parameter is required" });
-      return;
+      throw badRequest("citizen_id query parameter is required");
     }
+
+    const { offset, limit, page, per_page } = getPagination(req);
 
     const events: VitalEvent[] = [];
 
@@ -122,7 +122,10 @@ router.get(
     // Sort chronologically
     events.sort((a, b) => a.date.localeCompare(b.date));
 
-    res.json(events);
+    const total = events.length;
+    const pageRows = events.slice(offset, offset + limit);
+
+    res.json(listResponse(pageRows, { page, per_page }, total));
   }),
 );
 

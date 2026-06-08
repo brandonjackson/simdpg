@@ -1,0 +1,19 @@
+extends:
+  - recommended
+
+apis:
+  identity:
+    root: systems/identity/openapi.yaml
+  civil-registry:
+    root: systems/civil-registry/openapi.yaml
+  health:
+    root: systems/health/openapi.yaml
+  benefits:
+    root: systems/benefits/openapi.yaml
+  notifications:
+    root: systems/notifications/openapi.yaml
+
+rules:
+  operation-4xx-response: off
+  no-server-example.com: off
+  security-defined: off
