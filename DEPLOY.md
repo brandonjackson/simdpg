@@ -20,13 +20,25 @@ be backed by a persistent volume.
 
 ## Local (docker-compose)
 
+All services share one image (`simdpg:latest`). **Build it once, then start** —
+this avoids rebuilding the image per service:
+
 ```bash
-docker compose up --build        # all 7 systems + portal
+docker build -t simdpg:latest .   # build the shared image once
+docker compose up                 # start all 7 systems + portal (reuses the image)
 ```
 
 - Portal: http://localhost:3000  •  Systems: http://localhost:3001–3007 (`/health`, `/docs`)
 - Each system's database is seeded automatically the first time its volume is created.
 - `docker compose down` stops the stack (data preserved); `docker compose down -v` wipes all data.
+
+> **Don't use `docker compose up --build` unless you have the Buildx/BuildKit
+> plugin.** With BuildKit, Compose builds the shared image once. With Docker's
+> *legacy* builder (no buildx), Compose builds the image **once per service, in
+> parallel** — 7 simultaneous `npm ci` runs that can exhaust memory and get
+> OOM-killed (exit 137). Building once with `docker build` first sidesteps this
+> entirely. On a low-memory VM (e.g. Colima default 2 GB), also give it room:
+> `colima stop && colima start --cpu 4 --memory 8`.
 
 ## Railway
 

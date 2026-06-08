@@ -65,10 +65,11 @@ Deletes all SQLite databases. Restart systems after if they're running.
 The whole stack ships as a single Docker image. Run it locally with:
 
 ```bash
-docker compose up --build
+docker build -t simdpg:latest .   # build the shared image once
+docker compose up                 # start every system + the portal
 ```
 
-This builds every system + the portal and seeds each database on first run.
+This seeds each database on first run.
 For Railway (or any container host) and the full configuration reference, see
 [DEPLOY.md](DEPLOY.md).
 
