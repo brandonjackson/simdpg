@@ -146,7 +146,9 @@ Every system follows a common set of [Digital Convergence Initiative](https://do
 
 Each system also exposes `GET /admin/webhooks` — a paginated log of every event it has emitted, with delivery status — useful for debugging OpenFn integrations.
 
-Validate all specs with `npm run lint` (runs `redocly lint`).
+Validate all specs with `npm run lint` (runs `redocly lint`). Confirm the specs
+still match the code with `npm run check:routes`, which boots each app and
+diffs its registered routes against the documented paths.
 
 ## Portal
 
@@ -197,6 +199,7 @@ Event types: births, deaths, marriages, clinic visits, vaccinations, benefit cla
 | `npm run reset` | Delete all databases (clean slate) |
 | `npm run build` | Build all workspaces |
 | `npm run lint` | Validate all systems' OpenAPI specs (`redocly lint`) |
+| `npm run check:routes` | Verify each app's routes match its OpenAPI spec |
 | `npm run test` | Run tests across all workspaces |
 
 ## Tech Stack

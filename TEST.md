@@ -11,13 +11,17 @@ expected output is shown under each command.
 
 ```bash
 npm install
-npm run build      # builds packages, all 5 systems, the portal, and the simulation
-npm run lint       # redocly lint of all 5 openapi.yaml specs — must end "🎉" (warnings OK)
+npm run build         # builds packages, all 5 systems, the portal, and the simulation
+npm run lint          # redocly lint of all 5 openapi.yaml specs — must end "🎉" (warnings OK)
+npm run check:routes  # boots each app and diffs its routes against its openapi.yaml
 ```
 
 - `npm run build` exits 0.
 - `npm run lint` prints **"Your API descriptions are valid. 🎉"** (a few
   `info-license-strict` warnings are expected and fine).
+- `npm run check:routes` prints a `✓` line per system and **"All systems' routes
+  match their OpenAPI specs."** (this is how spec drift is caught — if you add a
+  route without documenting it, this step fails).
 
 ## 1. Start the systems
 

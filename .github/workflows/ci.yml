@@ -25,5 +25,8 @@ jobs:
       - name: Lint OpenAPI specs
         run: npm run lint
 
+      - name: Check routes match OpenAPI specs
+        run: npm run check:routes
+
       - name: Run tests
         run: npm test

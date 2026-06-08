@@ -62,8 +62,12 @@ app.use(errorHandler);
 
 ensureTables();
 
-app.listen(PORT, () => {
-  console.log(`Civil Registry system listening on port ${PORT}`);
-});
+// Only bind a port when run as a service; importing the app (tooling, tests,
+// route-coverage check) sets SIMDPG_NO_LISTEN to keep it inert.
+if (!process.env.SIMDPG_NO_LISTEN) {
+  app.listen(PORT, () => {
+    console.log(`Civil Registry system listening on port ${PORT}`);
+  });
+}
 
 export default app;

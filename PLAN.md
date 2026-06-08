@@ -143,9 +143,9 @@ system-catalog documentation.
   - [x] Author `openapi.yaml` per system, colocated at `systems/<name>/openapi.yaml`
   - [x] Validate specs in CI / `npm run lint` (`redocly lint`, wired into `.github/workflows/ci.yml`)
   - [x] Serve interactive docs at `GET /docs` per system (Scalar) + raw spec at `GET /openapi.yaml`
-  - [ ] Keep specs in sync with routes (diff generated vs committed spec) — specs
-        are hand-authored and lint-checked; an automated generated-vs-committed
-        diff is still outstanding.
+  - [x] Keep specs in sync with routes — `npm run check:routes` boots each app,
+        enumerates its registered routes, and fails CI if they diverge from the
+        documented paths in `openapi.yaml` (both directions).
 - [x] **Systems-catalog entries kept in sync.** Added an API-conventions section
       documenting the shared DCI conventions, per-system `/docs` + `/openapi.yaml`
       + `/admin/webhooks` links, and DCI / GovStack building-block references.
