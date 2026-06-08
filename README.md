@@ -60,6 +60,18 @@ npm run reset
 
 Deletes all SQLite databases. Restart systems after if they're running.
 
+## Deployment
+
+The whole stack ships as a single Docker image. Run it locally with:
+
+```bash
+docker compose up --build
+```
+
+This builds every system + the portal and seeds each database on first run.
+For Railway (or any container host) and the full configuration reference, see
+[DEPLOY.md](DEPLOY.md).
+
 ## Project Structure
 
 ```
