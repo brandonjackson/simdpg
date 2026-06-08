@@ -44,8 +44,8 @@ export default function SandboxPage() {
       <div className="govuk-inset-text">
         Requests are proxied through the portal, so there is no CORS setup to
         worry about. The {builtCount} built systems must be running (
-        <code>npm run dev:systems</code>) to receive requests; the Payments and
-        Social Registry stubs are listed for reference but cannot be called yet.
+        <code>npm run dev:systems</code>) to receive requests; the Payments stub
+        is listed for reference but cannot be called yet.
         Each system also has its own page in the{" "}
         <a href="/staff/systems-catalog" className="govuk-link">
           systems catalog

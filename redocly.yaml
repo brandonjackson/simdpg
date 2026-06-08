@@ -12,6 +12,8 @@ apis:
     root: systems/benefits/openapi.yaml
   notifications:
     root: systems/notifications/openapi.yaml
+  social-registry:
+    root: systems/social-registry/openapi.yaml
 
 rules:
   operation-4xx-response: off

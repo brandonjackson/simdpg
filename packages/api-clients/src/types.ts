@@ -193,6 +193,67 @@ export interface EligibilityResult {
   program_id: string;
 }
 
+export interface VulnerabilityIndicator {
+  id: string;
+  indicator:
+    | "disability"
+    | "elderly"
+    | "single_parent"
+    | "chronic_illness"
+    | "unemployed"
+    | "dependents";
+  value: number;
+  weight: number;
+}
+
+export interface Assessment {
+  id: string;
+  household_id: string;
+  head_citizen_id: string;
+  pmt_score: number;
+  income_band: "low" | "medium" | "high";
+  data_source: "interview" | "imported" | "recertified";
+  assessed_at: string;
+  valid_until: string;
+  status: "active" | "expired" | "superseded";
+  created_at: string;
+  updated_at: string;
+  indicators: VulnerabilityIndicator[];
+  superseded_assessment_id?: string | null;
+}
+
+export interface CreateAssessmentInput {
+  household_id: string;
+  head_citizen_id: string;
+  pmt_score: number;
+  income_band?: "low" | "medium" | "high";
+  data_source?: "interview" | "imported" | "recertified";
+  assessed_at?: string;
+  valid_until?: string;
+  indicators?: {
+    indicator: VulnerabilityIndicator["indicator"];
+    value?: number;
+    weight?: number;
+  }[];
+}
+
+export interface TargetingProfile {
+  household_id: string;
+  has_assessment: boolean;
+  assessment_id: string | null;
+  head_citizen_id: string | null;
+  pmt_score: number | null;
+  income_band: "low" | "medium" | "high" | null;
+  vulnerability_flags: VulnerabilityIndicator["indicator"][];
+  vulnerability_score: number;
+  targeting_band: "priority" | "eligible" | "not_targeted";
+  targeted: boolean;
+  assessed_at: string | null;
+  valid_until: string | null;
+  status: "active" | "expired" | "superseded" | null;
+  expired: boolean;
+}
+
 export interface HealthCheckResponse {
   status: "ok";
   system: string;

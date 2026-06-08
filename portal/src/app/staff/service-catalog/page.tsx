@@ -33,13 +33,13 @@ export default function ServiceCatalog() {
       </p>
 
       <div className="govuk-inset-text">
-        <strong>Systems overview:</strong> SimDPG runs five live systems &mdash;{" "}
+        <strong>Systems overview:</strong> SimDPG runs six live systems &mdash;{" "}
         <strong>Identity</strong> (:3001), <strong>Civil Registry</strong>{" "}
         (:3002), <strong>Health</strong> (:3003), <strong>Benefits</strong>{" "}
-        (:3004), and <strong>Notifications</strong> (:3005) &mdash; plus two
-        stubs: <strong>Payments</strong> (:3006) and{" "}
-        <strong>Social Registry</strong> (:3007). Systems communicate via
-        webhooks routed through OpenFn workflows.
+        (:3004), <strong>Notifications</strong> (:3005), and{" "}
+        <strong>Social Registry</strong> (:3007) &mdash; plus one stub:{" "}
+        <strong>Payments</strong> (:3006). Systems communicate via webhooks
+        routed through OpenFn workflows.
       </div>
 
       {/* ── Quick-nav ── */}

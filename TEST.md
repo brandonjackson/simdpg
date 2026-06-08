@@ -11,8 +11,8 @@ expected output is shown under each command.
 
 ```bash
 npm install
-npm run build         # builds packages, all 5 systems, the portal, and the simulation
-npm run lint          # redocly lint of all 5 openapi.yaml specs — must end "🎉" (warnings OK)
+npm run build         # builds packages, all 6 systems, the portal, and the simulation
+npm run lint          # redocly lint of all 6 openapi.yaml specs — must end "🎉" (warnings OK)
 npm run check:routes  # boots each app and diffs its routes against its openapi.yaml
 ```
 
