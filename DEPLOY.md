@@ -66,7 +66,17 @@ services from its own private domain. So you set **no** `SERVICE_DIR`,
 For **every** service, just set:
 
 - **Root Directory:** `/` (the monorepo root — required so the workspace install/build works)
-- **Builder:** Dockerfile  •  **Dockerfile Path:** `Dockerfile`
+
+The builder is pinned to the Dockerfile by the repo's **`railway.json`**, so you
+do **not** need to choose a builder. Keeping that config in place from the first
+build also stops Railway's monorepo auto-detection from injecting a custom build
+or start command — those Railpack-generated commands would otherwise override
+the Dockerfile's `ENTRYPOINT` and the service would start on the wrong port.
+
+> If you have an existing service that was created *before* `railway.json` (so
+> Railway already auto-filled commands): clear its **custom Build Command** and
+> **custom Start Command** (Settings → Build / Deploy) once, or just recreate it.
+> A service deployed fresh with `railway.json` present needs neither.
 
 For each **system** service, also add:
 
