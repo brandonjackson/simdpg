@@ -37,8 +37,11 @@ function systemUrl(envVar: string, service: string, port: number): string {
   const explicit = process.env[envVar];
   if (explicit) return explicit;
   if (onRailway) {
+    // Railway injects PORT=8080 for every service and the systems bind it
+    // (their `start` script runs `node dist` on $PORT), so address them on
+    // 8080 over the private network. The `port` arg is the local default.
     const host = railwayHostFor(service) ?? `${service}.railway.internal`;
-    return `http://${host}:${port}`;
+    return `http://${host}:8080`;
   }
   return `http://localhost:${port}`;
 }
