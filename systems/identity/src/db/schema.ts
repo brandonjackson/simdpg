@@ -47,3 +47,19 @@ export const householdMembers = sqliteTable("household_members", {
   from_date: text("from_date").notNull(),
   to_date: text("to_date"),
 });
+
+/**
+ * Append-only log of every webhook this system has emitted. Used for
+ * debugging OpenFn integrations — see GET /admin/webhooks.
+ */
+export const webhookEvents = sqliteTable("webhook_events", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  source: text("source").notNull(),
+  time: text("time").notNull(),
+  data: text("data").notNull(),
+  status: text("status", { enum: ["pending", "delivered", "failed", "skipped"] })
+    .notNull()
+    .default("pending"),
+  error: text("error"),
+});

@@ -1,7 +1,12 @@
 import { Router } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import {
+  notFound,
+  getPagination,
+  listResponse,
+} from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { notifications } from "../db/schema.js";
 import { emitWebhook } from "../webhooks.js";
@@ -22,21 +27,8 @@ const sendBulkSchema = z.object({
   notifications: z.array(sendNotificationSchema).min(1).max(100),
 });
 
-function asyncHandler(
-  fn: (
-    req: import("express").Request,
-    res: import("express").Response,
-    next: import("express").NextFunction,
-  ) => Promise<void>,
-): import("express").RequestHandler {
-  return (req, res, next) => {
-    fn(req, res, next).catch(next);
-  };
-}
-
-router.post(
-  "/",
-  asyncHandler(async (req, res) => {
+router.post("/", async (req, res, next) => {
+  try {
     const body = sendNotificationSchema.parse(req.body);
 
     const id = uuidv4();
@@ -69,12 +61,13 @@ router.post(
     emitWebhook("notification.sent", created as Record<string, unknown>);
 
     res.status(201).json(created);
-  }),
-);
+  } catch (err) {
+    next(err);
+  }
+});
 
-router.post(
-  "/bulk",
-  asyncHandler(async (req, res) => {
+router.post("/bulk", async (req, res, next) => {
+  try {
     const body = sendBulkSchema.parse(req.body);
     const now = new Date().toISOString();
     const results = [];
@@ -111,36 +104,66 @@ router.post(
     emitWebhook("notification.bulk_sent", { count: results.length });
 
     res.status(201).json(results);
-  }),
-);
+  } catch (err) {
+    next(err);
+  }
+});
 
-router.get(
-  "/",
-  asyncHandler(async (req, res) => {
+router.get("/", async (req, res, next) => {
+  try {
     const citizenId = req.query.citizen_id as string | undefined;
     const status = req.query.status as string | undefined;
     const sourceService = req.query.source_system as string | undefined;
 
-    let query = db.select().from(notifications);
+    const { offset, limit, page, per_page } = getPagination(req);
 
+    const conditions = [];
     if (citizenId) {
-      query = query.where(eq(notifications.citizen_id, citizenId)) as typeof query;
+      conditions.push(eq(notifications.citizen_id, citizenId));
     }
     if (status) {
-      query = query.where(eq(notifications.status, status as "pending" | "sent" | "delivered" | "failed")) as typeof query;
+      conditions.push(
+        eq(
+          notifications.status,
+          status as "pending" | "sent" | "delivered" | "failed",
+        ),
+      );
     }
     if (sourceService) {
-      query = query.where(eq(notifications.source_system, sourceService)) as typeof query;
+      conditions.push(eq(notifications.source_system, sourceService));
     }
 
-    const rows = query.orderBy(desc(notifications.created_at)).all();
-    res.json(rows);
-  }),
-);
+    const where =
+      conditions.length === 0
+        ? undefined
+        : conditions.length === 1
+          ? conditions[0]!
+          : and(...conditions);
 
-router.get(
-  "/:id",
-  asyncHandler(async (req, res) => {
+    const total =
+      db
+        .select({ c: sql<number>`count(*)` })
+        .from(notifications)
+        .where(where)
+        .get()?.c ?? 0;
+
+    const rows = db
+      .select()
+      .from(notifications)
+      .where(where)
+      .orderBy(desc(notifications.created_at))
+      .limit(limit)
+      .offset(offset)
+      .all();
+
+    res.json(listResponse(rows, { page, per_page }, total));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/:id", async (req, res, next) => {
+  try {
     const id = req.params.id as string;
     const row = db
       .select()
@@ -149,12 +172,13 @@ router.get(
       .get();
 
     if (!row) {
-      res.status(404).json({ error: "Notification not found" });
-      return;
+      throw notFound("Notification not found");
     }
 
     res.json(row);
-  }),
-);
+  } catch (err) {
+    next(err);
+  }
+});
 
 export default router;

@@ -32,7 +32,7 @@ export class CivilRegistryClient extends BaseClient {
   }
 
   getBirthByCitizen(citizenId: string): Promise<BirthRegistration[]> {
-    return this.get(`/births?citizen_id=${encodeURIComponent(citizenId)}`);
+    return this.getList(`/births?citizen_id=${encodeURIComponent(citizenId)}`);
   }
 
   registerDeath(input: {
@@ -49,7 +49,7 @@ export class CivilRegistryClient extends BaseClient {
   }
 
   getDeathByCitizen(citizenId: string): Promise<DeathRegistration[]> {
-    return this.get(`/deaths?citizen_id=${encodeURIComponent(citizenId)}`);
+    return this.getList(`/deaths?citizen_id=${encodeURIComponent(citizenId)}`);
   }
 
   registerMarriage(input: {
@@ -66,12 +66,12 @@ export class CivilRegistryClient extends BaseClient {
   }
 
   getMarriagesByCitizen(citizenId: string): Promise<MarriageRegistration[]> {
-    return this.get(
+    return this.getList(
       `/marriages?citizen_id=${encodeURIComponent(citizenId)}`,
     );
   }
 
   getEventsByCitizen(citizenId: string): Promise<VitalEvent[]> {
-    return this.get(`/events?citizen_id=${encodeURIComponent(citizenId)}`);
+    return this.getList(`/events?citizen_id=${encodeURIComponent(citizenId)}`);
   }
 }

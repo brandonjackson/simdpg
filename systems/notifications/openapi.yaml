@@ -1,0 +1,280 @@
+openapi: 3.0.3
+info:
+  title: SimDPG Notifications System
+  version: 0.1.0
+  license:
+    name: MIT
+  description: |
+    Outbound messaging system for the SimDPG city-state. Records email and SMS
+    messages sent to citizens on behalf of other systems (e.g. benefit
+    approvals, tax reminders) and tracks their delivery status.
+
+    All responses use DCI API conventions: a standard error envelope, list
+    pagination (`{ data, meta }`), `X-Request-ID` propagation, and ISO 8601
+    timestamps.
+servers:
+  - url: http://localhost:3005
+    description: Local development
+tags:
+  - name: Notifications
+    description: Create and read notification records.
+  - name: Admin
+    description: Operational endpoints (stats, webhook log, reset).
+  - name: System
+    description: Health and documentation.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [System]
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  system: { type: string, example: notifications }
+                  version: { type: string, example: 0.1.0 }
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [Notifications]
+      summary: List notifications
+      description: >
+        Returns a paginated list of notifications, optionally filtered by
+        citizen, status, or source system.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: citizen_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter by the citizen the notification was sent to.
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [pending, sent, delivered, failed] }
+          description: Filter by delivery status.
+        - name: source_system
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter by the system that requested the notification.
+      responses:
+        "200":
+          description: A page of notifications
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: sendNotification
+      tags: [Notifications]
+      summary: Send a single notification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateNotification" }
+      responses:
+        "201":
+          description: Notification created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /notifications/bulk:
+    post:
+      operationId: sendBulkNotifications
+      tags: [Notifications]
+      summary: Send a batch of notifications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [notifications]
+              properties:
+                notifications:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { $ref: "#/components/schemas/CreateNotification" }
+      responses:
+        "201":
+          description: Notifications created
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Notification" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /notifications/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getNotification
+      tags: [Notifications]
+      summary: Get a notification by UUID
+      responses:
+        "200":
+          description: The notification
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [Admin]
+      summary: Notification counts for the dashboard
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  notifications: { type: integer }
+  /admin/webhooks:
+    get:
+      operationId: listWebhookEvents
+      tags: [Admin]
+      summary: Paginated log of emitted webhook events
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of webhook events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/WebhookEvent" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+  /admin/reset:
+    post:
+      operationId: resetSystem
+      tags: [Admin]
+      summary: Wipe all notification data
+      responses:
+        "200":
+          description: Reset complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  reset: { type: boolean }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: 1-based page number.
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: Items per page (max 100).
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: NOT_FOUND }
+            message: { type: string }
+            details:
+              type: object
+              nullable: true
+              additionalProperties: true
+              description: Optional machine-readable detail (e.g. field errors).
+    ListMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        citizen_id: { type: string }
+        channel: { type: string, enum: [email, sms] }
+        destination: { type: string }
+        subject: { type: string, nullable: true }
+        body: { type: string }
+        source_system: { type: string }
+        source_event: { type: string, nullable: true }
+        status: { type: string, enum: [pending, sent, delivered, failed] }
+        attempts: { type: integer }
+        sent_at: { type: string, format: date-time, nullable: true }
+        delivered_at: { type: string, format: date-time, nullable: true }
+        failed_reason: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    NotificationList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Notification" }
+        meta: { $ref: "#/components/schemas/ListMeta" }
+    CreateNotification:
+      type: object
+      required: [citizen_id, channel, destination, body, source_system]
+      properties:
+        citizen_id: { type: string }
+        channel: { type: string, enum: [email, sms] }
+        destination: { type: string }
+        subject: { type: string, nullable: true }
+        body: { type: string }
+        source_system: { type: string }
+        source_event: { type: string, nullable: true }
+    WebhookEvent:
+      type: object
+      description: DCI / CloudEvents-style event envelope emitted to WEBHOOK_URL.
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, example: notification.sent }
+        source: { type: string, example: notifications }
+        time: { type: string, format: date-time }
+        data: { type: object, additionalProperties: true }
+        status: { type: string, enum: [pending, delivered, failed, skipped] }
+        error: { type: string, nullable: true }

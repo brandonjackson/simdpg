@@ -1,0 +1,440 @@
+openapi: 3.0.3
+info:
+  title: SimDPG Civil Registry System
+  version: 0.1.0
+  license:
+    name: MIT
+  description: |
+    Civil Registration & Vital Statistics (CRVS) registry for the SimDPG
+    city-state — the authoritative record of births, deaths and marriages.
+    Records reference citizens by the UUID issued by the Identity system.
+    Models the GovStack / DCI **CRVS (Civil Registration & Vital Statistics)**
+    building block.
+
+    All responses use DCI API conventions: a standard error envelope, list
+    pagination (`{ data, meta }`), `X-Request-ID` propagation, and ISO 8601
+    timestamps.
+servers:
+  - url: http://localhost:3002
+    description: Local development
+tags:
+  - name: Births
+    description: Register and look up birth records.
+  - name: Deaths
+    description: Register and look up death records.
+  - name: Marriages
+    description: Register and look up marriage records.
+  - name: Events
+    description: Unified timeline of vital events for a citizen.
+  - name: Admin
+    description: Operational endpoints (stats, webhook log, reset).
+  - name: System
+    description: Health and documentation.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [System]
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  system: { type: string, example: civil-registry }
+                  version: { type: string, example: 0.1.0 }
+  /births:
+    get:
+      operationId: listBirths
+      tags: [Births]
+      summary: List birth registrations (optionally filtered by child citizen)
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: citizen_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Filter to births where this citizen is the child.
+      responses:
+        "200":
+          description: A page of birth registrations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BirthList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: registerBirth
+      tags: [Births]
+      summary: Register a birth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBirth" }
+      responses:
+        "201":
+          description: Birth registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Birth" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /births/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getBirth
+      tags: [Births]
+      summary: Get a birth registration by ID
+      responses:
+        "200":
+          description: The birth registration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Birth" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /deaths:
+    get:
+      operationId: listDeaths
+      tags: [Deaths]
+      summary: List death registrations (optionally filtered by citizen)
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: citizen_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Filter to deaths for this citizen.
+      responses:
+        "200":
+          description: A page of death registrations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeathList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: registerDeath
+      tags: [Deaths]
+      summary: Register a death
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDeath" }
+      responses:
+        "201":
+          description: Death registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Death" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /deaths/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getDeath
+      tags: [Deaths]
+      summary: Get a death registration by ID
+      responses:
+        "200":
+          description: The death registration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Death" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /marriages:
+    get:
+      operationId: listMarriages
+      tags: [Marriages]
+      summary: List marriage registrations (optionally filtered by spouse)
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: citizen_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Filter to marriages where this citizen is either spouse.
+      responses:
+        "200":
+          description: A page of marriage registrations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarriageList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: registerMarriage
+      tags: [Marriages]
+      summary: Register a marriage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMarriage" }
+      responses:
+        "201":
+          description: Marriage registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Marriage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /marriages/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getMarriage
+      tags: [Marriages]
+      summary: Get a marriage registration by ID
+      responses:
+        "200":
+          description: The marriage registration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Marriage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /events:
+    get:
+      operationId: listCitizenEvents
+      tags: [Events]
+      summary: Unified, chronological timeline of a citizen's vital events
+      description: >
+        Returns a paginated, chronologically sorted list of all vital events
+        (births, deaths, marriages) associated with the given citizen.
+      parameters:
+        - name: citizen_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+          description: The citizen whose events to return.
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of vital events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [Admin]
+      summary: Vital event counts for the dashboard
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  births: { type: integer }
+                  deaths: { type: integer }
+                  marriages: { type: integer }
+  /admin/webhooks:
+    get:
+      operationId: listWebhookEvents
+      tags: [Admin]
+      summary: Paginated log of emitted webhook events
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of webhook events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/WebhookEvent" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+  /admin/reset:
+    post:
+      operationId: resetSystem
+      tags: [Admin]
+      summary: Wipe all birth, death and marriage registrations
+      responses:
+        "200":
+          description: Reset complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  reset: { type: boolean }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: 1-based page number.
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: Items per page (max 100).
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: NOT_FOUND }
+            message: { type: string }
+            details:
+              type: object
+              nullable: true
+              additionalProperties: true
+              description: Optional machine-readable detail (e.g. field errors).
+    ListMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+    Birth:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        child_citizen_id: { type: string, format: uuid }
+        mother_citizen_id: { type: string, format: uuid }
+        father_citizen_id: { type: string, format: uuid, nullable: true }
+        date_of_birth: { type: string, format: date }
+        place_of_birth: { type: string }
+        registration_date: { type: string, format: date }
+        registrar_notes: { type: string, nullable: true }
+        status: { type: string, enum: [registered, amended, cancelled] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    BirthList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Birth" }
+        meta: { $ref: "#/components/schemas/ListMeta" }
+    CreateBirth:
+      type: object
+      required: [child_citizen_id, mother_citizen_id, date_of_birth, place_of_birth]
+      properties:
+        child_citizen_id: { type: string, format: uuid }
+        mother_citizen_id: { type: string, format: uuid }
+        father_citizen_id: { type: string, format: uuid, nullable: true }
+        date_of_birth: { type: string, format: date }
+        place_of_birth: { type: string }
+        registrar_notes: { type: string, nullable: true }
+    Death:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        citizen_id: { type: string, format: uuid }
+        date_of_death: { type: string, format: date }
+        place_of_death: { type: string }
+        cause_of_death: { type: string, nullable: true }
+        registration_date: { type: string, format: date }
+        status: { type: string, enum: [registered, amended, cancelled] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    DeathList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Death" }
+        meta: { $ref: "#/components/schemas/ListMeta" }
+    CreateDeath:
+      type: object
+      required: [citizen_id, date_of_death, place_of_death]
+      properties:
+        citizen_id: { type: string, format: uuid }
+        date_of_death: { type: string, format: date }
+        place_of_death: { type: string }
+        cause_of_death: { type: string, nullable: true }
+    Marriage:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        spouse_1_citizen_id: { type: string, format: uuid }
+        spouse_2_citizen_id: { type: string, format: uuid }
+        date_of_marriage: { type: string, format: date }
+        place_of_marriage: { type: string }
+        registration_date: { type: string, format: date }
+        status: { type: string, enum: [registered, divorced, annulled] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    MarriageList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Marriage" }
+        meta: { $ref: "#/components/schemas/ListMeta" }
+    CreateMarriage:
+      type: object
+      required: [spouse_1_citizen_id, spouse_2_citizen_id, date_of_marriage, place_of_marriage]
+      properties:
+        spouse_1_citizen_id: { type: string, format: uuid }
+        spouse_2_citizen_id: { type: string, format: uuid }
+        date_of_marriage: { type: string, format: date }
+        place_of_marriage: { type: string }
+    Event:
+      type: object
+      description: A single vital event in a citizen's unified timeline.
+      properties:
+        type: { type: string, enum: [birth, death, marriage] }
+        date: { type: string, format: date }
+        id: { type: string, format: uuid }
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: The underlying registration record.
+    WebhookEvent:
+      type: object
+      description: DCI / CloudEvents-style event envelope emitted to WEBHOOK_URL.
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, example: birth.registered }
+        source: { type: string, example: civil-registry }
+        time: { type: string, format: date-time }
+        data: { type: object, additionalProperties: true }
+        status: { type: string, enum: [pending, delivered, failed, skipped] }
+        error: { type: string, nullable: true }

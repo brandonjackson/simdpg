@@ -227,6 +227,24 @@ export interface SendNotificationInput {
   source_event?: string | null;
 }
 
+/** DCI error envelope returned by every system. */
 export interface ErrorResponse {
-  error: string;
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+/** Pagination metadata on DCI list responses. */
+export interface ListMeta {
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+/** Standard DCI list envelope: `{ data, meta }`. */
+export interface ListResponse<T> {
+  data: T[];
+  meta: ListMeta;
 }

@@ -29,7 +29,7 @@ export class HealthClient extends BaseClient {
   }
 
   getPatientByCitizen(citizenId: string): Promise<Patient[]> {
-    return this.get(
+    return this.getList(
       `/patients?citizen_id=${encodeURIComponent(citizenId)}`,
     );
   }
@@ -57,7 +57,7 @@ export class HealthClient extends BaseClient {
   }): Promise<Encounter[]> {
     const query = new URLSearchParams({ patient_id: params.patient_id });
     if (params.type) query.set("type", params.type);
-    return this.get(`/encounters?${query.toString()}`);
+    return this.getList(`/encounters?${query.toString()}`);
   }
 
   recordVaccination(input: {
@@ -73,13 +73,13 @@ export class HealthClient extends BaseClient {
   }
 
   getVaccinations(patientId: string): Promise<Vaccination[]> {
-    return this.get(
+    return this.getList(
       `/vaccinations?patient_id=${encodeURIComponent(patientId)}`,
     );
   }
 
   getOverdueVaccinations(asOf: string): Promise<OverdueVaccination[]> {
-    return this.get(
+    return this.getList(
       `/vaccinations/overdue?as_of=${encodeURIComponent(asOf)}`,
     );
   }

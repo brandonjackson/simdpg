@@ -18,7 +18,7 @@ export class BenefitsClient extends BaseClient {
 
   getPrograms(status?: string): Promise<Program[]> {
     const query = status ? `?status=${encodeURIComponent(status)}` : "";
-    return this.get(`/programs${query}`);
+    return this.getList(`/programs${query}`);
   }
 
   getProgram(id: string): Promise<Program> {
@@ -54,7 +54,7 @@ export class BenefitsClient extends BaseClient {
   }
 
   getEnrollments(citizenId: string): Promise<Enrollment[]> {
-    return this.get(
+    return this.getList(
       `/enrollments?citizen_id=${encodeURIComponent(citizenId)}`,
     );
   }
@@ -71,7 +71,7 @@ export class BenefitsClient extends BaseClient {
   }
 
   getPayments(enrollmentId: string): Promise<Payment[]> {
-    return this.get(
+    return this.getList(
       `/payments?enrollment_id=${encodeURIComponent(enrollmentId)}`,
     );
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { listData, errorMessage } from "@/lib/api";
 
 interface Citizen {
   id: string;
@@ -36,10 +37,10 @@ export default function StaffSearch() {
       );
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Search failed");
+        throw new Error(errorMessage(data, "Search failed"));
       }
       const data = await res.json();
-      setResults(Array.isArray(data) ? data : []);
+      setResults(listData<Citizen>(data));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Search failed");
       setResults([]);

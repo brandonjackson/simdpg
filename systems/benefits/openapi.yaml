@@ -1,0 +1,484 @@
+openapi: 3.0.3
+info:
+  title: SimDPG Benefits System
+  version: 0.1.0
+  license:
+    name: MIT
+  description: |
+    Social protection registry for the SimDPG city-state — defines benefit
+    programmes, enrols citizens, runs eligibility checks, and schedules
+    payments. Models the GovStack / DCI **Social Protection** building block.
+
+    All responses use DCI API conventions: a standard error envelope, list
+    pagination (`{ data, meta }`), `X-Request-ID` propagation, and ISO 8601
+    timestamps.
+servers:
+  - url: http://localhost:3004
+    description: Local development
+tags:
+  - name: Programs
+    description: Benefit programme definitions.
+  - name: Eligibility
+    description: Eligibility checks against a programme's rules.
+  - name: Enrollments
+    description: Enrol citizens in programmes and manage their status.
+  - name: Payments
+    description: Schedule and track benefit payments.
+  - name: Admin
+    description: Operational endpoints (stats, webhook log, reset).
+  - name: System
+    description: Health and documentation.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [System]
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  system: { type: string, example: benefits }
+                  version: { type: string, example: 0.1.0 }
+  /programs:
+    get:
+      operationId: listPrograms
+      tags: [Programs]
+      summary: List benefit programmes
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [active, suspended, closed] }
+          description: Filter programmes by status.
+      responses:
+        "200":
+          description: A page of programmes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Program" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: createProgram
+      tags: [Programs]
+      summary: Create a benefit programme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProgram" }
+      responses:
+        "201":
+          description: Programme created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Program" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /programs/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getProgram
+      tags: [Programs]
+      summary: Get a programme by UUID
+      responses:
+        "200":
+          description: The programme
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Program" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /eligibility/check:
+    post:
+      operationId: checkEligibility
+      tags: [Eligibility]
+      summary: Check a citizen's eligibility for a programme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EligibilityCheck" }
+      responses:
+        "200":
+          description: Eligibility result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EligibilityResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /enrollments:
+    get:
+      operationId: listEnrollments
+      tags: [Enrollments]
+      summary: List enrollments (optionally filtered by citizen)
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: citizen_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter enrollments by citizen ID.
+      responses:
+        "200":
+          description: A page of enrollments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Enrollment" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: createEnrollment
+      tags: [Enrollments]
+      summary: Enrol a citizen in a programme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateEnrollment" }
+      responses:
+        "201":
+          description: Enrollment created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Enrollment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /enrollments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getEnrollment
+      tags: [Enrollments]
+      summary: Get an enrollment by UUID
+      responses:
+        "200":
+          description: The enrollment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Enrollment" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: updateEnrollment
+      tags: [Enrollments]
+      summary: Update enrollment status (e.g. terminate)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateEnrollment" }
+      responses:
+        "200":
+          description: The updated enrollment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Enrollment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payments:
+    get:
+      operationId: listPayments
+      tags: [Payments]
+      summary: List payments (optionally filtered by enrollment)
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: enrollment_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Filter payments by enrollment ID.
+      responses:
+        "200":
+          description: A page of payments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Payment" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /payments/schedule:
+    post:
+      operationId: schedulePayments
+      tags: [Payments]
+      summary: Create one or more scheduled payments for an enrollment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SchedulePayments" }
+      responses:
+        "201":
+          description: The scheduled payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Payment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    patch:
+      operationId: updatePayment
+      tags: [Payments]
+      summary: Update a payment's status (e.g. mark as paid)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePayment" }
+      responses:
+        "200":
+          description: The updated payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [Admin]
+      summary: Programme, enrollment and payment counts
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  programs: { type: integer }
+                  enrollments: { type: integer }
+                  payments: { type: integer }
+  /admin/webhooks:
+    get:
+      operationId: listWebhookEvents
+      tags: [Admin]
+      summary: Paginated log of emitted webhook events
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of webhook events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/WebhookEvent" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+  /admin/reset:
+    post:
+      operationId: resetSystem
+      tags: [Admin]
+      summary: Wipe enrollments and payments (programmes are preserved)
+      responses:
+        "200":
+          description: Reset complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  reset: { type: boolean }
+                  programs_preserved: { type: boolean }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: 1-based page number.
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: Items per page (max 100).
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: NOT_FOUND }
+            message: { type: string }
+            details:
+              type: object
+              nullable: true
+              additionalProperties: true
+              description: Optional machine-readable detail (e.g. field errors).
+    ListMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+    Program:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        eligibility_rules:
+          type: object
+          additionalProperties: true
+          description: Free-form rules object evaluated during eligibility checks.
+        payment_amount: { type: number }
+        payment_frequency: { type: string, enum: [monthly, one-time, quarterly] }
+        status: { type: string, enum: [active, suspended, closed] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateProgram:
+      type: object
+      required: [name, description, payment_amount, payment_frequency]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        eligibility_rules:
+          type: object
+          additionalProperties: true
+          description: Free-form rules object (defaults to {}).
+        payment_amount: { type: number, minimum: 0, exclusiveMinimum: true }
+        payment_frequency: { type: string, enum: [monthly, one-time, quarterly] }
+        status: { type: string, enum: [active, suspended, closed], default: active }
+    EligibilityCheck:
+      type: object
+      required: [citizen_id, program_id]
+      properties:
+        citizen_id: { type: string }
+        program_id: { type: string, format: uuid }
+    EligibilityResult:
+      type: object
+      properties:
+        eligible: { type: boolean }
+        reasons:
+          type: array
+          items: { type: string }
+        citizen_id: { type: string }
+        program:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            eligibility_rules:
+              type: object
+              additionalProperties: true
+    Enrollment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        program_id: { type: string, format: uuid }
+        citizen_id: { type: string }
+        household_id: { type: string, nullable: true }
+        status: { type: string, enum: [pending, active, suspended, terminated] }
+        enrolled_at: { type: string, format: date-time }
+        terminated_at: { type: string, format: date-time, nullable: true }
+        termination_reason: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        program_name: { type: string }
+        program_payment_amount: { type: number }
+        program_payment_frequency:
+          type: string
+          enum: [monthly, one-time, quarterly]
+    CreateEnrollment:
+      type: object
+      required: [program_id, citizen_id]
+      properties:
+        program_id: { type: string, format: uuid }
+        citizen_id: { type: string }
+        household_id: { type: string, nullable: true }
+    UpdateEnrollment:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [pending, active, suspended, terminated] }
+        termination_reason: { type: string, nullable: true }
+    Payment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        enrollment_id: { type: string, format: uuid }
+        amount: { type: number }
+        currency: { type: string, example: SIM }
+        status: { type: string, enum: [scheduled, paid, failed] }
+        scheduled_date: { type: string, format: date }
+        paid_date: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    SchedulePayments:
+      type: object
+      required: [enrollment_id, amount]
+      properties:
+        enrollment_id: { type: string, format: uuid }
+        amount: { type: number, minimum: 0, exclusiveMinimum: true }
+        currency: { type: string, default: SIM }
+        count: { type: integer, minimum: 1, default: 1 }
+        start_date: { type: string, format: date }
+    UpdatePayment:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [scheduled, paid, failed] }
+    WebhookEvent:
+      type: object
+      description: DCI / CloudEvents-style event envelope emitted to WEBHOOK_URL.
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, example: enrollment.created }
+        source: { type: string, example: benefits }
+        time: { type: string, format: date-time }
+        data: { type: object, additionalProperties: true }
+        status: { type: string, enum: [pending, delivered, failed, skipped] }
+        error: { type: string, nullable: true }

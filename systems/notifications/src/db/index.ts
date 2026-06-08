@@ -42,8 +42,20 @@ export function ensureTables(): void {
       updated_at      TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS webhook_events (
+      id          TEXT PRIMARY KEY,
+      type        TEXT NOT NULL,
+      source      TEXT NOT NULL,
+      time        TEXT NOT NULL,
+      data        TEXT NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'pending',
+      error       TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_notifications_citizen_id ON notifications(citizen_id);
     CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications(status);
     CREATE INDEX IF NOT EXISTS idx_notifications_source_system ON notifications(source_system);
+    CREATE INDEX IF NOT EXISTS idx_webhook_events_time ON webhook_events(time);
+    CREATE INDEX IF NOT EXISTS idx_webhook_events_type ON webhook_events(type);
   `);
 }

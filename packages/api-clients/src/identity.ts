@@ -1,4 +1,4 @@
-import { BaseClient } from "./base.js";
+import { BaseClient, ApiError } from "./base.js";
 import type {
   Citizen,
   CreateCitizenInput,
@@ -24,12 +24,25 @@ export class IdentityClient extends BaseClient {
     return this.get(`/citizens/${id}`);
   }
 
-  getCitizenByNationalId(nationalId: string): Promise<Citizen[]> {
-    return this.get(`/citizens?national_id=${encodeURIComponent(nationalId)}`);
+  /**
+   * Look up a citizen by national ID. The endpoint returns a single citizen
+   * (national IDs are unique) or 404; this returns a 0- or 1-element array so
+   * callers can treat lookups uniformly.
+   */
+  async getCitizenByNationalId(nationalId: string): Promise<Citizen[]> {
+    try {
+      const citizen = await this.get<Citizen>(
+        `/citizens?national_id=${encodeURIComponent(nationalId)}`,
+      );
+      return [citizen];
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return [];
+      throw err;
+    }
   }
 
   listCitizens(): Promise<Citizen[]> {
-    return this.get("/citizens");
+    return this.getList("/citizens");
   }
 
   searchCitizens(params: {
@@ -39,7 +52,7 @@ export class IdentityClient extends BaseClient {
     const query = new URLSearchParams();
     if (params.name !== undefined) query.set("name", params.name);
     if (params.dob !== undefined) query.set("dob", params.dob);
-    return this.get(`/citizens/search?${query.toString()}`);
+    return this.getList(`/citizens/search?${query.toString()}`);
   }
 
   updateCitizen(id: string, input: UpdateCitizenInput): Promise<Citizen> {

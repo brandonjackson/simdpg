@@ -477,6 +477,110 @@ export default function SystemsCatalog() {
         role of the information-mediator / exchange layer.
       </div>
 
+      <h2 className="govuk-heading-l">API conventions</h2>
+      <p className="govuk-body">
+        Every built system follows a shared set of conventions aligned with the{" "}
+        <a
+          className="govuk-link"
+          href="https://docs.dci.global/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Digital Convergence Initiative (DCI)
+        </a>{" "}
+        and{" "}
+        <a
+          className="govuk-link"
+          href="https://govstack.gitbook.io/specification/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          GovStack
+        </a>{" "}
+        building-block specifications, so OpenFn workflows can integrate with
+        each system the same way:
+      </p>
+      <ul className="govuk-list govuk-list--bullet">
+        <li>
+          <strong>Error envelope</strong> &mdash; every error returns{" "}
+          <code>{`{ "error": { "code", "message", "details" } }`}</code> with a
+          standard HTTP status.
+        </li>
+        <li>
+          <strong>Pagination</strong> &mdash; list endpoints accept{" "}
+          <code>?page=&amp;per_page=</code> and return{" "}
+          <code>{`{ "data": [...], "meta": { "page", "per_page", "total" } }`}</code>
+          .
+        </li>
+        <li>
+          <strong>Traceability</strong> &mdash; an <code>X-Request-ID</code>{" "}
+          header is honoured if supplied, otherwise minted, and echoed on every
+          response.
+        </li>
+        <li>
+          <strong>ISO 8601 dates</strong> everywhere (timestamps as{" "}
+          <code>date-time</code>, calendar dates as <code>date</code>).
+        </li>
+        <li>
+          <strong>DCI / CloudEvents-style webhooks</strong> &mdash; events are
+          emitted as{" "}
+          <code>{`{ id, type, source, time, data }`}</code> to the configured{" "}
+          <code>WEBHOOK_URL</code> and logged locally for debugging.
+        </li>
+        <li>
+          <strong>OpenAPI &amp; docs</strong> &mdash; each system ships an
+          <code>openapi.yaml</code>, serves the raw spec at{" "}
+          <code>/openapi.yaml</code>, and renders interactive docs at{" "}
+          <code>/docs</code>.
+        </li>
+        <li>
+          <strong>Webhook event log</strong> &mdash;{" "}
+          <code>GET /admin/webhooks</code> returns a paginated log of every
+          event the system has emitted, with delivery status.
+        </li>
+      </ul>
+
+      <table className="govuk-table">
+        <caption className="govuk-table__caption govuk-table__caption--m">
+          Interactive API documentation
+        </caption>
+        <thead>
+          <tr>
+            <th className="govuk-table__header">System</th>
+            <th className="govuk-table__header">Interactive docs</th>
+            <th className="govuk-table__header">OpenAPI spec</th>
+            <th className="govuk-table__header">Webhook log</th>
+          </tr>
+        </thead>
+        <tbody>
+          {systems
+            .filter((sys) => sys.status === "built")
+            .map((sys) => (
+              <tr key={`docs-${sys.id}`}>
+                <td className="govuk-table__cell">
+                  <strong>{sys.name}</strong>
+                </td>
+                <td className="govuk-table__cell">
+                  <a
+                    className="govuk-link"
+                    href={`http://localhost:${sys.port}/docs`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <code>:{sys.port}/docs</code>
+                  </a>
+                </td>
+                <td className="govuk-table__cell">
+                  <code>:{sys.port}/openapi.yaml</code>
+                </td>
+                <td className="govuk-table__cell">
+                  <code>:{sys.port}/admin/webhooks</code>
+                </td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+
       <h2 className="govuk-heading-l">System overview</h2>
       <table className="govuk-table">
         <thead>

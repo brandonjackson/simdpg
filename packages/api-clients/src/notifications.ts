@@ -25,7 +25,7 @@ export class NotificationsClient extends BaseClient {
   }
 
   getNotifications(citizenId: string): Promise<Notification[]> {
-    return this.get(
+    return this.getList(
       `/notifications?citizen_id=${encodeURIComponent(citizenId)}`,
     );
   }

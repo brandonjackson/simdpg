@@ -67,6 +67,16 @@ export function ensureTables(): void {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS webhook_events (
+      id          TEXT PRIMARY KEY,
+      type        TEXT NOT NULL,
+      source      TEXT NOT NULL,
+      time        TEXT NOT NULL,
+      data        TEXT NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'pending',
+      error       TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_patients_citizen_id ON patients(citizen_id);
     CREATE INDEX IF NOT EXISTS idx_encounters_patient_id ON encounters(patient_id);
     CREATE INDEX IF NOT EXISTS idx_encounters_type ON encounters(type);
@@ -74,5 +84,7 @@ export function ensureTables(): void {
     CREATE INDEX IF NOT EXISTS idx_vaccinations_encounter_id ON vaccinations(encounter_id);
     CREATE INDEX IF NOT EXISTS idx_vaccinations_vaccine_name ON vaccinations(vaccine_name);
     CREATE INDEX IF NOT EXISTS idx_vaccinations_next_dose_due ON vaccinations(next_dose_due);
+    CREATE INDEX IF NOT EXISTS idx_webhook_events_time ON webhook_events(time);
+    CREATE INDEX IF NOT EXISTS idx_webhook_events_type ON webhook_events(type);
   `);
 }

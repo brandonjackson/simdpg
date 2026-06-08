@@ -1,5 +1,9 @@
 import express from "express";
 import { eq } from "drizzle-orm";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { requestId, notFound, badRequest, docsHtml } from "@simdpg/system-kit";
 import { db, ensureTables } from "./db/index.js";
 import { citizens, addresses } from "./db/schema.js";
 import { citizenRouter } from "./routes/citizens.js";
@@ -10,10 +14,14 @@ import { errorHandler } from "./middleware/error-handler.js";
 // Ensure tables exist on startup
 ensureTables();
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const OPENAPI_PATH = resolve(__dirname, "..", "openapi.yaml");
+
 const app = express();
 const PORT = process.env.PORT ?? 3001;
 
 app.use(express.json());
+app.use(requestId);
 
 // ---------------------------------------------------------------------------
 // Health
@@ -23,15 +31,28 @@ app.get("/health", (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// API docs — interactive reference (/docs) + raw spec (/openapi.yaml)
+// ---------------------------------------------------------------------------
+app.get("/openapi.yaml", (_req, res) => {
+  res.type("application/yaml").send(readFileSync(OPENAPI_PATH, "utf8"));
+});
+
+app.get("/docs", (_req, res) => {
+  res.type("html").send(docsHtml("/openapi.yaml", "Identity API"));
+});
+
+// ---------------------------------------------------------------------------
 // GET /citizens?national_id=X — lookup by national ID (before the router)
 // ---------------------------------------------------------------------------
 app.get("/citizens", async (req, res, next) => {
   try {
+    // Only this handler deals with the national_id lookup; the listing route
+    // (no query param) is handled by citizenRouter below.
     const nationalId = req.query.national_id;
+    if (nationalId === undefined) return next();
+
     if (typeof nationalId !== "string" || nationalId.length === 0) {
-      // If no national_id query param, return 400
-      res.status(400).json({ error: "Provide a 'national_id' query parameter" });
-      return;
+      throw badRequest("Provide a non-empty 'national_id' query parameter");
     }
 
     const citizen = db
@@ -41,8 +62,7 @@ app.get("/citizens", async (req, res, next) => {
       .get();
 
     if (!citizen) {
-      res.status(404).json({ error: "Citizen not found" });
-      return;
+      throw notFound("Citizen not found");
     }
 
     const addrs = db

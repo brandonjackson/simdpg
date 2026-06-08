@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { notFound, getPagination, listResponse } from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { enrollments, programs } from "../db/schema.js";
 import { emitWebhook } from "../webhooks.js";
@@ -59,8 +60,7 @@ router.post(
       .get();
 
     if (!program) {
-      res.status(404).json({ error: "Program not found" });
-      return;
+      throw notFound("Program not found");
     }
 
     const id = uuidv4();
@@ -102,8 +102,20 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const citizenId = req.query.citizen_id as string | undefined;
+    const { offset, limit, page, per_page } = getPagination(req);
 
-    let query = db
+    const where = citizenId
+      ? eq(enrollments.citizen_id, citizenId)
+      : undefined;
+
+    const total =
+      db
+        .select({ c: sql<number>`count(*)` })
+        .from(enrollments)
+        .where(where)
+        .get()?.c ?? 0;
+
+    const rows = db
       .select({
         id: enrollments.id,
         program_id: enrollments.program_id,
@@ -118,13 +130,13 @@ router.get(
         program_name: programs.name,
       })
       .from(enrollments)
-      .innerJoin(programs, eq(enrollments.program_id, programs.id));
+      .innerJoin(programs, eq(enrollments.program_id, programs.id))
+      .where(where)
+      .limit(limit)
+      .offset(offset)
+      .all();
 
-    const rows = citizenId
-      ? query.where(eq(enrollments.citizen_id, citizenId)).all()
-      : query.all();
-
-    res.json(rows);
+    res.json(listResponse(rows, { page, per_page }, total));
   }),
 );
 
@@ -158,8 +170,7 @@ router.get(
       .get();
 
     if (!row) {
-      res.status(404).json({ error: "Enrollment not found" });
-      return;
+      throw notFound("Enrollment not found");
     }
 
     res.json(row);
@@ -181,8 +192,7 @@ router.patch(
       .get();
 
     if (!existing) {
-      res.status(404).json({ error: "Enrollment not found" });
-      return;
+      throw notFound("Enrollment not found");
     }
 
     const body = updateEnrollmentSchema.parse(req.body);

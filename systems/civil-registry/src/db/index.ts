@@ -67,11 +67,23 @@ export function ensureTables(): void {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS webhook_events (
+      id          TEXT PRIMARY KEY,
+      type        TEXT NOT NULL,
+      source      TEXT NOT NULL,
+      time        TEXT NOT NULL,
+      data        TEXT NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'pending',
+      error       TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_births_child_citizen_id ON birth_registrations(child_citizen_id);
     CREATE INDEX IF NOT EXISTS idx_births_mother_citizen_id ON birth_registrations(mother_citizen_id);
     CREATE INDEX IF NOT EXISTS idx_births_father_citizen_id ON birth_registrations(father_citizen_id);
     CREATE INDEX IF NOT EXISTS idx_deaths_citizen_id ON death_registrations(citizen_id);
     CREATE INDEX IF NOT EXISTS idx_marriages_spouse_1 ON marriage_registrations(spouse_1_citizen_id);
     CREATE INDEX IF NOT EXISTS idx_marriages_spouse_2 ON marriage_registrations(spouse_2_citizen_id);
+    CREATE INDEX IF NOT EXISTS idx_webhook_events_time ON webhook_events(time);
+    CREATE INDEX IF NOT EXISTS idx_webhook_events_type ON webhook_events(type);
   `);
 }

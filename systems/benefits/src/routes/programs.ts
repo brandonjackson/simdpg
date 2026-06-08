@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { notFound, getPagination, listResponse } from "@simdpg/system-kit";
 import { db } from "../db/index.js";
 import { programs } from "../db/schema.js";
 
@@ -59,19 +60,23 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const status = req.query.status as "active" | "suspended" | "closed" | undefined;
+    const { offset, limit, page, per_page } = getPagination(req);
 
-    let rows;
-    if (status) {
-      rows = db
-        .select()
-        .from(programs)
-        .where(eq(programs.status, status))
-        .all();
-    } else {
-      rows = db.select().from(programs).all();
-    }
+    const where = status ? eq(programs.status, status) : undefined;
 
-    res.json(rows.map(formatProgram));
+    const total =
+      db.select({ c: sql<number>`count(*)` }).from(programs).where(where).get()
+        ?.c ?? 0;
+
+    const rows = db
+      .select()
+      .from(programs)
+      .where(where)
+      .limit(limit)
+      .offset(offset)
+      .all();
+
+    res.json(listResponse(rows.map(formatProgram), { page, per_page }, total));
   }),
 );
 
@@ -90,8 +95,7 @@ router.get(
       .get();
 
     if (!program) {
-      res.status(404).json({ error: "Program not found" });
-      return;
+      throw notFound("Program not found");
     }
 
     res.json(formatProgram(program));

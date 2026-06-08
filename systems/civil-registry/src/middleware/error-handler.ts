@@ -1,30 +1,7 @@
-import type { Request, Response, NextFunction } from "express";
-import { ZodError } from "zod";
+import { createErrorHandler } from "@simdpg/system-kit";
 
 /**
- * Global Express error handler.
- * Catches ZodErrors (-> 400), generic errors (-> 500).
+ * Global error-handling middleware producing the DCI error envelope
+ * `{ error: { code, message, details } }`. Registered last in index.ts.
  */
-export function errorHandler(
-  err: unknown,
-  _req: Request,
-  res: Response,
-  _next: NextFunction,
-): void {
-  if (err instanceof ZodError) {
-    const messages = err.errors.map(
-      (e) => `${e.path.join(".")}: ${e.message}`,
-    );
-    res.status(400).json({ error: messages.join("; ") });
-    return;
-  }
-
-  if (err instanceof Error) {
-    console.error("[error]", err.stack ?? err.message);
-    res.status(500).json({ error: err.message });
-    return;
-  }
-
-  console.error("[error] Unknown error:", err);
-  res.status(500).json({ error: "Internal server error" });
-}
+export const errorHandler = createErrorHandler("civil-registry");

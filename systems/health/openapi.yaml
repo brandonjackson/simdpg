@@ -1,0 +1,456 @@
+openapi: 3.0.3
+info:
+  title: SimDPG Health System
+  version: 0.1.0
+  license:
+    name: MIT
+  description: |
+    Health and immunization registry for the SimDPG city-state — patient
+    records, clinical encounters and vaccination history. Patients reference
+    citizens by the UUID issued by the Identity system. Models the GovStack /
+    DCI **Health / Immunization Registry** building block (think DHIS2).
+
+    All responses use DCI API conventions: a standard error envelope, list
+    pagination (`{ data, meta }`), `X-Request-ID` propagation, and ISO 8601
+    timestamps.
+servers:
+  - url: http://localhost:3003
+    description: Local development
+tags:
+  - name: Patients
+    description: Register and look up patient records.
+  - name: Encounters
+    description: Record and query clinical encounters.
+  - name: Vaccinations
+    description: Record vaccinations and find overdue doses.
+  - name: Admin
+    description: Operational endpoints (stats, webhook log, reset).
+  - name: System
+    description: Health and documentation.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [System]
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  system: { type: string, example: health }
+                  version: { type: string, example: 0.1.0 }
+  /patients:
+    get:
+      operationId: listPatients
+      tags: [Patients]
+      summary: List patients (or look up by citizen ID)
+      description: >
+        With no query parameters, returns a paginated list of patients.
+        With `citizen_id`, returns the single matching patient.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - name: citizen_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: Look up a single patient by their Identity citizen UUID.
+      responses:
+        "200":
+          description: A page of patients, or a single patient when citizen_id is given.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PatientList"
+                  - $ref: "#/components/schemas/Patient"
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      operationId: createPatient
+      tags: [Patients]
+      summary: Register a patient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePatient" }
+      responses:
+        "201":
+          description: Patient registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /patients/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getPatient
+      tags: [Patients]
+      summary: Get a patient by UUID
+      responses:
+        "200":
+          description: The patient
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /encounters:
+    get:
+      operationId: listEncounters
+      tags: [Encounters]
+      summary: Query encounters for a patient
+      description: >
+        Returns a paginated list of encounters for the given patient,
+        optionally filtered by encounter type.
+      parameters:
+        - name: patient_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [checkup, emergency, vaccination, consultation]
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of encounters
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EncounterList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: createEncounter
+      tags: [Encounters]
+      summary: Record an encounter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateEncounter" }
+      responses:
+        "201":
+          description: Encounter recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Encounter" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /encounters/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getEncounter
+      tags: [Encounters]
+      summary: Get an encounter by UUID
+      responses:
+        "200":
+          description: The encounter
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Encounter" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vaccinations:
+    get:
+      operationId: listVaccinations
+      tags: [Vaccinations]
+      summary: Vaccination history for a patient
+      parameters:
+        - name: patient_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of vaccinations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VaccinationList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    post:
+      operationId: createVaccination
+      tags: [Vaccinations]
+      summary: Record a vaccination
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVaccination" }
+      responses:
+        "201":
+          description: Vaccination recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vaccination" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vaccinations/overdue:
+    get:
+      operationId: listOverdueVaccinations
+      tags: [Vaccinations]
+      summary: Patients with overdue vaccination doses
+      description: >
+        Returns a paginated list of vaccinations whose `next_dose_due` is
+        before `as_of` and for which no subsequent dose of the same vaccine
+        has been administered.
+      parameters:
+        - name: as_of
+          in: query
+          required: true
+          schema: { type: string, format: date }
+          description: ISO date (YYYY-MM-DD) to evaluate overdue status against.
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of overdue vaccinations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/OverdueVaccination" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [Admin]
+      summary: Record counts for the health dashboard
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  patients: { type: integer }
+                  encounters: { type: integer }
+                  vaccinations: { type: integer }
+  /admin/webhooks:
+    get:
+      operationId: listWebhookEvents
+      tags: [Admin]
+      summary: Paginated log of emitted webhook events
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of webhook events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/WebhookEvent" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+  /admin/reset:
+    post:
+      operationId: resetSystem
+      tags: [Admin]
+      summary: Wipe all patient, encounter and vaccination data
+      responses:
+        "200":
+          description: Reset complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  system: { type: string }
+                  reset: { type: boolean }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: 1-based page number.
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: Items per page (max 100).
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: NOT_FOUND }
+            message: { type: string }
+            details:
+              type: object
+              nullable: true
+              additionalProperties: true
+              description: Optional machine-readable detail (e.g. field errors).
+    ListMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+    Patient:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        citizen_id: { type: string, format: uuid }
+        blood_type:
+          type: string
+          nullable: true
+          enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", null]
+        allergies: { type: string, nullable: true }
+        registered_at: { type: string, format: date-time }
+        status: { type: string, enum: [active, deceased, inactive] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PatientList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Patient" }
+        meta: { $ref: "#/components/schemas/ListMeta" }
+    Encounter:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        patient_id: { type: string, format: uuid }
+        type:
+          type: string
+          enum: [checkup, emergency, vaccination, consultation]
+        date: { type: string, format: date }
+        facility: { type: string }
+        provider: { type: string }
+        diagnosis: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        status: { type: string, enum: [completed, scheduled, cancelled] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    EncounterList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Encounter" }
+        meta: { $ref: "#/components/schemas/ListMeta" }
+    Vaccination:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        patient_id: { type: string, format: uuid }
+        encounter_id: { type: string, format: uuid, nullable: true }
+        vaccine_name: { type: string }
+        dose_number: { type: integer, minimum: 1 }
+        date_administered: { type: string, format: date }
+        next_dose_due: { type: string, format: date, nullable: true }
+        batch_number: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    VaccinationList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Vaccination" }
+        meta: { $ref: "#/components/schemas/ListMeta" }
+    OverdueVaccination:
+      type: object
+      properties:
+        patient_id: { type: string, format: uuid }
+        citizen_id: { type: string, format: uuid }
+        vaccine_name: { type: string }
+        next_dose_due: { type: string, format: date }
+    CreatePatient:
+      type: object
+      required: [citizen_id]
+      properties:
+        citizen_id: { type: string }
+        blood_type:
+          type: string
+          nullable: true
+          enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", null]
+        allergies:
+          type: string
+          nullable: true
+          description: >
+            Allergies as a string, or an array of strings (which is stored as a
+            JSON-encoded string).
+    CreateEncounter:
+      type: object
+      required: [patient_id, type, date, facility, provider]
+      properties:
+        patient_id: { type: string, format: uuid }
+        type:
+          type: string
+          enum: [checkup, emergency, vaccination, consultation]
+        date: { type: string, format: date }
+        facility: { type: string }
+        provider: { type: string }
+        diagnosis: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        status:
+          type: string
+          enum: [completed, scheduled, cancelled]
+          default: completed
+    CreateVaccination:
+      type: object
+      required: [patient_id, vaccine_name, dose_number, date_administered, batch_number]
+      properties:
+        patient_id: { type: string, format: uuid }
+        encounter_id: { type: string, format: uuid, nullable: true }
+        vaccine_name: { type: string }
+        dose_number: { type: integer, minimum: 1 }
+        date_administered: { type: string, format: date }
+        next_dose_due: { type: string, format: date, nullable: true }
+        batch_number: { type: string }
+    WebhookEvent:
+      type: object
+      description: DCI / CloudEvents-style event envelope emitted to WEBHOOK_URL.
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, example: patient.registered }
+        source: { type: string, example: health }
+        time: { type: string, format: date-time }
+        data: { type: object, additionalProperties: true }
+        status: { type: string, enum: [pending, delivered, failed, skipped] }
+        error: { type: string, nullable: true }

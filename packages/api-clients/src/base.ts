@@ -5,8 +5,13 @@ export class ApiError extends Error {
     public status: number,
     public body: ErrorResponse,
   ) {
-    super(body.error);
+    super(body.error?.message ?? `Request failed with status ${status}`);
     this.name = "ApiError";
+  }
+
+  /** Stable machine-readable error code from the DCI error envelope. */
+  get code(): string {
+    return this.body.error?.code ?? "UNKNOWN";
   }
 }
 
@@ -28,7 +33,7 @@ export class BaseClient {
 
     if (!res.ok) {
       const body = (await res.json().catch(() => ({
-        error: res.statusText,
+        error: { code: "HTTP_ERROR", message: res.statusText },
       }))) as ErrorResponse;
       throw new ApiError(res.status, body);
     }
@@ -38,6 +43,20 @@ export class BaseClient {
 
   protected get<T>(path: string): Promise<T> {
     return this.request<T>(path);
+  }
+
+  /**
+   * GET a list endpoint, transparently unwrapping the DCI list envelope
+   * (`{ data, meta }`). Falls back to a bare array for endpoints that have
+   * not (yet) adopted pagination.
+   */
+  protected async getList<T>(path: string): Promise<T[]> {
+    const body = await this.request<T[] | { data: T[] }>(path);
+    if (Array.isArray(body)) return body;
+    if (body && Array.isArray((body as { data?: T[] }).data)) {
+      return (body as { data: T[] }).data;
+    }
+    return [];
   }
 
   protected post<T>(path: string, body: unknown): Promise<T> {
