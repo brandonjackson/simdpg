@@ -67,16 +67,20 @@ For **every** service, just set:
 
 - **Root Directory:** `/` (the monorepo root — required so the workspace install/build works)
 
-The builder is pinned to the Dockerfile by the repo's **`railway.json`**, so you
-do **not** need to choose a builder. Keeping that config in place from the first
-build also stops Railway's monorepo auto-detection from injecting a custom build
-or start command — those Railpack-generated commands would otherwise override
-the Dockerfile's `ENTRYPOINT` and the service would start on the wrong port.
+The repo's **`railway.json`** pins both the **builder** (Dockerfile) and the
+**start command** (the image's entrypoint), so you don't choose a builder and
+Railway's monorepo auto-detection can't take over the runtime. This matters
+because Railway pre-fills a per-workspace build *and* start command for each
+service; the auto **start** command (`npm run dev -w @simdpg/<name>`) would
+otherwise run the workspace directly — bypassing the entrypoint, so the service
+would start on Railway's port (8080) instead of its pinned port **and never get
+seeded**. `railway.json`'s `deploy.startCommand` overrides that, forcing the
+entrypoint to run (which pins the port, seeds once, and starts `node dist`).
 
-> If you have an existing service that was created *before* `railway.json` (so
-> Railway already auto-filled commands): clear its **custom Build Command** and
-> **custom Start Command** (Settings → Build / Deploy) once, or just recreate it.
-> A service deployed fresh with `railway.json` present needs neither.
+> Railway may still *display* an auto-filled start command in the dashboard, but
+> `railway.json` takes precedence at deploy. If you ever set a start command
+> **manually** in the dashboard, that wins over `railway.json` — so leave it
+> blank.
 
 For each **system** service, also add:
 
