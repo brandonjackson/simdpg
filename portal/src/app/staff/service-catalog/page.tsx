@@ -184,6 +184,11 @@ export default function ServiceCatalog() {
 
           {/* OpenFn workflows */}
           <h3 className="govuk-heading-m">OpenFn workflows</h3>
+          <p className="govuk-body-s">
+            Each workflow has its own AI generation prompt. Copy a prompt and
+            paste it into OpenFn&apos;s AI workflow generator to produce a first
+            draft of that workflow.
+          </p>
           {service.openfnWorkflows.map((wf) => (
             <div
               key={wf.name}
@@ -215,19 +220,18 @@ export default function ServiceCatalog() {
                 </span>
                 {wf.trigger}
               </p>
-              <p className="govuk-body" style={{ marginBottom: "0" }}>
+              <p className="govuk-body" style={{ marginBottom: "10px" }}>
                 {wf.description}
               </p>
+              <p
+                className="govuk-body-s"
+                style={{ marginBottom: "5px", fontWeight: "bold" }}
+              >
+                AI generation prompt
+              </p>
+              <CopyButton text={wf.prompt} />
             </div>
           ))}
-
-          {/* OpenFn prompt */}
-          <h3 className="govuk-heading-m">OpenFn AI generation prompt</h3>
-          <p className="govuk-body-s">
-            Copy this prompt and paste it into OpenFn&apos;s AI workflow
-            generator to produce a first draft of the integration workflow.
-          </p>
-          <CopyButton text={service.openfnPrompt} />
         </section>
       ))}
 

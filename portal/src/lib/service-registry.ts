@@ -19,8 +19,12 @@ export interface ServiceDefinition {
   customerJourney: string[];
   systems: { name: string; role: string; port: number }[];
   simulationNotes: string[];
-  openfnWorkflows: { name: string; trigger: string; description: string }[];
-  openfnPrompt: string;
+  openfnWorkflows: {
+    name: string;
+    trigger: string;
+    description: string;
+    prompt: string;
+  }[];
 }
 
 export const CATEGORIES: ServiceCategory[] = [
@@ -107,35 +111,56 @@ export const SERVICES: ServiceDefinition[] = [
         trigger: "Webhook: birth.registered",
         description:
           "When a birth is registered in Civil Registry, create a corresponding citizen record in the Identity system with the child's details.",
-      },
-      {
-        name: "Citizen created (newborn) → Register patient & schedule vaccinations",
-        trigger: "Webhook: citizen.created (where age < 1)",
-        description:
-          "When a new citizen is created for a newborn, register them as a patient in the Health system and schedule age-appropriate vaccinations.",
-      },
-      {
-        name: "Citizen created (newborn) → Check child benefit eligibility",
-        trigger: "Webhook: citizen.created (where age < 1)",
-        description:
-          "When a newborn citizen is created, check eligibility for the Child Benefit programme (50/month for families with children under 5). Enrol automatically if eligible.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow that processes birth registrations across SimDPG government systems.
+        prompt: `Build an OpenFn workflow that creates an Identity citizen record when a birth is registered in SimDPG.
 
 Trigger: Webhook event \`birth.registered\` from the Civil Registry system (http://localhost:3002).
 
 The webhook payload contains: child_citizen_id, mother_citizen_id, father_citizen_id (optional), date_of_birth, place_of_birth, registration_date, id.
 
 Steps:
-1. Fetch the child's citizen details from Identity (GET http://localhost:3001/citizens/{child_citizen_id}).
-2. Register the child as a patient in Health (POST http://localhost:3003/patients) with citizen_id, given_name, family_name, date_of_birth, and sex.
-3. Schedule vaccinations in Health: BCG and OPV-0 at birth, DPT-1 and OPV-1 at 6 weeks, DPT-2 and OPV-2 at 10 weeks, DPT-3 and OPV-3 at 14 weeks, Measles at 9 months.
-4. Check Child Benefit eligibility (POST http://localhost:3004/eligibility/check) — Child Benefit pays 50/month for children under 5.
-5. If eligible, auto-enrol (POST http://localhost:3004/enrollments).
-6. Look up the mother's email from Identity, then send a birth confirmation notification (POST http://localhost:3005/notifications) with channel "email".
+1. Fetch the birth record from Civil Registry (GET http://localhost:3002/births/{id}) to obtain the child's given_name, family_name, and sex.
+2. Create a corresponding citizen record for the child in Identity (POST http://localhost:3001/citizens) with { given_name, family_name, date_of_birth, sex, mother_citizen_id, father_citizen_id }. The response includes the assigned national_id (SIM-XXXXXX format).
+3. Update household membership in Identity so the newborn is linked to the parents' household.
 
-If any downstream step fails, log the error and continue with remaining steps. The birth registration in Civil Registry is the source of truth.`,
+The birth registration in Civil Registry is the source of truth. If Identity is unavailable, queue the event for retry.`,
+      },
+      {
+        name: "Citizen created (newborn) → Register patient & schedule vaccinations",
+        trigger: "Webhook: citizen.created (where age < 1)",
+        description:
+          "When a new citizen is created for a newborn, register them as a patient in the Health system and schedule age-appropriate vaccinations.",
+        prompt: `Build an OpenFn workflow that registers a newborn as a Health patient and schedules their vaccinations in SimDPG.
+
+Trigger: Webhook event \`citizen.created\` from Identity (http://localhost:3001), filtered to newborns (age < 1).
+
+Payload: citizen_id, given_name, family_name, date_of_birth, sex, mother_citizen_id.
+
+Steps:
+1. Register the child as a patient in Health (POST http://localhost:3003/patients) with citizen_id, given_name, family_name, date_of_birth, and sex.
+2. Schedule vaccinations in Health: BCG and OPV-0 at birth, DPT-1 and OPV-1 at 6 weeks, DPT-2 and OPV-2 at 10 weeks, DPT-3 and OPV-3 at 14 weeks, Measles at 9 months.
+3. Look up the mother's email from Identity, then send a notification confirming the patient registration (POST http://localhost:3005/notifications) with channel "email".
+
+If a downstream step fails, log the error and continue with the remaining steps.`,
+      },
+      {
+        name: "Citizen created (newborn) → Check child benefit eligibility",
+        trigger: "Webhook: citizen.created (where age < 1)",
+        description:
+          "When a newborn citizen is created, check eligibility for the Child Benefit programme (50/month for families with children under 5). Enrol automatically if eligible.",
+        prompt: `Build an OpenFn workflow that checks Child Benefit eligibility for a newborn in SimDPG.
+
+Trigger: Webhook event \`citizen.created\` from Identity (http://localhost:3001), filtered to newborns (age < 1).
+
+Payload: citizen_id, date_of_birth, mother_citizen_id.
+
+Steps:
+1. Check Child Benefit eligibility (POST http://localhost:3004/eligibility/check) — Child Benefit pays 50/month for children under 5.
+2. If eligible, auto-enrol the child (POST http://localhost:3004/enrollments).
+3. Look up the mother's email from Identity, then send an enrolment confirmation notification (POST http://localhost:3005/notifications) with channel "email".
+
+If a downstream step fails, log the error and continue with the remaining steps.`,
+      },
+    ],
   },
   {
     id: "death-registration",
@@ -187,9 +212,7 @@ If any downstream step fails, log the error and continue with remaining steps. T
         trigger: "Webhook: death.registered",
         description:
           "When a death is registered, cascade the closure: update citizen status to 'deceased' in Identity, terminate all active benefit enrolments, and mark the patient inactive in Health.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow that cascades a death registration across all SimDPG systems.
+        prompt: `Build an OpenFn workflow that cascades a death registration across all SimDPG systems.
 
 Trigger: Webhook event \`death.registered\` from Civil Registry (http://localhost:3002).
 
@@ -204,6 +227,8 @@ Steps:
 6. Look up household members from Identity (GET http://localhost:3001/citizens/{citizen_id}/household) to find surviving family. Send a death registration confirmation notification to next of kin via Notifications (POST http://localhost:3005/notifications).
 
 All steps should execute even if one fails — the death record in Civil Registry is the source of truth.`,
+      },
+    ],
   },
   {
     id: "marriage-registration",
@@ -250,9 +275,7 @@ All steps should execute even if one fails — the death record in Civil Registr
         trigger: "Webhook: marriage.registered",
         description:
           "When a marriage is registered, link or merge the two spouses' households in Identity. Then re-assess benefit eligibility for both spouses.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow that processes marriage registrations in SimDPG.
+        prompt: `Build an OpenFn workflow that processes marriage registrations in SimDPG.
 
 Trigger: Webhook event \`marriage.registered\` from Civil Registry (http://localhost:3002).
 
@@ -263,6 +286,8 @@ Steps:
 2. Check each spouse's household (GET http://localhost:3001/citizens/{id}/household). If one has a household and the other does not, add the other as a "spouse" member (PATCH http://localhost:3001/households/{id}/members). If both have households, merge into one.
 3. Re-assess benefit eligibility for both spouses (POST http://localhost:3004/eligibility/check for each) — combined household composition may affect programme eligibility.
 4. Send marriage confirmation notifications to both spouses via Notifications (POST http://localhost:3005/notifications). Look up contact details from Identity first.`,
+      },
+    ],
   },
 
   // ── Identity ────────────────────────────────────────────────────────
@@ -307,9 +332,7 @@ Steps:
         trigger: "Form submission from portal",
         description:
           "When a citizen applies for a national ID, check for duplicates in Identity, create the citizen record if new, and send a confirmation notification.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow that processes national ID applications in SimDPG.
+        prompt: `Build an OpenFn workflow that processes national ID applications in SimDPG.
 
 Trigger: Form submission from the portal containing: given_name, family_name, date_of_birth, sex, address_line_1, city, postal_code.
 
@@ -321,6 +344,8 @@ Steps:
 5. Send a confirmation notification (POST http://localhost:3005/notifications) with the new national ID to the citizen's provided contact details.
 
 Error handling: If Identity is unavailable, queue the application for retry. Duplicate detection should use fuzzy matching — flag near-matches for manual review rather than silently creating duplicates.`,
+      },
+    ],
   },
 
   // ── Health ──────────────────────────────────────────────────────────
@@ -365,32 +390,32 @@ Error handling: If Identity is unavailable, queue the application for retry. Dup
         trigger: "Webhook: vaccination.administered",
         description:
           "When a vaccination is recorded, send a confirmation notification and ensure the next dose is scheduled.",
-      },
-      {
-        name: "Weekly missed vaccination follow-up",
-        trigger: "Scheduled: weekly cron",
-        description:
-          "Query Health for overdue vaccinations and send reminder notifications to patients.",
-      },
-    ],
-    openfnPrompt: `Build two OpenFn workflows for vaccination management in SimDPG.
+        prompt: `Build an OpenFn workflow that confirms a vaccination and ensures the next dose is scheduled in SimDPG.
 
-Workflow 1 — Vaccination confirmation
 Trigger: Webhook event \`vaccination.administered\` from Health (http://localhost:3003).
 Payload: patient_id, citizen_id, vaccine_name, dose_number, administered_date, next_dose_due, batch_number.
 
 Steps:
 1. Fetch patient details from Health (GET http://localhost:3003/patients/{patient_id}).
 2. Look up citizen contact details from Identity (GET http://localhost:3001/citizens/{citizen_id}).
-3. Send vaccination confirmation notification (POST http://localhost:3005/notifications) with vaccine name, dose number, and next appointment date if applicable.
+3. Send a vaccination confirmation notification (POST http://localhost:3005/notifications) with vaccine name, dose number, and next appointment date if applicable.
+4. If next_dose_due is set but no follow-up appointment exists, ensure the next dose is scheduled in Health.`,
+      },
+      {
+        name: "Weekly missed vaccination follow-up",
+        trigger: "Scheduled: weekly cron",
+        description:
+          "Query Health for overdue vaccinations and send reminder notifications to patients.",
+        prompt: `Build an OpenFn workflow that follows up on overdue vaccinations in SimDPG.
 
-Workflow 2 — Weekly overdue vaccination follow-up
 Trigger: Scheduled cron, runs weekly.
 
 Steps:
 1. Query Health for overdue vaccinations (GET http://localhost:3003/vaccinations/overdue?as_of={today}).
-2. For each overdue patient, look up citizen contact info from Identity.
+2. For each overdue patient, look up citizen contact info from Identity (GET http://localhost:3001/citizens/{citizen_id}).
 3. Send reminder notifications via Notifications (POST http://localhost:3005/notifications) for each overdue vaccination, including vaccine name and how overdue it is.`,
+      },
+    ],
   },
   {
     id: "health-guidance",
@@ -431,9 +456,7 @@ Steps:
         trigger: "On-demand: portal request",
         description:
           "When a citizen requests health guidance, aggregate their health data and compile recommended actions.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow that aggregates a citizen's health data and provides guidance on available services.
+        prompt: `Build an OpenFn workflow that aggregates a citizen's health data and provides guidance on available services.
 
 Trigger: On-demand request from the portal with the citizen's national_id.
 
@@ -447,6 +470,8 @@ Steps:
    - Adults 65+: check for annual flu vaccine.
    - All ages: recommend a check-up if no encounter in the last 12 months.
 6. Return the compiled guidance to the portal for display.`,
+      },
+    ],
   },
   {
     id: "health-advice",
@@ -487,9 +512,7 @@ Steps:
         trigger: "Form submission from portal",
         description:
           "When a citizen completes the health questionnaire, cross-reference their answers with their existing health data to produce personalised recommendations.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow that generates personalised health recommendations based on a citizen's profile and questionnaire responses.
+        prompt: `Build an OpenFn workflow that generates personalised health recommendations based on a citizen's profile and questionnaire responses.
 
 Trigger: Form submission from the portal containing: national_id, existing_conditions (array), lifestyle_factors (array).
 
@@ -503,6 +526,8 @@ Steps:
    - Suggested check-ups (e.g. annual physical if none in 12 months, specialist referral for reported conditions).
    - Age-specific screenings.
 6. Send the recommendations as a notification (POST http://localhost:3005/notifications) and return them to the portal for display.`,
+      },
+    ],
   },
 
   // ── Social Protection ───────────────────────────────────────────────
@@ -548,17 +573,8 @@ Steps:
         trigger: "Webhook: enrollment.created",
         description:
           "When a citizen is enrolled, schedule payments based on programme rules: monthly for recurring programmes, single for one-time grants.",
-      },
-      {
-        name: "Daily age-based eligibility changes",
-        trigger: "Scheduled: daily cron",
-        description:
-          "Check for citizens whose age triggers eligibility changes. Children turning 5 lose Child Benefit; citizens turning 65 gain Senior Pension.",
-      },
-    ],
-    openfnPrompt: `Build two OpenFn workflows for benefits management in SimDPG.
+        prompt: `Build an OpenFn workflow that schedules payments when a benefit enrolment is created in SimDPG.
 
-Workflow 1 — Enrolment payment scheduling
 Trigger: Webhook event \`enrollment.created\` from Benefits (http://localhost:3004).
 Payload: citizen_id, program_id, enrollment_id, status, enrollment_date.
 
@@ -569,16 +585,24 @@ Steps:
    - Senior Pension: 200/month, recurring.
    - Maternity Grant: 500, one-time.
 3. Look up citizen contact from Identity (GET http://localhost:3001/citizens/{citizen_id}).
-4. Send enrolment confirmation notification (POST http://localhost:3005/notifications) with programme name, payment schedule, and expected first payment date.
+4. Send an enrolment confirmation notification (POST http://localhost:3005/notifications) with programme name, payment schedule, and expected first payment date.`,
+      },
+      {
+        name: "Daily age-based eligibility changes",
+        trigger: "Scheduled: daily cron",
+        description:
+          "Check for citizens whose age triggers eligibility changes. Children turning 5 lose Child Benefit; citizens turning 65 gain Senior Pension.",
+        prompt: `Build an OpenFn workflow that applies age-based benefit eligibility changes in SimDPG.
 
-Workflow 2 — Daily age-based eligibility
 Trigger: Scheduled cron, runs daily.
 
 Steps:
 1. Query Identity for citizens with age-boundary birthdays (turning 5, 18, or 65 relative to today).
 2. For children turning 5: look up active Child Benefit enrolment (GET http://localhost:3004/enrollments?citizen_id={id}&status=active), PATCH to "terminated".
 3. For citizens turning 65: check Senior Pension eligibility (POST http://localhost:3004/eligibility/check), auto-enrol if eligible.
-4. Send notifications for any changes.`,
+4. Send notifications for any changes (POST http://localhost:3005/notifications).`,
+      },
+    ],
   },
   {
     id: "survivor-benefits",
@@ -637,9 +661,7 @@ Steps:
         trigger: "Form submission from portal",
         description:
           "When a citizen applies for survivor benefits, verify the death record, check the household relationship, assess eligibility, and enrol if qualified.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow that processes survivor benefit applications in SimDPG.
+        prompt: `Build an OpenFn workflow that processes survivor benefit applications in SimDPG.
 
 Trigger: Form submission from the portal containing: applicant_national_id, deceased_national_id.
 
@@ -655,6 +677,8 @@ Steps:
 7. If eligible, create new enrolment in Benefits (POST http://localhost:3004/enrollments) for the appropriate survivor programme.
 8. Schedule payments (POST http://localhost:3004/payments/schedule).
 9. Send confirmation notification (POST http://localhost:3005/notifications) to the applicant with enrolment details.`,
+      },
+    ],
   },
   {
     id: "government-payments",
@@ -701,9 +725,7 @@ Steps:
         trigger: "Scheduled: daily cron",
         description:
           "Process due payments by transferring funds from the treasury account to citizen accounts in the Payments system, handling failure modes gracefully.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow for disbursing government benefit payments in SimDPG.
+        prompt: `Build an OpenFn workflow for disbursing government benefit payments in SimDPG.
 
 Trigger: Scheduled cron, runs daily.
 
@@ -721,6 +743,8 @@ Steps:
    d. Update payment status in Benefits based on result (mark as "completed" or "failed").
 3. Send payment confirmation notifications to citizens for successful payments (POST http://localhost:3005/notifications).
 4. For failed payments, send failure notifications explaining the issue and expected retry date.`,
+      },
+    ],
   },
 
   // ── Your Record ─────────────────────────────────────────────────────
@@ -778,9 +802,7 @@ Steps:
         trigger: "Scheduled: periodic cron",
         description:
           "Periodically scan Identity for potential duplicate citizen records using fuzzy matching on name, date of birth, and sex.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow for duplicate citizen detection in SimDPG.
+        prompt: `Build an OpenFn workflow for duplicate citizen detection in SimDPG.
 
 Trigger: Scheduled cron, runs weekly.
 
@@ -793,6 +815,8 @@ Steps:
    b. Update all references in Civil Registry, Health, and Benefits to point to the primary citizen_id.
    c. Mark the duplicate record as merged.
 5. For medium-confidence matches, create a review notification for staff.`,
+      },
+    ],
   },
   {
     id: "notifications",
@@ -834,9 +858,7 @@ Steps:
           "Webhook: any system event (birth.registered, enrollment.created, vaccination.administered, etc.)",
         description:
           "When a system event occurs, look up the citizen's contact details from Identity and send a notification.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow that sends citizen notifications for any government service event in SimDPG.
+        prompt: `Build an OpenFn workflow that sends citizen notifications for any government service event in SimDPG.
 
 Trigger: Webhook from any system event — birth.registered, death.registered, marriage.registered, enrollment.created, vaccination.administered, encounter.completed, citizen.created, citizen.updated.
 
@@ -850,6 +872,8 @@ Steps:
    - vaccination.administered: "Vaccination recorded: {vaccine_name} dose {dose_number}"
 4. If citizen has an email address, send an email notification (POST http://localhost:3005/notifications) with { citizen_id, channel: "email", destination: email, subject, body, source_system }.
 5. If citizen has a phone_number, also send an SMS notification with the same content in abbreviated form.`,
+      },
+    ],
   },
 
   // ── Catalog-only (no homepage entry) ────────────────────────────────
@@ -893,9 +917,7 @@ Steps:
         trigger: "Webhook: encounter.completed",
         description:
           "When a clinical encounter is completed, send the patient a visit summary notification.",
-      },
-    ],
-    openfnPrompt: `Build an OpenFn workflow that processes completed clinical encounters in SimDPG.
+        prompt: `Build an OpenFn workflow that processes completed clinical encounters in SimDPG.
 
 Trigger: Webhook event \`encounter.completed\` from Health (http://localhost:3003).
 
@@ -905,6 +927,8 @@ Steps:
 1. Look up citizen details from Identity (GET http://localhost:3001/citizens/{citizen_id}).
 2. Compose a visit summary including facility name, encounter type, diagnosis (if any), and any follow-up instructions.
 3. Send the visit summary as a notification to the citizen (POST http://localhost:3005/notifications) with { citizen_id, channel: "email", subject: "Visit summary — {facility}", body: summary }.`,
+      },
+    ],
   },
 ];
 
