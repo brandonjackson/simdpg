@@ -350,6 +350,23 @@ export interface RequestDisbursementInput {
   reference?: string;
 }
 
+/**
+ * A registered webhook target for a single event type. Systems deliver an
+ * emitted event to every subscription whose `event_type` matches; multiple
+ * subscriptions may exist for the same event (fan-out to several consumers).
+ */
+export interface WebhookSubscription {
+  id: string;
+  event_type: string;
+  target_url: string;
+  created_at: string;
+}
+
+export interface CreateWebhookSubscriptionInput {
+  event_type: string;
+  target_url: string;
+}
+
 /** DCI error envelope returned by every system. */
 export interface ErrorResponse {
   error: {

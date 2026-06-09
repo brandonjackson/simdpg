@@ -209,10 +209,17 @@ Every system follows a common set of [Digital Convergence Initiative](https://do
 - **Pagination** — list endpoints accept `?page=&per_page=` and return `{ "data": [...], "meta": { "page", "per_page", "total" } }`.
 - **Traceability** — an `X-Request-ID` header is honoured if supplied (otherwise minted) and echoed on every response.
 - **ISO 8601 dates** throughout.
-- **DCI / CloudEvents-style webhooks** — events are emitted as `{ id, type, source, time, data }` to a configurable `WEBHOOK_URL` for OpenFn integration (`citizen.created`, `birth.registered`, etc.), and recorded in a per-system `webhook_events` log.
+- **DCI / CloudEvents-style webhooks** — events are emitted as `{ id, type, source, time, data }` for OpenFn integration (`citizen.created`, `birth.registered`, etc.) and recorded in a per-system `webhook_events` log. Each event is delivered to every URL registered for its event type (see below); a legacy `WEBHOOK_URL` env var, if set, is treated as an additional catch-all target.
 - **OpenAPI** — each system ships an `openapi.yaml`, serves the raw spec at `GET /openapi.yaml`, and renders interactive docs at `GET /docs`.
 
 Each system also exposes `GET /admin/webhooks` — a paginated log of every event it has emitted, with delivery status — useful for debugging OpenFn integrations.
+
+**Per-event webhook subscriptions.** Rather than one URL per system, each system
+keeps a registry of delivery targets keyed by event type (`GET`/`POST`/`DELETE
+/admin/webhook-subscriptions`), so an event can fan out to several workflows.
+Manage these from the portal staff area under **Webhook registration**
+(`/staff/webhooks`), which lists every event grouped by system and lets you add
+or remove target URLs.
 
 Validate all specs with `npm run lint` (runs `redocly lint`). Confirm the specs
 still match the code with `npm run check:routes`, which boots each app and

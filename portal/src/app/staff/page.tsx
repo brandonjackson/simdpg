@@ -250,6 +250,22 @@ export default async function StaffDashboard() {
 
       <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
 
+      <h2 className="govuk-heading-l">Webhook registration</h2>
+      <p className="govuk-body">
+        Register the OpenFn endpoints that should fire when each system emits an
+        event. Add one or more target URLs per event &mdash; every registered
+        URL receives the event, so a single event can trigger several workflows.
+      </p>
+      <a
+        href="/staff/webhooks"
+        className="govuk-button govuk-button--secondary"
+        role="button"
+      >
+        Register webhooks
+      </a>
+
+      <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
+
       <h2 className="govuk-heading-l">Service catalog</h2>
       <p className="govuk-body">
         Reference documentation for all government services in the SimDPG

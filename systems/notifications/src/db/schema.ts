@@ -41,3 +41,16 @@ export const webhookEvents = sqliteTable("webhook_events", {
     .default("pending"),
   error: text("error"),
 });
+
+/**
+ * Per-event webhook subscriptions. Each emitted event is delivered to every
+ * row whose `event_type` matches; multiple rows per event are allowed.
+ */
+export const webhookSubscriptions = sqliteTable("webhook_subscriptions", {
+  id: text("id").primaryKey(),
+  event_type: text("event_type").notNull(),
+  target_url: text("target_url").notNull(),
+  created_at: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});

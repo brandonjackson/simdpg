@@ -263,6 +263,63 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/WebhookEvent" }
                   meta: { $ref: "#/components/schemas/ListMeta" }
+  /admin/webhook-subscriptions:
+    get:
+      operationId: listWebhookSubscriptions
+      tags: [Admin]
+      summary: List per-event webhook subscriptions
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: A page of webhook subscriptions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/WebhookSubscription" }
+                  meta: { $ref: "#/components/schemas/ListMeta" }
+    post:
+      operationId: createWebhookSubscription
+      tags: [Admin]
+      summary: Register a webhook target for an event type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_type, target_url]
+              properties:
+                event_type: { type: string }
+                target_url: { type: string, format: uri }
+      responses:
+        "201":
+          description: Subscription created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebhookSubscription" }
+  /admin/webhook-subscriptions/{id}:
+    delete:
+      operationId: deleteWebhookSubscription
+      tags: [Admin]
+      summary: Remove a webhook subscription
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Subscription deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  deleted: { type: boolean }
   /admin/reset:
     post:
       operationId: resetSystem
@@ -438,3 +495,10 @@ components:
         data: { type: object, additionalProperties: true }
         status: { type: string, enum: [pending, delivered, failed, skipped] }
         error: { type: string, nullable: true }
+    WebhookSubscription:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        event_type: { type: string }
+        target_url: { type: string, format: uri }
+        created_at: { type: string, format: date-time }

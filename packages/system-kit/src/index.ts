@@ -17,7 +17,11 @@ export type {
   ListResponse,
 } from "./pagination.js";
 
-export { buildWebhookEvent, deliverWebhook } from "./webhooks.js";
+export {
+  buildWebhookEvent,
+  deliverWebhook,
+  deliverWebhookToTargets,
+} from "./webhooks.js";
 export type {
   WebhookEvent,
   DeliveryStatus,

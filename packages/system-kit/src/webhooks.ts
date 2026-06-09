@@ -36,15 +36,8 @@ export function buildWebhookEvent(
   return { id: uuidv4(), type, source, time: new Date().toISOString(), data };
 }
 
-/**
- * Deliver an event to the configured `WEBHOOK_URL` (best-effort, awaited by
- * the caller only to record the outcome). Returns `skipped` when no target is
- * configured so the local event log still reflects reality.
- */
-export async function deliverWebhook(event: WebhookEvent): Promise<DeliveryResult> {
-  const url = process.env.WEBHOOK_URL;
-  if (!url) return { status: "skipped", error: "WEBHOOK_URL not configured" };
-
+/** POST a single event to one target URL (best-effort). */
+async function postEvent(event: WebhookEvent, url: string): Promise<DeliveryResult> {
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -63,4 +56,47 @@ export async function deliverWebhook(event: WebhookEvent): Promise<DeliveryResul
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/**
+ * Deliver an event to the configured `WEBHOOK_URL` (best-effort, awaited by
+ * the caller only to record the outcome). Returns `skipped` when no target is
+ * configured so the local event log still reflects reality.
+ *
+ * Kept for backwards compatibility; systems now resolve targets from their
+ * per-event subscription registry and call {@link deliverWebhookToTargets}.
+ */
+export async function deliverWebhook(event: WebhookEvent): Promise<DeliveryResult> {
+  const url = process.env.WEBHOOK_URL;
+  if (!url) return { status: "skipped", error: "WEBHOOK_URL not configured" };
+  return postEvent(event, url);
+}
+
+/**
+ * Deliver an event to every target URL in parallel and collapse the outcomes
+ * into a single {@link DeliveryResult} for the event log:
+ *
+ *   - `skipped`   — no targets configured for this event type
+ *   - `delivered` — every target accepted the event
+ *   - `failed`    — at least one target failed (error summarises which)
+ */
+export async function deliverWebhookToTargets(
+  event: WebhookEvent,
+  urls: string[],
+): Promise<DeliveryResult> {
+  if (urls.length === 0) {
+    return { status: "skipped", error: "no webhook targets registered" };
+  }
+
+  const results = await Promise.all(urls.map((url) => postEvent(event, url)));
+  const failures = results.filter((r) => r.status === "failed");
+
+  if (failures.length === 0) return { status: "delivered" };
+
+  return {
+    status: "failed",
+    error: `${failures.length}/${urls.length} deliveries failed: ${failures
+      .map((f) => f.error ?? "unknown error")
+      .join("; ")}`,
+  };
 }
