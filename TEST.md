@@ -11,8 +11,8 @@ expected output is shown under each command.
 
 ```bash
 npm install
-npm run build         # builds packages, all 6 systems, the portal, and the simulation
-npm run lint          # redocly lint of all 6 openapi.yaml specs — must end "🎉" (warnings OK)
+npm run build         # builds packages, all 7 systems, the portal, and the simulation
+npm run lint          # redocly lint of all 7 openapi.yaml specs — must end "🎉" (warnings OK)
 npm run check:routes  # boots each app and diffs its routes against its openapi.yaml
 ```
 
@@ -29,7 +29,7 @@ In one terminal:
 
 ```bash
 npm run reset          # optional: wipe all SQLite DBs for a clean run
-npm run dev:systems    # starts identity:3001, civil-registry:3002, health:3003, benefits:3004, notifications:3005
+npm run dev:systems    # starts identity:3001, civil-registry:3002, health:3003, benefits:3004, notifications:3005, payments:3006, social-registry:3007
 ```
 
 Leave it running and open a second terminal for the checks below.
@@ -37,7 +37,7 @@ Leave it running and open a second terminal for the checks below.
 ## 2. Health checks
 
 ```bash
-for p in 3001 3002 3003 3004 3005; do curl -s localhost:$p/health; echo; done
+for p in 3001 3002 3003 3004 3005 3006 3007; do curl -s localhost:$p/health; echo; done
 ```
 
 Expected — one line per system:
@@ -48,12 +48,14 @@ Expected — one line per system:
 {"status":"ok","system":"health","version":"0.1.0"}
 {"status":"ok","system":"benefits","version":"0.1.0"}
 {"status":"ok","system":"notifications","version":"0.1.0"}
+{"status":"ok","system":"payments","version":"0.1.0"}
+{"status":"ok","system":"social-registry","version":"0.1.0"}
 ```
 
 ## 3. OpenAPI docs & spec (every system)
 
 ```bash
-for p in 3001 3002 3003 3004 3005; do
+for p in 3001 3002 3003 3004 3005 3006 3007; do
   echo -n "port $p: "
   curl -s -o /dev/null -w "docs=%{http_code} spec=" localhost:$p/docs
   curl -s -o /dev/null -w "%{http_code}\n" localhost:$p/openapi.yaml
@@ -160,7 +162,7 @@ log shows `"status":"delivered"`. Stop the throwaway instance and listener with
 ## 11. Cross-system spot check
 
 ```bash
-for entry in civil-registry:3002 health:3003 benefits:3004 notifications:3005; do
+for entry in civil-registry:3002 health:3003 benefits:3004 notifications:3005 payments:3006 social-registry:3007; do
   name=${entry%%:*}; port=${entry##*:}
   echo "== $name =="
   curl -s "localhost:$port/admin/webhooks?per_page=1"; echo   # {data,meta}
