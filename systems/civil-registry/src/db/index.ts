@@ -77,6 +77,13 @@ export function ensureTables(): void {
       error       TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+      id          TEXT PRIMARY KEY,
+      event_type  TEXT NOT NULL,
+      target_url  TEXT NOT NULL,
+      created_at  TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_births_child_citizen_id ON birth_registrations(child_citizen_id);
     CREATE INDEX IF NOT EXISTS idx_births_mother_citizen_id ON birth_registrations(mother_citizen_id);
     CREATE INDEX IF NOT EXISTS idx_births_father_citizen_id ON birth_registrations(father_citizen_id);
@@ -85,5 +92,6 @@ export function ensureTables(): void {
     CREATE INDEX IF NOT EXISTS idx_marriages_spouse_2 ON marriage_registrations(spouse_2_citizen_id);
     CREATE INDEX IF NOT EXISTS idx_webhook_events_time ON webhook_events(time);
     CREATE INDEX IF NOT EXISTS idx_webhook_events_type ON webhook_events(type);
+    CREATE INDEX IF NOT EXISTS idx_webhook_subscriptions_event_type ON webhook_subscriptions(event_type);
   `);
 }

@@ -91,4 +91,10 @@ Delete the non-server services Railway auto-creates (`@simdpg/system-kit`,
 
 ### Optional: webhooks for OpenFn
 
-Set `WEBHOOK_URL` on any system to have it deliver DCI CloudEvents there.
+Each system delivers DCI CloudEvents to the per-event targets registered in its
+`/admin/webhook-subscriptions` registry — manage these from the portal staff
+area under **Webhook registration** (`/staff/webhooks`). An event is delivered
+to every URL registered for its type, so it can fan out to several workflows.
+
+`WEBHOOK_URL`, if set on a system, is still honoured as an additional catch-all
+target that receives every event regardless of type (backwards compatible).

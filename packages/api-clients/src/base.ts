@@ -1,4 +1,8 @@
-import type { ErrorResponse } from "./types.js";
+import type {
+  ErrorResponse,
+  WebhookSubscription,
+  CreateWebhookSubscriptionInput,
+} from "./types.js";
 
 export class ApiError extends Error {
   constructor(
@@ -70,6 +74,27 @@ export class BaseClient {
     return this.request<T>(path, {
       method: "PATCH",
       body: JSON.stringify(body),
+    });
+  }
+
+  // -- Webhook subscriptions (shared admin endpoints on every system) --------
+
+  /** List every per-event webhook subscription registered on this system. */
+  listWebhookSubscriptions(): Promise<WebhookSubscription[]> {
+    return this.getList<WebhookSubscription>("/admin/webhook-subscriptions");
+  }
+
+  /** Register a new webhook target for an event type. */
+  createWebhookSubscription(
+    input: CreateWebhookSubscriptionInput,
+  ): Promise<WebhookSubscription> {
+    return this.post<WebhookSubscription>("/admin/webhook-subscriptions", input);
+  }
+
+  /** Remove a webhook subscription by id. */
+  deleteWebhookSubscription(id: string): Promise<void> {
+    return this.request<void>(`/admin/webhook-subscriptions/${id}`, {
+      method: "DELETE",
     });
   }
 }

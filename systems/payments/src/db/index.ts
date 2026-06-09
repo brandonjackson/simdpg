@@ -76,6 +76,13 @@ export function ensureTables(): void {
       error       TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+      id          TEXT PRIMARY KEY,
+      event_type  TEXT NOT NULL,
+      target_url  TEXT NOT NULL,
+      created_at  TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_accounts_owner_id ON accounts(owner_id);
     CREATE INDEX IF NOT EXISTS idx_accounts_owner_type ON accounts(owner_type);
     CREATE INDEX IF NOT EXISTS idx_payments_to_account ON payments(to_account_id);
@@ -85,5 +92,6 @@ export function ensureTables(): void {
     CREATE INDEX IF NOT EXISTS idx_ledger_account_id ON ledger_entries(account_id);
     CREATE INDEX IF NOT EXISTS idx_webhook_events_time ON webhook_events(time);
     CREATE INDEX IF NOT EXISTS idx_webhook_events_type ON webhook_events(type);
+    CREATE INDEX IF NOT EXISTS idx_webhook_subscriptions_event_type ON webhook_subscriptions(event_type);
   `);
 }
