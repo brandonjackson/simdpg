@@ -33,7 +33,7 @@ npm install
 npm run dev
 ```
 
-This starts all five systems and the portal. Open [http://localhost:3000](http://localhost:3000).
+This starts all seven systems and the portal. Open [http://localhost:3000](http://localhost:3000).
 
 ### Populate with data
 
