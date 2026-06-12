@@ -300,7 +300,7 @@ Steps:
     dciAlignment: "Foundational ID — Identity Issuance",
     href: "/services/digital-identity",
     showOnHomepage: true,
-    formBuilt: false,
+    formBuilt: true,
     openfnConnected: false,
     customerJourney: [
       "Citizen visits the portal and selects 'Apply for a national ID'.",
