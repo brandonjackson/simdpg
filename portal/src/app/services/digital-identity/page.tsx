@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { errorMessage } from "@/lib/api";
 
 type SexValue = "male" | "female" | "";
@@ -36,9 +36,16 @@ type Outcome =
   | {
       status: "review";
       reason: string;
-      candidates: { national_id: string; name: string; date_of_birth: string }[];
+      candidates: {
+        national_id: string;
+        name: string;
+        date_of_birth: string;
+      }[];
     }
-  | { status: "queued"; reason: string };
+  | { status: "queued"; reason: string }
+  // OpenFn webhook path: the workflow accepts the application and returns a
+  // work order ID. A missing work order ID means the submission failed.
+  | { status: "submitted"; work_order_id: string };
 
 export default function DigitalIdentityApplication() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -49,6 +56,13 @@ export default function DigitalIdentityApplication() {
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
+
+  // Auto-dismiss the confirmation message after a short while.
+  useEffect(() => {
+    if (!outcome) return;
+    const timer = setTimeout(() => setOutcome(null), 8000);
+    return () => clearTimeout(timer);
+  }, [outcome]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -67,20 +81,35 @@ export default function DigitalIdentityApplication() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(errorMessage(data, "Your application could not be processed."));
+        throw new Error(
+          errorMessage(data, "Your application could not be processed."),
+        );
       }
-      setOutcome(data as Outcome);
+      // The OpenFn webhook path returns { work_order_id }; the direct
+      // orchestration path returns a { status } outcome. Normalise both.
+      let result: Outcome;
+      if (data && typeof data.work_order_id === "string") {
+        result = { status: "submitted", work_order_id: data.work_order_id };
+      } else if (
+        data &&
+        ["created", "existing", "review", "queued"].includes(data.status)
+      ) {
+        result = data as Outcome;
+      } else {
+        throw new Error("Your application could not be processed.");
+      }
+      setOutcome(result);
+      // Clear all entries after a successful submission.
+      setForm(EMPTY_FORM);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Your application could not be processed.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Your application could not be processed.",
+      );
     } finally {
       setLoading(false);
     }
-  }
-
-  function applyAgain() {
-    setForm(EMPTY_FORM);
-    setOutcome(null);
-    setError("");
   }
 
   const breadcrumbs = (
@@ -91,110 +120,79 @@ export default function DigitalIdentityApplication() {
             Home
           </a>
         </li>
-        <li className="govuk-breadcrumbs__list-item">Apply for a national ID</li>
+        <li className="govuk-breadcrumbs__list-item">
+          Apply for a national ID
+        </li>
       </ol>
     </nav>
   );
 
-  // ── Confirmation: an ID was issued or already existed ────────────────────
-  if (outcome && (outcome.status === "created" || outcome.status === "existing")) {
-    const isExisting = outcome.status === "existing";
-    return (
-      <>
-        {breadcrumbs}
-
-        <div className="govuk-panel govuk-panel--confirmation">
-          <h1 className="govuk-panel__title">
-            {isExisting ? "You already have a national ID" : "Application complete"}
-          </h1>
-          <div className="govuk-panel__body">
-            Your national ID
-            <br />
-            <strong>{outcome.national_id}</strong>
-          </div>
-        </div>
-
-        {isExisting && (
-          <p className="govuk-body">
-            Our records show you already have a national ID, so a new one was not
-            issued.
-          </p>
-        )}
-
-        <p className="govuk-body">
-          {outcome.notified
-            ? "A confirmation has been sent to your contact details."
-            : "We could not send a confirmation message, but your national ID is shown above."}
-        </p>
-
-        <button className="govuk-button govuk-button--secondary" onClick={applyAgain}>
-          Make another application
-        </button>
-        <p className="govuk-body">
-          <a href="/" className="govuk-link">
-            Back to services
-          </a>
-        </p>
-      </>
-    );
-  }
-
-  // ── Flagged for manual review (near-duplicate) ───────────────────────────
-  if (outcome && outcome.status === "review") {
-    return (
-      <>
-        {breadcrumbs}
-        <h1 className="govuk-heading-xl">Application received</h1>
-        <div className="govuk-inset-text">{outcome.reason}</div>
-
-        {outcome.candidates.length > 0 && (
-          <>
-            <h2 className="govuk-heading-m">Existing records being reviewed</h2>
-            <table className="govuk-table">
-              <thead>
-                <tr>
-                  <th className="govuk-table__header">National ID</th>
-                  <th className="govuk-table__header">Name</th>
-                  <th className="govuk-table__header">Date of birth</th>
-                </tr>
-              </thead>
-              <tbody>
-                {outcome.candidates.map((c) => (
-                  <tr key={c.national_id}>
-                    <td className="govuk-table__cell">{c.national_id}</td>
-                    <td className="govuk-table__cell">{c.name}</td>
-                    <td className="govuk-table__cell">{c.date_of_birth}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-
-        <button className="govuk-button govuk-button--secondary" onClick={applyAgain}>
-          Start a new application
-        </button>
-        <p className="govuk-body">
-          <a href="/" className="govuk-link">
-            Back to services
-          </a>
-        </p>
-      </>
-    );
-  }
-
-  // ── Queued for retry (Identity unavailable) ──────────────────────────────
-  if (outcome && outcome.status === "queued") {
-    return (
-      <>
-        {breadcrumbs}
-        <h1 className="govuk-heading-xl">Application queued</h1>
-        <div className="govuk-inset-text">{outcome.reason}</div>
-        <button className="govuk-button" onClick={applyAgain}>
-          Try again
-        </button>
-      </>
-    );
+  // Build the confirmation message shown beneath the submit button. Every
+  // status produces a heading and body so the banner is never empty.
+  function confirmation(o: Outcome): {
+    success: boolean;
+    heading: string;
+    body: React.ReactNode;
+  } {
+    switch (o.status) {
+      case "created":
+        return {
+          success: true,
+          heading: "Application submitted",
+          body: (
+            <>
+              Your national ID is <strong>{o.national_id}</strong>.{" "}
+              {o.notified
+                ? "A confirmation has been sent to your contact details."
+                : "We could not send a confirmation message, but your national ID is shown above."}
+            </>
+          ),
+        };
+      case "existing":
+        return {
+          success: true,
+          heading: "You already have a national ID",
+          body: (
+            <>
+              Our records show you already have a national ID (
+              <strong>{o.national_id}</strong>), so a new one was not issued.
+            </>
+          ),
+        };
+      case "review":
+        return {
+          success: false,
+          heading: "Application received",
+          body:
+            o.reason ||
+            "Your application is being reviewed against existing records.",
+        };
+      case "queued":
+        return {
+          success: false,
+          heading: "Application queued",
+          body:
+            o.reason ||
+            "The service is busy. Your application has been queued and will be processed shortly.",
+        };
+      case "submitted":
+        return {
+          success: true,
+          heading: "Application submitted",
+          body: (
+            <>
+              Your application has been received. Your reference is{" "}
+              <strong>{o.work_order_id}</strong>.
+            </>
+          ),
+        };
+      default:
+        return {
+          success: true,
+          heading: "Application submitted",
+          body: "Your application has been received.",
+        };
+    }
   }
 
   // ── The form ─────────────────────────────────────────────────────────────
@@ -205,8 +203,8 @@ export default function DigitalIdentityApplication() {
       <h1 className="govuk-heading-xl">Apply for a national ID</h1>
       <p className="govuk-body-l">
         Provide your personal details and a residential address. We will check
-        for an existing record and issue a national ID (SIM-XXXXXX format) if you
-        do not already have one.
+        for an existing record and issue a national ID (SIM-XXXXXX format) if
+        you do not already have one.
       </p>
 
       {error && (
@@ -280,7 +278,10 @@ export default function DigitalIdentityApplication() {
                   onChange={() => update("sex", "male")}
                   required
                 />
-                <label className="govuk-label govuk-radios__label" htmlFor="sex-male">
+                <label
+                  className="govuk-label govuk-radios__label"
+                  htmlFor="sex-male"
+                >
                   Male
                 </label>
               </div>
@@ -294,7 +295,10 @@ export default function DigitalIdentityApplication() {
                   checked={form.sex === "female"}
                   onChange={() => update("sex", "female")}
                 />
-                <label className="govuk-label govuk-radios__label" htmlFor="sex-female">
+                <label
+                  className="govuk-label govuk-radios__label"
+                  htmlFor="sex-female"
+                >
                   Female
                 </label>
               </div>
@@ -348,8 +352,8 @@ export default function DigitalIdentityApplication() {
 
         <h2 className="govuk-heading-m">Contact details</h2>
         <p className="govuk-hint">
-          Provide an email address or phone number so we can confirm your national
-          ID.
+          Provide an email address or phone number so we can confirm your
+          national ID.
         </p>
 
         <div className="govuk-form-group">
@@ -381,9 +385,35 @@ export default function DigitalIdentityApplication() {
         <button className="govuk-button" type="submit" disabled={loading}>
           {loading ? "Submitting..." : "Submit application"}
         </button>
+
+        {outcome &&
+          (() => {
+            const c = confirmation(outcome);
+            return (
+              <div
+                className={`form-confirmation${
+                  c.success ? " form-confirmation--success" : ""
+                }`}
+                role="status"
+                aria-live="polite"
+              >
+                <span className="form-confirmation__icon" aria-hidden="true">
+                  {c.success ? "✓" : "!"}
+                </span>
+                <span className="form-confirmation__text">
+                  <strong className="form-confirmation__heading">
+                    {c.heading}
+                  </strong>
+                  <span className="form-confirmation__body">{c.body}</span>
+                </span>
+              </div>
+            );
+          })()}
       </form>
 
-      {loading && <div className="govuk-loading">Processing your application</div>}
+      {loading && (
+        <div className="govuk-loading">Processing your application</div>
+      )}
     </>
   );
 }
