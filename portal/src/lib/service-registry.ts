@@ -37,8 +37,7 @@ export const CATEGORIES: ServiceCategory[] = [
   {
     id: "identity",
     name: "Identity",
-    description:
-      "Apply for identity documents and manage your citizen record.",
+    description: "Apply for identity documents and manage your citizen record.",
   },
   {
     id: "health",
@@ -165,8 +164,7 @@ If a downstream step fails, log the error and continue with the remaining steps.
   {
     id: "death-registration",
     name: "Register a death",
-    description:
-      "Register a death and obtain a death certificate reference.",
+    description: "Register a death and obtain a death certificate reference.",
     categoryId: "civil-registration",
     dciAlignment: "CRVS — Death Registration",
     href: "/services/death-registration",
@@ -233,8 +231,7 @@ All steps should execute even if one fails — the death record in Civil Registr
   {
     id: "marriage-registration",
     name: "Register a marriage",
-    description:
-      "Register a marriage between two citizens.",
+    description: "Register a marriage between two citizens.",
     categoryId: "civil-registration",
     dciAlignment: "CRVS — Marriage Registration",
     href: "/services/marriage-registration",
@@ -294,14 +291,13 @@ Steps:
   {
     id: "digital-identity",
     name: "Apply for a national ID",
-    description:
-      "Apply for a national ID card or digital identity credential.",
+    description: "Apply for a national ID card or digital identity credential.",
     categoryId: "identity",
     dciAlignment: "Foundational ID — Identity Issuance",
     href: "/services/digital-identity",
     showOnHomepage: true,
     formBuilt: true,
-    openfnConnected: false,
+    openfnConnected: true,
     customerJourney: [
       "Citizen visits the portal and selects 'Apply for a national ID'.",
       "Enters their personal details: given name, family name, date of birth, sex.",
@@ -352,8 +348,7 @@ Error handling: If Identity is unavailable, queue the application for retry. Dup
   {
     id: "vaccination",
     name: "Book a vaccination",
-    description:
-      "Record a vaccination for a registered patient.",
+    description: "Record a vaccination for a registered patient.",
     categoryId: "health",
     dciAlignment: "Health — Immunization Registry",
     href: "/services/vaccination",
@@ -751,8 +746,7 @@ Steps:
   {
     id: "check-my-record",
     name: "Check my record",
-    description:
-      "View your personal record across all government services.",
+    description: "View your personal record across all government services.",
     categoryId: "your-record",
     dciAlignment: "Cross-cutting — Citizen Record Aggregation",
     href: "/services/check-my-record",
@@ -821,8 +815,7 @@ Steps:
   {
     id: "notifications",
     name: "My notifications",
-    description:
-      "View messages sent to you by government services.",
+    description: "View messages sent to you by government services.",
     categoryId: "your-record",
     dciAlignment: "Cross-cutting — Citizen Notifications",
     href: "/services/notifications",
@@ -936,9 +929,7 @@ export function getServiceById(id: string): ServiceDefinition | undefined {
   return SERVICES.find((s) => s.id === id);
 }
 
-export function getServicesByCategory(
-  categoryId: string,
-): ServiceDefinition[] {
+export function getServicesByCategory(categoryId: string): ServiceDefinition[] {
   return SERVICES.filter((s) => s.categoryId === categoryId);
 }
 
