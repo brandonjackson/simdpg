@@ -79,7 +79,8 @@ function randomApplication(): NationalIdApplication {
     city: randomChoice(cityNames),
     postal_code: String(randomInt(10000, 99999)),
     email: `${normalizeForEmail(givenName)}.${normalizeForEmail(familyName)}${randomInt(1, 999)}@simmail.gov`,
-    phone_number: Math.random() < 0.5 ? `+1-555-${String(randomInt(1000, 9999))}` : null,
+    phone_number:
+      Math.random() < 0.5 ? `+1-555-${String(randomInt(1000, 9999))}` : null,
   };
 }
 
@@ -94,7 +95,9 @@ async function submitApplication(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
+    throw new Error(
+      `HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`,
+    );
   }
 }
 
