@@ -3,32 +3,25 @@ jobs:
   Search-for-duplicate-citizens-in-Identity:
     name: Search for duplicate citizens in Identity
     adaptor: "@openfn/language-http@latest"
-    body: >-
+    body: |-
       // Keep the original application payload safe for downstream steps
-
       fn(state => {
         state.application = state.data;
         return state;
       });
 
-
       // Search Identity for potential duplicates
-
       get(
         'https://simdpgidentity-production.up.railway.app/citizens/search',
         state => ({
           query: {
-            // The API matches 'name' against a single name field, so search by given name
-            // and let the comparison logic below do precise name + DOB + sex matching
             name: state.application.given_name,
             dob: state.application.date_of_birth,
-          },
+          }
         })
       );
 
-
       // Compare results and set match flags for branching
-
       fn(state => {
         const app = state.application;
         const results = Array.isArray(state.data)
@@ -37,7 +30,6 @@ jobs:
 
         const norm = s => (s ?? '').toString().trim().toLowerCase();
 
-        // Simple fuzzy similarity: 1 if equal, high if one contains the other
         const similar = (a, b) => {
           a = norm(a);
           b = norm(b);
@@ -47,9 +39,7 @@ jobs:
         };
 
         let exactMatch = false;
-        let nearMatch = false;
         let existingCitizen = null;
-        const nearMatches = [];
 
         for (const c of results) {
           const nameScore =
@@ -63,22 +53,14 @@ jobs:
             existingCitizen = c;
             break;
           }
-
-          // Near match: similar name + DOB, or exact name with one field off
-          if ((nameScore >= 0.8 && dobMatch) || (nameScore === 1 && (dobMatch || sexMatch))) {
-            nearMatch = true;
-            nearMatches.push(c);
-          }
         }
 
-        console.log('Exact match:', exactMatch, '| Near matches:', nearMatches.length);
+        console.log('Exact match:', exactMatch);
 
         return {
           ...state,
           exactMatch,
-          nearMatch: !exactMatch && nearMatch,
           existingCitizen,
-          nearMatches,
         };
       });
   Notify-applicant-of-existing-national-ID:
@@ -207,7 +189,7 @@ edges:
     enabled: true
     target_job: Create-new-citizen-in-Identity
     source_job: Search-for-duplicate-citizens-in-Identity
-    condition_expression: "!state.exactMatch && !state.nearMatch"
+    condition_expression: "!state.exactMatch"
   Search-for-duplicate-citizens-in-Identity->Queue-application-for-retry:
     condition_type: on_job_failure
     enabled: true
