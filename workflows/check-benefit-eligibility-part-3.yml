@@ -1,0 +1,62 @@
+name: Check benefit eligibility (Part 3)
+jobs:
+  Enroll-citizen-in-program:
+    name: Enroll citizen in program
+    adaptor: "@openfn/language-http@7.3.1"
+    body: |+
+      // Validate and transform the data you've received...
+
+      post('https://simdpgbenefits-production.up.railway.app/enrollments', 
+        {
+          "citizen_id": state.citizen_id,
+          "program_id": state.program_id
+        }
+      );
+
+  Return-confirmation:
+    name: Return confirmation
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      fn(state => {
+        return {
+          success: true,
+          message: "Citizen has been enrolled in program."
+        }
+      })
+  Return-error:
+    name: Return error
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      fn(state => {
+        return {
+          success: false,
+          message: "Citizen was not successfully enrolled in program."
+        }
+      })
+triggers:
+  webhook:
+    type: webhook
+    enabled: true
+    webhook_reply: null
+edges:
+  webhook->Enroll-citizen-in-program:
+    condition_type: always
+    enabled: true
+    target_job: Enroll-citizen-in-program
+    source_trigger: webhook
+  Enroll-citizen-in-program->Return-confirmation:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Return-confirmation
+    source_job: Enroll-citizen-in-program
+  Enroll-citizen-in-program->Return-error:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Return-error
+    source_job: Enroll-citizen-in-program

@@ -1,0 +1,111 @@
+name: Check benefit eligibility (Part 1)
+jobs:
+  Search-for-National-ID-in-Identity:
+    name: Search for National ID in Identity
+    adaptor: "@openfn/language-http@7.3.1"
+    body: >-
+
+      get(
+        'https://simdpgidentity-production.up.railway.app/citizens', 
+        state => ({
+          query: { 
+            national_id: state.national_id
+          },
+        }),
+      );
+
+
+      // Validate and transform the data you've received...
+
+      fn(state => {
+        return state;
+      })
+
+
+      // Search Identity for potential duplicates
+
+      // get(
+
+      //   'https://simdpgidentity-production.up.railway.app/citizens',
+
+      //   state => ({
+
+      //     query: {
+
+      //       // The API matches 'name' against a single name field, so search
+      by given name
+
+      //       // and let the comparison logic below do precise name + DOB + sex
+      matching
+
+      //       national_id: state.application.given_name,
+
+      //     },
+
+      //   })
+
+      // );
+  Return-error-message:
+    name: Return error message
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+      fn(state => {
+        return {
+          success: false,
+          message: "National ID is not found." 
+        };
+      });
+  Get-all-programs:
+    name: Get all programs
+    adaptor: "@openfn/language-http@7.3.1"
+    body: |+
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      get(
+        `https://simdpgbenefits-production.up.railway.app/programs/`,
+      );
+
+  Return-all-programs:
+    name: Return all programs
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+      fn(
+        state => {
+          return {
+            success: true,
+            message: "Programs found.",
+            programs: state.data
+          };
+        }
+      );
+triggers:
+  webhook:
+    type: webhook
+    enabled: true
+    webhook_reply: null
+edges:
+  webhook->Search-for-National-ID-in-Identity:
+    condition_type: always
+    enabled: true
+    target_job: Search-for-National-ID-in-Identity
+    source_trigger: webhook
+  Search-for-National-ID-in-Identity->Return-error-message:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Return-error-message
+    source_job: Search-for-National-ID-in-Identity
+  Search-for-National-ID-in-Identity->Get-all-programs:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Get-all-programs
+    source_job: Search-for-National-ID-in-Identity
+  Get-all-programs->Return-all-programs:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Return-all-programs
+    source_job: Get-all-programs

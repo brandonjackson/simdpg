@@ -1,0 +1,264 @@
+name: Check benefit eligibillity (Part 2)
+jobs:
+  Get-program-details:
+    name: Get program details
+    adaptor: "@openfn/language-http@7.3.1"
+    body: >-
+      // Validate and transform the data you've received...
+
+
+
+      get(
+        `https://simdpgbenefits-production.up.railway.app/programs/${state.program_id}`,
+      );
+  Get-citizen-details:
+    name: Get citizen details
+    adaptor: "@openfn/language-http@7.3.1"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      fn(state => {
+        state.program = state.data;
+        return state;
+      });
+
+      // checks age 
+      get(
+        'https://simdpgidentity-production.up.railway.app/citizens', 
+        state => ({
+          query: { 
+            national_id: state.citizen_id
+          },
+        }),
+      );
+
+      fn(state => {
+        state.citizen = state.data;
+        return state;
+      });
+
+      // {
+      //   "data": {
+      //     "id": "9b46e306-78da-4503-bd16-03540c69b977",
+      //     "name": "hello",
+      //     "status": "active",
+      //     "created_at": "2026-06-14T04:43:57.064Z",
+      //     "updated_at": "2026-06-14T04:43:57.064Z",
+      //     "description": "bye",
+      //     "payment_amount": 200,
+      //     "eligibility_rules": {},
+      //     "payment_frequency": "monthly"
+      //   },
+      //   "response": {
+      //     "url": "https://simdpgbenefits-production.up.railway.app/programs/9b46e306-78da-4503-bd16-03540c69b977",
+      //     "method": "GET",
+      //     "headers": {
+      //       "date": "Sun, 14 Jun 2026 09:55:18 GMT",
+      //       "etag": "W/\"fc-uXvi9MESdhcFbwpX71JXye4wWBM\"",
+      //       "server": "railway-hikari",
+      //       "connection": "keep-alive",
+      //       "content-type": "application/json; charset=utf-8",
+      //       "x-powered-by": "Express",
+      //       "x-request-id": "8d6354c1-14a3-475d-8a1e-61c1aeb8a97b",
+      //       "content-length": "252",
+      //       "x-hikari-trace": "zrh1.1vv1",
+      //       "x-railway-edge": "railway/us-west2",
+      //       "x-railway-request-id": "N_xZrGoDTcq4zlcP0_TJvA"
+      //     },
+      //     "duration": 318,
+      //     "statusCode": 200,
+      //     "statusMessage": "OK"
+      //   },
+      //   "citizen_id": "SIM-000001",
+      //   "program_id": "9b46e306-78da-4503-bd16-03540c69b977",
+      //   "references": [
+      //     {}
+      //   ]
+      // }
+  Eligibility-rules-divider:
+    name: Eligibility rules divider
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+  Return-error-message:
+    name: Return error message
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      fn(state => {
+        return {
+          success: false,
+          message: "Program ID is not found."
+        };
+      });
+  Check-age:
+    name: Check age
+    adaptor: "@openfn/language-common@3.3.3"
+    body: >-
+      // Check out the Job Writing Guide for help getting started:
+
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+
+
+      fn(state => {
+        let eligible = true;
+        const dob = state.citizen.date_of_birth;
+        const citizen_age = Math.floor((new Date() - new Date(dob)) / (1000 * 60 * 60 * 24 * 365.25));
+
+        if ('min_age' in state.program.eligibility_rules) {
+          if (citizen_age < state.program.eligibility_rules.min_age) {
+            eligible = false;
+          }
+        }
+
+        if ('max_age' in state.program.eligibility_rules) {
+          if (citizen_age > state.program.eligibility_rules.max_age) {
+            eligible = false;
+          }
+        }
+
+        return {
+          ...state,
+          eligible
+        }
+      });
+  Pass---no-eligibility-rules:
+    name: Pass - no eligibility rules
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      fn(state => {
+        return {
+          ...state,
+          'eligible' : true
+        };
+      })
+  Return-program-as-eligible:
+    name: Return program as eligible
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+      fn(state => {
+        return {
+          success : true,
+          message : "Program eligible.",
+          program_id : state.program_id,
+          citizen_id : state.citizen_id
+        }
+      });
+  Return-program-as-NOT-eligible:
+    name: Return program as NOT eligible
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      fn(state => {
+        return {
+          success : false,
+          message : "Program not eligible.",
+          program_id : state.program_id,
+          citizen_id : state.citizen_id
+        }
+      });
+  Fail---custom-eligibility-check:
+    name: Fail - custom eligibility check
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+      fn(state => {
+        return {
+          success: false,
+          message: "Eligibility rules not supported yet."
+        }
+      });
+triggers:
+  webhook:
+    type: webhook
+    enabled: true
+    webhook_reply: null
+edges:
+  webhook->Get-program-details:
+    condition_type: always
+    enabled: true
+    target_job: Get-program-details
+    source_trigger: webhook
+  Get-program-details->Get-citizen-details:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Get-citizen-details
+    source_job: Get-program-details
+  Get-citizen-details->Eligibility-rules-divider:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Eligibility-rules-divider
+    source_job: Get-citizen-details
+  Get-program-details->Return-error-message:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Return-error-message
+    source_job: Get-program-details
+  Eligibility-rules-divider->Check-age:
+    condition_type: js_expression
+    enabled: true
+    target_job: Check-age
+    source_job: Eligibility-rules-divider
+    condition_label: Age
+    condition_expression:
+      "'min_age' in state.program.eligibility_rules || 'max_age'
+      in state.program.eligibility_rules"
+  Eligibility-rules-divider->Pass---no-eligibility-rules:
+    condition_type: js_expression
+    enabled: true
+    target_job: Pass---no-eligibility-rules
+    source_job: Eligibility-rules-divider
+    condition_label: Empty
+    condition_expression: Object.keys(state.program.eligibility_rules).length === 0
+  Check-age->Return-program-as-eligible:
+    condition_type: js_expression
+    enabled: true
+    target_job: Return-program-as-eligible
+    source_job: Check-age
+    condition_expression: state.eligible
+  Pass---no-eligibility-rules->Return-program-as-eligible:
+    condition_type: js_expression
+    enabled: true
+    target_job: Return-program-as-eligible
+    source_job: Pass---no-eligibility-rules
+    condition_expression: state.eligible
+  Check-age->Return-program-as-NOT-eligible:
+    condition_type: js_expression
+    enabled: true
+    target_job: Return-program-as-NOT-eligible
+    source_job: Check-age
+    condition_expression: "!state.eligible"
+  Pass---no-eligibility-rules->Return-program-as-NOT-eligible:
+    condition_type: js_expression
+    enabled: true
+    target_job: Return-program-as-NOT-eligible
+    source_job: Pass---no-eligibility-rules
+    condition_expression: "!state.eligible"
+  Eligibility-rules-divider->Fail---custom-eligibility-check:
+    condition_type: js_expression
+    enabled: true
+    target_job: Fail---custom-eligibility-check
+    source_job: Eligibility-rules-divider
+    condition_label: Anything else
+    condition_expression:
+      Object.keys(state.program.eligibility_rules).length >= 1
+      && (!('min_age' in state.program.eligibility_rules) && !('max_age' in
+      state.program.eligibility_rules))
+  Fail---custom-eligibility-check->Return-program-as-NOT-eligible:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Return-program-as-NOT-eligible
+    source_job: Fail---custom-eligibility-check
