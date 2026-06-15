@@ -185,7 +185,7 @@ triggers:
   webhook:
     type: webhook
     enabled: true
-    webhook_reply: null
+    webhook_reply: after_completion
 edges:
   webhook->Get-program-details:
     condition_type: always

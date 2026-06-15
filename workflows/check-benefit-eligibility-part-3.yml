@@ -43,7 +43,7 @@ triggers:
   webhook:
     type: webhook
     enabled: true
-    webhook_reply: null
+    webhook_reply: after_completion
 edges:
   webhook->Enroll-citizen-in-program:
     condition_type: always

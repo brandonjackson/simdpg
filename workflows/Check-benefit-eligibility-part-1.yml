@@ -87,7 +87,7 @@ triggers:
   webhook:
     type: webhook
     enabled: true
-    webhook_reply: null
+    webhook_reply: after_completion
 edges:
   webhook->Search-for-National-ID-in-Identity:
     condition_type: always
