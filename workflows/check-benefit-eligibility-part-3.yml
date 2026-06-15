@@ -5,6 +5,12 @@ jobs:
     adaptor: "@openfn/language-http@7.3.1"
     body: |+
       // Validate and transform the data you've received...
+      fn(state => {
+        state.citizen_id = state.data.citizen_id;
+        state.program_id = state.data.program_id;
+        return state;
+      });
+
 
       post('https://simdpgbenefits-production.up.railway.app/enrollments', 
         {

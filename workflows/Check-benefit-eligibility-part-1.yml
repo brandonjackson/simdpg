@@ -1,111 +1,68 @@
-name: Check benefit eligibility (Part 1)
+name: Check benefit eligibility (Part 3)
 jobs:
-  Search-for-National-ID-in-Identity:
-    name: Search for National ID in Identity
+  Enroll-citizen-in-program:
+    name: Enroll citizen in program
     adaptor: "@openfn/language-http@7.3.1"
-    body: >-
+    body: |+
+      // Validate and transform the data you've received...
+      fn(state => {
+        state.citizen_id = state.data.citizen_id;
+        state.program_id = state.data.program_id;
+        return state;
+      });
 
-      get(
-        'https://simdpgidentity-production.up.railway.app/citizens', 
-        state => ({
-          query: { 
-            national_id: state.national_id
-          },
-        }),
+
+      post('https://simdpgbenefits-production.up.railway.app/enrollments', 
+        {
+          "citizen_id": state.data.citizen_id,
+          "program_id": state.data.program_id
+        }
       );
 
-
-      // Validate and transform the data you've received...
-
-      fn(state => {
-        return state;
-      })
-
-
-      // Search Identity for potential duplicates
-
-      // get(
-
-      //   'https://simdpgidentity-production.up.railway.app/citizens',
-
-      //   state => ({
-
-      //     query: {
-
-      //       // The API matches 'name' against a single name field, so search
-      by given name
-
-      //       // and let the comparison logic below do precise name + DOB + sex
-      matching
-
-      //       national_id: state.application.given_name,
-
-      //     },
-
-      //   })
-
-      // );
-  Return-error-message:
-    name: Return error message
+  Return-confirmation:
+    name: Return confirmation
     adaptor: "@openfn/language-common@3.3.3"
     body: |-
       // Check out the Job Writing Guide for help getting started:
       // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      fn(state => {
+        return {
+          success: true,
+          message: "Citizen has been enrolled in program."
+        }
+      })
+  Return-error:
+    name: Return error
+    adaptor: "@openfn/language-common@3.3.3"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
       fn(state => {
         return {
           success: false,
-          message: "National ID is not found." 
-        };
-      });
-  Get-all-programs:
-    name: Get all programs
-    adaptor: "@openfn/language-http@7.3.1"
-    body: |+
-      // Check out the Job Writing Guide for help getting started:
-      // https://docs.openfn.org/documentation/jobs/job-writing-guide
-
-      get(
-        `https://simdpgbenefits-production.up.railway.app/programs/`,
-      );
-
-  Return-all-programs:
-    name: Return all programs
-    adaptor: "@openfn/language-common@3.3.3"
-    body: |-
-      // Check out the Job Writing Guide for help getting started:
-      // https://docs.openfn.org/documentation/jobs/job-writing-guide
-      fn(
-        state => {
-          return {
-            success: true,
-            message: "Programs found.",
-            programs: state.data
-          };
+          message: "Citizen was not successfully enrolled in program."
         }
-      );
+      })
 triggers:
   webhook:
     type: webhook
     enabled: true
     webhook_reply: after_completion
 edges:
-  webhook->Search-for-National-ID-in-Identity:
+  webhook->Enroll-citizen-in-program:
     condition_type: always
     enabled: true
-    target_job: Search-for-National-ID-in-Identity
+    target_job: Enroll-citizen-in-program
     source_trigger: webhook
-  Search-for-National-ID-in-Identity->Return-error-message:
+  Enroll-citizen-in-program->Return-confirmation:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Return-confirmation
+    source_job: Enroll-citizen-in-program
+  Enroll-citizen-in-program->Return-error:
     condition_type: on_job_failure
     enabled: true
-    target_job: Return-error-message
-    source_job: Search-for-National-ID-in-Identity
-  Search-for-National-ID-in-Identity->Get-all-programs:
-    condition_type: on_job_success
-    enabled: true
-    target_job: Get-all-programs
-    source_job: Search-for-National-ID-in-Identity
-  Get-all-programs->Return-all-programs:
-    condition_type: on_job_success
-    enabled: true
-    target_job: Return-all-programs
-    source_job: Get-all-programs
+    target_job: Return-error
+    source_job: Enroll-citizen-in-program

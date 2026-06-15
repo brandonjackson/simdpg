@@ -3,13 +3,16 @@ jobs:
   Get-program-details:
     name: Get program details
     adaptor: "@openfn/language-http@7.3.1"
-    body: >-
-      // Validate and transform the data you've received...
-
+    body: >
+      fn(state => {
+        state.program_id = state.data.program_id;
+        state.citizen_id = state.data.citizen_id;
+        return state;
+      });
 
 
       get(
-        `https://simdpgbenefits-production.up.railway.app/programs/${state.program_id}`,
+        state => `https://simdpgbenefits-production.up.railway.app/programs/${state.program_id}`,
       );
   Get-citizen-details:
     name: Get citizen details
@@ -25,7 +28,7 @@ jobs:
 
       // checks age 
       get(
-        'https://simdpgidentity-production.up.railway.app/citizens', 
+        `https://simdpgidentity-production.up.railway.app/citizens/${state.citizen_id}`, 
         state => ({
           query: { 
             national_id: state.citizen_id
