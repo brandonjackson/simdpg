@@ -24,6 +24,7 @@ export interface ServiceDefinition {
     trigger: string;
     description: string;
     prompt: string;
+    envVar?: string;
   }[];
 }
 
@@ -540,8 +541,8 @@ Steps:
     dciAlignment: "Social Protection — Eligibility & Enrolment",
     href: "/services/benefits-eligibility",
     showOnHomepage: true,
-    formBuilt: false,
-    openfnConnected: false,
+    formBuilt: true,
+    openfnConnected: true,
     customerJourney: [
       "Citizen visits the portal and selects 'Check benefit eligibility'.",
       "Enters their national ID to look up their citizen record.",
@@ -568,6 +569,30 @@ Steps:
       "The benefit-claim.ts simulation script ensures three programmes exist (Child Benefit: 50/month for children under 5; Senior Pension: 200/month for citizens 65+; Maternity Grant: 500 one-time for mothers). Checks eligibility and enrols qualifying citizens.",
     ],
     openfnWorkflows: [
+      {
+        name: "Check benefit eligibility (Part 1)",
+        trigger: "Webhook: portal form",
+        description:
+          "Validates a citizen's national ID against Identity and returns the list of active benefit programmes.",
+        prompt: "",
+        envVar: "OPENFN_BENEFIT_ELIGIBILITY_PART1_URL",
+      },
+      {
+        name: "Check benefit eligibility (Part 2)",
+        trigger: "Webhook: portal form",
+        description:
+          "Fetches programme and citizen details, then evaluates eligibility rules to determine whether the citizen qualifies.",
+        prompt: "",
+        envVar: "OPENFN_BENEFIT_ELIGIBILITY_PART2_URL",
+      },
+      {
+        name: "Check benefit eligibility (Part 3)",
+        trigger: "Webhook: portal form",
+        description:
+          "Creates the enrolment in Benefits when a citizen confirms they want to join an eligible programme.",
+        prompt: "",
+        envVar: "OPENFN_BENEFIT_ELIGIBILITY_PART3_URL",
+      },
       {
         name: "Enrolment created → Schedule payments",
         trigger: "Webhook: enrollment.created",
