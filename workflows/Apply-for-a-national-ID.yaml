@@ -1,0 +1,202 @@
+name: Apply for a national ID
+jobs:
+  Search-for-duplicate-citizens-in-Identity:
+    name: Search for duplicate citizens in Identity
+    adaptor: "@openfn/language-http@latest"
+    body: |-
+      // Keep the original application payload safe for downstream steps
+      fn(state => {
+        state.application = state.data;
+        return state;
+      });
+
+      // Search Identity for potential duplicates
+      get(
+        'https://simdpgidentity-production.up.railway.app/citizens/search',
+        state => ({
+          query: {
+            name: state.application.given_name,
+            dob: state.application.date_of_birth,
+          }
+        })
+      );
+
+      // Compare results and set match flags for branching
+      fn(state => {
+        const app = state.application;
+        const results = Array.isArray(state.data)
+          ? state.data
+          : state.data?.data ?? state.data?.results ?? [];
+
+        const norm = s => (s ?? '').toString().trim().toLowerCase();
+
+        const similar = (a, b) => {
+          a = norm(a);
+          b = norm(b);
+          if (a === b) return 1;
+          if (a && b && (a.includes(b) || b.includes(a))) return 0.8;
+          return 0;
+        };
+
+        let exactMatch = false;
+        let existingCitizen = null;
+
+        for (const c of results) {
+          const nameScore =
+            (similar(c.given_name, app.given_name) +
+              similar(c.family_name, app.family_name)) / 2;
+          const dobMatch = norm(c.date_of_birth) === norm(app.date_of_birth);
+          const sexMatch = norm(c.sex) === norm(app.sex);
+
+          if (nameScore === 1 && dobMatch && sexMatch) {
+            exactMatch = true;
+            existingCitizen = c;
+            break;
+          }
+        }
+
+        console.log('Exact match:', exactMatch);
+
+        return {
+          ...state,
+          exactMatch,
+          existingCitizen,
+        };
+      });
+  Notify-applicant-of-existing-national-ID:
+    name: Notify applicant of existing national ID
+    adaptor: "@openfn/language-http@latest"
+    body: |-
+      // Notify the applicant that they already have a national ID
+      post('https://simdpgnotifications-production.up.railway.app/notifications', state => {
+        const { existingCitizen, application } = state;
+        return {
+          citizen_id: existingCitizen.id,
+          channel: application.email ? 'email' : 'sms',
+          destination: application.email || application.phone_number,
+          body: `Dear ${application.given_name} ${application.family_name}, our records show you already have a national ID: ${existingCitizen.national_id}. No new ID has been issued.`,
+          source_system: 'openfn',
+        };
+      });
+
+      fn(state => {
+        console.log('Notified applicant of existing national ID:', state.existingCitizen.national_id);
+        return state;
+      });
+  Create-new-citizen-in-Identity:
+    name: Create new citizen in Identity
+    adaptor: "@openfn/language-http@latest"
+    body: >-
+      // Create a new citizen record in Identity
+
+      post('https://simdpgidentity-production.up.railway.app/citizens', state =>
+      {
+        const a = state.application ?? state.data;
+        const today = new Date().toISOString().slice(0, 10);
+        return {
+          given_name: a.given_name,
+          family_name: a.family_name,
+          date_of_birth: a.date_of_birth,
+          sex: a.sex,
+          addresses: [
+            {
+              type: 'residential',
+              line_1: a.address_line_1,
+              city: a.city,
+              postal_code: a.postal_code,
+              from_date: today,
+            },
+          ],
+        };
+      });
+
+
+      // Store the assigned national ID for the confirmation notification step
+
+      fn(state => {
+        const citizen = state.data;
+        console.log('Created citizen with national_id:', citizen.national_id);
+        return { ...state, newCitizen: citizen, nationalId: citizen.national_id };
+      });
+  Send-confirmation-notification-with-national-ID:
+    name: Send confirmation notification with national ID
+    adaptor: "@openfn/language-http@latest"
+    body: |-
+      // Send a confirmation notification with the newly assigned national ID
+      post('https://simdpgnotifications-production.up.railway.app/notifications', state => {
+        const { application } = state;
+        const citizen = state.citizen ?? state.data ?? {};
+        const national_id = state.national_id ?? citizen.national_id;
+        const useEmail = Boolean(application.email);
+        return {
+          citizen_id: citizen.id ?? citizen.citizen_id ?? national_id,
+          channel: useEmail ? 'email' : 'sms',
+          destination: useEmail ? application.email : application.phone_number,
+          body: `Congratulations ${application.given_name}, your national ID has been issued. Your national ID is ${national_id}.`,
+          source_system: 'openfn',
+        };
+      });
+
+      fn(state => {
+        console.log('Confirmation notification sent for', state.national_id);
+        return state;
+      });
+  Queue-application-for-retry:
+    name: Queue application for retry
+    adaptor: "@openfn/language-common@latest"
+    body: >-
+      // Identity was unavailable — queue the application for retry.
+
+      // OpenFn keeps the full run history, so this run (with its original
+      input)
+
+      // can be retried from the Runs page once Identity is back up.
+
+      fn(state => {
+        const application = state.application ?? state.data;
+
+        console.log('Identity service unavailable. Queuing application for retry:');
+        console.log(JSON.stringify(application, null, 2));
+
+        return {
+          ...state,
+          retryQueue: {
+            status: 'queued_for_retry',
+            queued_at: new Date().toISOString(),
+            application,
+          },
+        };
+      });
+triggers:
+  webhook:
+    type: webhook
+    enabled: true
+    webhook_reply: null
+edges:
+  webhook->Search-for-duplicate-citizens-in-Identity:
+    condition_type: always
+    enabled: true
+    target_job: Search-for-duplicate-citizens-in-Identity
+    source_trigger: webhook
+  Search-for-duplicate-citizens-in-Identity->Notify-applicant-of-existing-national-ID:
+    condition_type: js_expression
+    enabled: true
+    target_job: Notify-applicant-of-existing-national-ID
+    source_job: Search-for-duplicate-citizens-in-Identity
+    condition_expression: state.exactMatch
+  Search-for-duplicate-citizens-in-Identity->Create-new-citizen-in-Identity:
+    condition_type: js_expression
+    enabled: true
+    target_job: Create-new-citizen-in-Identity
+    source_job: Search-for-duplicate-citizens-in-Identity
+    condition_expression: "!state.exactMatch"
+  Search-for-duplicate-citizens-in-Identity->Queue-application-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-application-for-retry
+    source_job: Search-for-duplicate-citizens-in-Identity
+  Create-new-citizen-in-Identity->Send-confirmation-notification-with-national-ID:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Send-confirmation-notification-with-national-ID
+    source_job: Create-new-citizen-in-Identity

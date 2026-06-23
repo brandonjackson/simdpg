@@ -9,12 +9,14 @@
     "test": "vitest run --passWithNoTests",
     "sim:generate": "tsx src/index.ts generate",
     "sim:year": "tsx src/index.ts year",
-    "sim:scale": "tsx src/index.ts scale"
+    "sim:scale": "tsx src/index.ts scale",
+    "sim:apply": "tsx src/index.ts apply"
   },
   "dependencies": {
     "@simdpg/api-clients": "*"
   },
   "devDependencies": {
+    "@types/node": "^25.9.3",
     "tsx": "^4.19.0",
     "vitest": "^2.1.0"
   }
