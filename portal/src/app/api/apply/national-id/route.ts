@@ -5,6 +5,7 @@ import {
   validateApplication,
   type NationalIdApplication,
 } from "@/lib/national-id";
+import { submitForm } from "@/lib/form-submission";
 
 export const dynamic = "force-dynamic";
 // Searching, creating, and notifying are sequential API calls; allow headroom.
@@ -13,12 +14,18 @@ export const maxDuration = 60;
 /**
  * POST /api/apply/national-id
  *
- * Entry point for the "Apply for a national ID" form. When the
- * `OPENFN_NATIONAL_ID_WEBHOOK_URL` env var is set, the application is handed to
- * the OpenFn workflow (the real integration path). Otherwise we run the same
- * deduplicate-and-create orchestration here so the form works before OpenFn is
- * connected. The request body is the same in both cases, so the simulation can
- * trigger the workflow without going through the form (see simulation/apply).
+ * Entry point for the "Apply for a national ID" form. The webhook URL is
+ * resolved from the form-webhook registry (staff area → Webhook registration),
+ * falling back to the legacy `OPENFN_NATIONAL_ID_WEBHOOK_URL` env var. When one
+ * is configured, the application is handed to the OpenFn workflow (the real
+ * integration path). Otherwise we run the same deduplicate-and-create
+ * orchestration here so the form works before OpenFn is connected. The request
+ * body is the same in both cases, so the simulation can trigger the workflow
+ * without going through the form (see simulation/apply).
+ *
+ * This route keeps its own path (rather than POSTing to the generic
+ * /api/forms/[key] endpoint) only because of the local-orchestration fallback;
+ * the webhook itself still flows through the central `submitForm` resolver.
  */
 export async function POST(request: NextRequest) {
   let body: Partial<NationalIdApplication>;
@@ -34,32 +41,23 @@ export async function POST(request: NextRequest) {
   }
 
   const application = body as NationalIdApplication;
-  const webhookUrl = process.env.OPENFN_NATIONAL_ID_WEBHOOK_URL;
 
-  // Path 1: forward to the OpenFn workflow and return its response.
-  if (webhookUrl) {
-    try {
-      const res = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(application),
-      });
-      const data = await res.text();
-      return new NextResponse(data, {
-        status: res.status,
-        headers: {
-          "Content-Type": res.headers.get("Content-Type") || "application/json",
-        },
-      });
-    } catch {
-      return NextResponse.json(
-        {
-          error:
-            "The OpenFn workflow is unavailable. The application has been queued for retry.",
-        },
-        { status: 503 },
-      );
-    }
+  // Path 1: a webhook is registered -> forward to the OpenFn workflow.
+  const outcome = await submitForm("national-id", JSON.stringify(application));
+  if (outcome.ok) {
+    return new NextResponse(outcome.body, {
+      status: outcome.status,
+      headers: { "Content-Type": outcome.contentType },
+    });
+  }
+  if (outcome.reason === "unreachable") {
+    return NextResponse.json(
+      {
+        error:
+          "The OpenFn workflow is unavailable. The application has been queued for retry.",
+      },
+      { status: 503 },
+    );
   }
 
   // Path 2: no webhook configured -> run the orchestration directly.

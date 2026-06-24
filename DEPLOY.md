@@ -98,3 +98,16 @@ to every URL registered for its type, so it can fan out to several workflows.
 
 `WEBHOOK_URL`, if set on a system, is still honoured as an additional catch-all
 target that receives every event regardless of type (backwards compatible).
+
+#### Portal form submissions
+
+Portal service forms (e.g. "Apply for a national ID", "Check benefit
+eligibility") submit through a central point in the portal, which forwards each
+submission to the webhook URL registered for that form. Manage these in the same
+**Webhook registration** page under **Form submissions** — no redeploy needed.
+
+Forms previously wired with an `OPENFN_*` environment variable
+(`OPENFN_NATIONAL_ID_WEBHOOK_URL`, `OPENFN_BENEFIT_ELIGIBILITY_PART{1,2,3}_URL`)
+keep working: the env var is used as a fallback until a URL is registered in the
+staff area, which then takes precedence. New deployments should prefer the
+registry.
