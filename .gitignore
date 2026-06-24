@@ -14,6 +14,9 @@ out/
 # Population management run log (portal)
 .population-runs.json
 
+# Form-submission webhook registry (portal)
+.form-webhooks.json
+
 # SQLite databases
 *.sqlite
 *.sqlite-journal

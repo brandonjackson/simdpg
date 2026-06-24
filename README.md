@@ -221,6 +221,13 @@ Manage these from the portal staff area under **Webhook registration**
 (`/staff/webhooks`), which lists every event grouped by system and lets you add
 or remove target URLs.
 
+**Form-submission webhooks.** Portal service forms don't call OpenFn directly:
+each submits to a central point in the portal (`/api/forms/<form-key>`), which
+forwards the payload to the webhook URL registered for that form. The same
+**Webhook registration** page has a **Form submissions** section for pointing a
+form at a workflow without redeploying. Forms still fall back to their legacy
+`OPENFN_*` env var until a URL is registered, which then takes precedence.
+
 Validate all specs with `npm run lint` (runs `redocly lint`). Confirm the specs
 still match the code with `npm run check:routes`, which boots each app and
 diffs its registered routes against the documented paths.

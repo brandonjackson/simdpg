@@ -1,27 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { SERVICES } from "@/lib/service-registry";
 import { listData } from "@/lib/api";
+import { formHooksForService } from "@/lib/form-hooks";
 
-const service = SERVICES.find((s) => s.id === "benefits-eligibility")!;
-
-function workflowEnvVar(part: 1 | 2 | 3): string {
-  return service.openfnWorkflows.find((w) =>
-    w.name.endsWith(`(Part ${part})`),
-  )!.envVar!;
-}
+// Form hooks for this service, in catalog order: [lookup, check, enrol] =
+// steps 1, 2, 3. Each submits through the central /api/forms/[key] endpoint,
+// which forwards it to whatever webhook staff have registered.
+const STEP_HOOKS = formHooksForService("benefits-eligibility");
 
 async function callWorkflow(part: 1 | 2 | 3, payload: Record<string, unknown>) {
-  const envVar = workflowEnvVar(part);
-  const res = await fetch(
-    `/api/check-benefit-eligibility?workflow=${encodeURIComponent(envVar)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    },
-  );
+  const hook = STEP_HOOKS[part - 1];
+  const res = await fetch(`/api/forms/${encodeURIComponent(hook.key)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
   const json = await res.json();
   // OpenFn wraps sync replies: { data: <job output>, meta: {...} }
   const data = json?.data ?? json;
