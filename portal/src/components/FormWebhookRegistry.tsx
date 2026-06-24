@@ -27,45 +27,56 @@ export function FormWebhookRegistry() {
   // Draft URL per form key.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  // Form key showing a transient "Saved" confirmation.
+  const [savedKey, setSavedKey] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // Fetch the catalog + current registrations. `withSpinner` is true only on
+  // initial mount; mutations refresh quietly so the section doesn't blank out.
+  const refresh = useCallback(async (withSpinner: boolean) => {
+    if (withSpinner) setLoading(true);
     try {
       const res = await fetch("/api/form-webhooks");
       if (!res.ok) throw new Error(`Failed to load form hooks (${res.status})`);
       const data = (await res.json()) as { forms: FormHookStatus[] };
       setForms(data.forms);
-      setDrafts(
-        Object.fromEntries(data.forms.map((f) => [f.key, f.target_url ?? ""])),
+      setDrafts((prev) =>
+        Object.fromEntries(
+          // Keep whatever the user has typed; only seed empty drafts.
+          data.forms.map((f) => [f.key, prev[f.key] ?? f.target_url ?? ""]),
+        ),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
-      setLoading(false);
+      if (withSpinner) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void refresh(true);
+  }, [refresh]);
 
   async function save(key: string) {
     const target_url = (drafts[key] ?? "").trim();
-    if (!target_url) return;
+    if (!target_url) {
+      setError("Enter a URL before saving.");
+      return;
+    }
     setBusy((b) => ({ ...b, [key]: true }));
     setError(null);
+    setSavedKey(null);
     try {
       const res = await fetch("/api/form-webhooks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key, target_url }),
       });
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? `Could not save URL (${res.status})`);
       }
-      await load();
+      await refresh(false);
+      setSavedKey(key);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save URL");
     } finally {
@@ -76,13 +87,23 @@ export function FormWebhookRegistry() {
   async function clear(key: string) {
     setBusy((b) => ({ ...b, [key]: true }));
     setError(null);
+    setSavedKey(null);
     try {
       const res = await fetch(
         `/api/form-webhooks?key=${encodeURIComponent(key)}`,
         { method: "DELETE" },
       );
-      if (!res.ok) throw new Error(`Could not remove URL (${res.status})`);
-      await load();
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.error ?? `Could not remove URL (${res.status})`);
+      }
+      // Drop the draft so the refreshed (possibly env-fallback) value shows.
+      setDrafts((d) => {
+        const next = { ...d };
+        delete next[key];
+        return next;
+      });
+      await refresh(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not remove URL");
     } finally {
@@ -121,11 +142,22 @@ export function FormWebhookRegistry() {
               {form.description}
             </p>
 
+            {form.source === "registry" && (
+              <p className="govuk-body-s" style={{ marginBottom: "5px" }}>
+                Submissions are sent to <code>{form.resolved_url}</code>.
+              </p>
+            )}
             {usingEnvFallback && (
               <p className="govuk-body-s" style={{ color: "#505a5f" }}>
                 Currently using the legacy <code>{form.legacy_env_var}</code>{" "}
                 environment variable (<code>{form.resolved_url}</code>).
                 Registering a URL below overrides it.
+              </p>
+            )}
+            {!form.resolved_url && (
+              <p className="govuk-body-s" style={{ color: "#505a5f" }}>
+                No webhook registered &mdash; this form is not wired to a
+                workflow yet.
               </p>
             )}
 
@@ -154,7 +186,7 @@ export function FormWebhookRegistry() {
                 disabled={busy[form.key]}
                 onClick={() => void save(form.key)}
               >
-                Save URL
+                {busy[form.key] ? "Saving…" : "Save URL"}
               </button>
               {form.target_url && (
                 <button
@@ -168,6 +200,16 @@ export function FormWebhookRegistry() {
                 </button>
               )}
             </div>
+
+            {savedKey === form.key && (
+              <p
+                className="govuk-body-s"
+                role="status"
+                style={{ color: "#00703c", marginTop: "5px", marginBottom: 0 }}
+              >
+                ✓ Saved.
+              </p>
+            )}
           </div>
         );
       })}

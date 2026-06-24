@@ -63,8 +63,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "target_url must be a valid URL" }, { status: 400 });
   }
 
-  const record = await setFormWebhook(key, target_url.trim());
-  return NextResponse.json(record, { status: 201 });
+  try {
+    const record = await setFormWebhook(key, target_url.trim());
+    return NextResponse.json(record, { status: 201 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Could not save the webhook URL" },
+      { status: 500 },
+    );
+  }
 }
 
 /**
@@ -76,6 +83,13 @@ export async function DELETE(request: NextRequest) {
   if (!key || !isFormHookKey(key)) {
     return NextResponse.json({ error: "Unknown form" }, { status: 400 });
   }
-  await deleteFormWebhook(key);
-  return NextResponse.json({ key, deleted: true });
+  try {
+    await deleteFormWebhook(key);
+    return NextResponse.json({ key, deleted: true });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Could not remove the webhook URL" },
+      { status: 500 },
+    );
+  }
 }
