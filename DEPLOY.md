@@ -111,3 +111,11 @@ Forms previously wired with an `OPENFN_*` environment variable
 keep working: the env var is used as a fallback until a URL is registered in the
 staff area, which then takes precedence. New deployments should prefer the
 registry.
+
+Registered URLs are stored in a JSON file (default `.form-webhooks.json` in the
+portal's working directory). On a host with a read-only or ephemeral working
+directory, set **`FORM_WEBHOOKS_FILE`** to a writable, persistent path (e.g. a
+mounted volume) so saves succeed and survive restarts. If the file can't be
+written, the staff UI now reports the error instead of silently dropping the
+save — keep the `OPENFN_*` env vars set as a durable baseline if you don't mount
+a volume.

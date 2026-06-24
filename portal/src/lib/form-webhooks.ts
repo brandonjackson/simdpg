@@ -15,6 +15,7 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { getFormHook } from "./form-hooks";
 
 export interface FormWebhookRecord {
@@ -29,7 +30,15 @@ export interface ResolvedFormWebhook {
   source: "registry" | "env";
 }
 
-const STORE_FILE = path.join(process.cwd(), ".form-webhooks.json");
+/**
+ * Where the registry is persisted. Defaults to the portal's working directory,
+ * which is writable in local dev but may be read-only or wiped on a container
+ * host — set `FORM_WEBHOOKS_FILE` to a path on a persistent, writable volume in
+ * those environments so staff-registered URLs survive restarts.
+ */
+const STORE_FILE =
+  process.env.FORM_WEBHOOKS_FILE ||
+  path.join(process.cwd(), ".form-webhooks.json");
 
 async function readStore(): Promise<Record<string, FormWebhookRecord>> {
   try {
@@ -41,13 +50,26 @@ async function readStore(): Promise<Record<string, FormWebhookRecord>> {
   }
 }
 
+/**
+ * Persist the registry. Unlike the incidental population-run log, this stores
+ * configuration the user explicitly saves, so write failures must NOT be
+ * swallowed — they propagate to the caller so the API can report them instead
+ * of pretending the save succeeded. The error message includes the resolved
+ * path and a hint about `FORM_WEBHOOKS_FILE`.
+ */
 async function writeStore(
   store: Record<string, FormWebhookRecord>,
 ): Promise<void> {
   try {
     await fs.writeFile(STORE_FILE, JSON.stringify(store, null, 2), "utf8");
-  } catch {
-    // ignore persistence errors — the submission itself must not fail
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Could not write the form-webhook registry at ${STORE_FILE} (${reason}). ` +
+        `On a read-only or ephemeral host, set FORM_WEBHOOKS_FILE to a writable, ` +
+        `persistent path (e.g. ${path.join(os.tmpdir(), ".form-webhooks.json")} ` +
+        `or a mounted volume).`,
+    );
   }
 }
 
