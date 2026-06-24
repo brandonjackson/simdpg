@@ -2,7 +2,11 @@ import { SERVICES } from "@/lib/service-registry";
 import { notFound } from "next/navigation";
 
 export function generateStaticParams() {
-  return SERVICES.filter((s) => s.href.startsWith("/services/")).map((s) => ({
+  // Skip services that have their own dedicated route page (formBuilt === true);
+  // otherwise this dynamic route pre-generates a stub that shadows the real form.
+  return SERVICES.filter(
+    (s) => s.href.startsWith("/services/") && !s.formBuilt,
+  ).map((s) => ({
     slug: s.id,
   }));
 }
@@ -15,6 +19,8 @@ export default async function ServiceStub({
   const { slug } = await params;
   const service = SERVICES.find((s) => s.id === slug);
   if (!service) notFound();
+  // Services with a built form own their own dedicated route; never render the stub for them.
+  if (service.formBuilt) notFound();
 
   return (
     <>
