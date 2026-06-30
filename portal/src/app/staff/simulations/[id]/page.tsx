@@ -54,6 +54,21 @@ function statusTagClass(status: SimulationStatus): string {
   }
 }
 
+function statusLabel(status: SimulationStatus): string {
+  switch (status) {
+    case "created":
+      return "Created";
+    case "generated":
+      return "Generated";
+    case "running":
+      return "Running";
+    case "stopped":
+      return "Stopped";
+    case "completed":
+      return "Completed";
+  }
+}
+
 function shortId(id: string): string {
   return id.slice(0, 8);
 }
@@ -218,7 +233,7 @@ export default function SimulationDetails({ params }: PageProps) {
         <>
           <p className="govuk-body">
             <span className={statusTagClass(simulation.status)}>
-              {simulation.status}
+              {statusLabel(simulation.status)}
             </span>
           </p>
 

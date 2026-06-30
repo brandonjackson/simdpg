@@ -74,6 +74,21 @@ function statusTagClass(status: SimulationStatus): string {
   }
 }
 
+function statusLabel(status: SimulationStatus): string {
+  switch (status) {
+    case "created":
+      return "Created";
+    case "generated":
+      return "Generated";
+    case "running":
+      return "Running";
+    case "stopped":
+      return "Stopped";
+    case "completed":
+      return "Completed";
+  }
+}
+
 function shortId(id: string): string {
   return id.slice(0, 8);
 }
@@ -322,7 +337,7 @@ export default function SimulationManagement() {
                 </td>
                 <td className="govuk-table__cell">
                   <span className={statusTagClass(simulation.status)}>
-                    {simulation.status}
+                    {statusLabel(simulation.status)}
                   </span>
                 </td>
                 <td className="govuk-table__cell">
