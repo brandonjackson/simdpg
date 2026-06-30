@@ -211,6 +211,17 @@ export default async function StaffDashboard() {
             all data across systems.
           </p>
         </div>
+        <div className="govuk-card">
+          <h3 className="govuk-card__title">
+            <a href="/staff/simulations" className="govuk-link">
+              Simulation management
+            </a>
+          </h3>
+          <p className="govuk-card__description">
+            Create simulation runs, set clock speed and duration, then generate
+            and control each run from its details page.
+          </p>
+        </div>
       </div>
 
       <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
