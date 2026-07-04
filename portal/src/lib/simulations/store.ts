@@ -11,7 +11,8 @@ export type SimulationStatus =
   | "generated"
   | "running"
   | "stopped"
-  | "completed";
+  | "completed"
+  | "failed";
 
 export interface SimulationParameters {
   clockSpeed: ClockSpeed;
