@@ -70,6 +70,7 @@ function statusTagClass(status: SimulationStatus): string {
     case "completed":
       return "govuk-tag govuk-tag--green";
     case "stopped":
+    case "failed":
       return "govuk-tag govuk-tag--yellow";
   }
 }
@@ -86,6 +87,8 @@ function statusLabel(status: SimulationStatus): string {
       return "Stopped";
     case "completed":
       return "Completed";
+    case "failed":
+      return "Failed";
   }
 }
 
