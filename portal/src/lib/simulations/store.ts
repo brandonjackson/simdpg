@@ -224,11 +224,29 @@ async function terminateWorker(id: string): Promise<void> {
   }
 }
 
+const TERMINAL_STATUSES: SimulationStatus[] = ["completed", "failed", "stopped"];
+
 export async function stopSimulation(id: string): Promise<SimulationRecord | null> {
+  const current = await getSimulation(id);
+  if (!current) return null;
+
+  // Idempotent stop: a record already in a terminal state is returned as-is,
+  // including the race where the worker completed/failed just before the
+  // user clicked Stop.
+  if (TERMINAL_STATUSES.includes(current.status)) {
+    return current;
+  }
+
+  if (current.status !== "running") {
+    throw new SimulationTransitionError("Only running simulations can be stopped");
+  }
+
   await terminateWorker(id);
   return updateSimulation(id, (simulation, now) => {
     if (simulation.status !== "running") {
-      throw new SimulationTransitionError("Only running simulations can be stopped");
+      // Reconciliation caught up between the check above and this update
+      // (worker completed/failed in the meantime); leave it as-is.
+      return simulation;
     }
     return { ...simulation, status: "stopped", stoppedAt: now };
   });
