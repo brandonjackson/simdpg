@@ -170,8 +170,8 @@ If a lookup or notification step fails, log the error and continue.`,
     dciAlignment: "CRVS — Death Registration",
     href: "/services/death-registration",
     showOnHomepage: true,
-    formBuilt: false,
-    openfnConnected: false,
+    formBuilt: true,
+    openfnConnected: true,
     customerJourney: [
       "Family member or authorised person visits the portal and selects 'Register a death'.",
       "Enters the deceased citizen's national ID to look up their record.",
@@ -206,6 +206,27 @@ If a lookup or notification step fails, log the error and continue.`,
       "The death.ts simulation script updates the citizen status in Identity and registers the death in Civil Registry. Deaths are weighted by age (higher probability for elderly). Rate: ~8 deaths per 1,000 population per year.",
     ],
     openfnWorkflows: [
+      {
+        name: "Register a death 1 — Look up citizen",
+        trigger: "Webhook: portal form",
+        description:
+          "Receives the portal lookup submission and validates the deceased's national ID against Identity, returning their citizen record so the portal can confirm the identity.",
+        prompt: "",
+      },
+      {
+        name: "Register a death 2 — Preview closures",
+        trigger: "Webhook: portal form",
+        description:
+          "Takes the confirmed citizen and entered death details, checks Civil Registry for an existing death record, and gathers active Benefits enrolments and pending payments so the portal can preview what will be closed.",
+        prompt: "",
+      },
+      {
+        name: "Register a death 3 — Register death & cascade closure",
+        trigger: "Webhook: portal form",
+        description:
+          "Registers the death in Civil Registry, patches the citizen's Identity status to 'deceased', and terminates active enrolments and pending payments in Benefits.",
+        prompt: "",
+      },
       {
         name: "Death registered → Close records across systems",
         trigger: "Webhook: death.registered",

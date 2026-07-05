@@ -1,0 +1,235 @@
+name: Register Death 2
+jobs:
+  Check-Registry:
+    name: Check Registry
+    adaptor: "@openfn/language-http@7.3.2"
+    body: >-
+      // Fetch the death records
+
+
+      fn(state => {
+            state.citizen_data = state.data.citizen_data;
+            state.citizen_id = state.citizen_data.id;
+            state.deathRegistration = state.data.userInput;
+            return state;
+          });
+
+      get(
+        state => "https://simdpgcivil-registry-production.up.railway.app/deaths",
+        state => ({
+          query: {
+            citizen_id: state.citizen_id
+          }
+        })
+      );
+
+
+      fn(state => {
+            // If the array has items, they are in the death registry
+            if (state.data.data && state.data.data.length > 0) {
+              // Throwing an error stops the OpenFn job immediately and marks it as Failed
+              throw new Error(`Job Failed: Citizen ${state.citizen_id} is already marked as deceased.`);
+            }
+
+            console.log("No death record found. Citizen is alive. Proceeding with job...");
+            return state;
+          });
+  Check-Identity:
+    name: Check Identity
+    adaptor: "@openfn/language-http@7.3.2"
+    body: >-
+      // Check out the Job Writing Guide for help getting started:
+
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+
+      get(
+            state => `https://simdpgidentity-production.up.railway.app/citizens/${state.citizen_id}`
+          );
+
+      // Get citizen data
+
+      fn(state => {
+        state.citizen_data = state.data;
+        return state;
+      });
+  Check-Enrollment-Benefits:
+    name: Check Enrollment Benefits
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      get(
+            "https://simdpgbenefits-production.up.railway.app/enrollments",
+            state => ({
+              // 1. The query parameters you need
+              query: {
+                citizen_id: state.citizen_id,
+                status: "active"
+              },
+
+              // 2. Your original 404 configuration!
+              errors: { 404: false }
+            })
+          );
+
+      // Branch based on whether the enrollment was found
+      fn(state => {
+        if (state.response.statusCode === 404) {
+          console.log(`No enrollment found for citizen ${state.citizen_id}`);
+          state.enrollment_data = null;
+          state.enrollment_found = false;
+        } else {
+          state.enrollment_data = state.data;
+          state.enrollment_found = true;
+        }
+        return state;
+      });
+  Check-Payment-Benefits:
+    name: Check Payment Benefits
+    adaptor: "@openfn/language-http@7.3.2"
+    body: >-
+      // Check out the Job Writing Guide for help getting started:
+
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+
+      get(
+            "https://simdpgbenefits-production.up.railway.app/payments",
+            state => ({
+              query: {
+                citizen_id: state.citizen_id,
+                status: "pending" // Optional: filter to only find pending payments!
+              },
+              errors: { 404: false }
+            })
+          );
+
+      // Branch based on whether the enrollment was found
+
+      fn(state => {
+        if (state.response.statusCode === 404) {
+          console.log(`No enrollment found for citizen ${state.citizen_id}`);
+          state.payment_data = null;
+          state.payment_found = false;
+        } else {
+          state.payment_data = state.data;
+          state.payment_found = true;
+        }
+        return state;
+      });
+  Check-Health-Registry:
+    name: Check Health Registry
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      // Doesn't exist yet
+
+      fn(state => state);
+  Present-Information:
+    name: Present Information
+    adaptor: "@openfn/language-common@3.3.4"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+      fn(state => {
+        // for now just use the user id
+        console.log('Fetched citizen info', state.citizen_data);
+        console.log('\n')
+        console.log('Has enrollment', state.enrollment_found);
+        console.log('\n')
+        console.log('Fetched citizen info', state.enrollment_data);
+        console.log('\n')
+        console.log('Has enrollment', state.payment_found);
+        console.log('\n')
+        console.log('Fetched payment info', state.payment_data);
+        console.log('\n')
+        console.log('With death details', state.userInput);
+        console.log('\n')
+        // console.log('Has enrollment', state.found_health);
+        // console.log('\n')
+        // console.log('Fetched citizen info', state.health_data);
+        // console.log('\n')
+
+        state.data = {
+              citizen_data: state.citizen_data,
+              enrollment_found: state.enrollment_found,
+              enrollment_data: state.enrollment_data,
+              payment_found: state.payment_found,
+              payment_data: state.payment_data,
+              // Map userInput to deathRegistration to match the UI expectation
+              deathRegistration: state.deathRegistration
+            };
+            
+        return state.data;
+      });
+  Citizen-already-registered:
+    name: Citizen already registered
+    adaptor: "@openfn/language-common@3.3.4"
+    body: >-
+      // Check out the Job Writing Guide for help getting started:
+
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+
+      fn(state => {
+        const application = state.application ?? state.data;
+
+        console.log('Citizen already registered as death. Queuing application for retry:');
+        console.log(JSON.stringify(application, null, 2));
+
+        return {
+          ...state,
+          success: false,
+          retryQueue: {
+            status: 'queued_for_retry',
+            queued_at: new Date().toISOString(),
+            application,
+          },
+        };
+      });
+triggers:
+  webhook:
+    type: webhook
+    enabled: true
+    webhook_reply: after_completion
+edges:
+  webhook->Check-Registry:
+    condition_type: always
+    enabled: true
+    target_job: Check-Registry
+    source_trigger: webhook
+  Check-Registry->Check-Identity:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Check-Identity
+    source_job: Check-Registry
+  Check-Identity->Check-Enrollment-Benefits:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Check-Enrollment-Benefits
+    source_job: Check-Identity
+  Check-Enrollment-Benefits->Check-Payment-Benefits:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Check-Payment-Benefits
+    source_job: Check-Enrollment-Benefits
+  Check-Payment-Benefits->Check-Health-Registry:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Check-Health-Registry
+    source_job: Check-Payment-Benefits
+  Check-Health-Registry->Present-Information:
+    condition_type: always
+    enabled: true
+    target_job: Present-Information
+    source_job: Check-Health-Registry
+  Check-Registry->Citizen-already-registered:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Citizen-already-registered
+    source_job: Check-Registry
