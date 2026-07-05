@@ -14,10 +14,11 @@ out/
 # Population management run log (portal)
 .population-runs.json
 
-# Form-submission webhook registry (portal)
-.form-webhooks.json
+# Precomputed simulation events, written per run (portal/worker)
+.simulations/
+.simulations.json
 
-# SQLite databases
+# SQLite databases (systems + portal)
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal

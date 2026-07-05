@@ -2,10 +2,11 @@
  * Registry of webhook URLs for portal form submissions.
  *
  * Each form hook (see `lib/form-hooks`) can be pointed at a single webhook URL
- * — typically an OpenFn workflow's Webhook trigger. The mapping is stored in a
- * JSON file next to the portal process so it survives dev-server reloads,
- * mirroring the population run log. Best-effort: write failures are swallowed
- * so a registry hiccup never breaks an actual submission.
+ * — typically an OpenFn workflow's Webhook trigger. The mapping is stored in the
+ * portal's SQLite database (the `form_webhooks` table), so registrations survive
+ * restarts and redeploys on the same persistent volume as the simulation
+ * tables. This replaces the old `.form-webhooks.json` file, which lived on the
+ * portal's ephemeral working directory and was wiped on every deploy.
  *
  * `resolveFormWebhook` is the migration bridge: a URL registered here always
  * wins, but if none is set it falls back to the form's legacy environment
@@ -13,9 +14,9 @@
  * until staff register a URL in the staff area.
  */
 
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import os from "node:os";
+import { eq } from "drizzle-orm";
+import { getDb } from "./db";
+import { formWebhooks } from "./db/schema";
 import { getFormHook } from "./form-hooks";
 
 export interface FormWebhookRecord {
@@ -30,56 +31,16 @@ export interface ResolvedFormWebhook {
   source: "registry" | "env";
 }
 
-/**
- * Where the registry is persisted. Defaults to the portal's working directory,
- * which is writable in local dev but may be read-only or wiped on a container
- * host — set `FORM_WEBHOOKS_FILE` to a path on a persistent, writable volume in
- * those environments so staff-registered URLs survive restarts.
- */
-const STORE_FILE =
-  process.env.FORM_WEBHOOKS_FILE ||
-  path.join(process.cwd(), ".form-webhooks.json");
-
-async function readStore(): Promise<Record<string, FormWebhookRecord>> {
-  try {
-    const raw = await fs.readFile(STORE_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Persist the registry. Unlike the incidental population-run log, this stores
- * configuration the user explicitly saves, so write failures must NOT be
- * swallowed — they propagate to the caller so the API can report them instead
- * of pretending the save succeeded. The error message includes the resolved
- * path and a hint about `FORM_WEBHOOKS_FILE`.
- */
-async function writeStore(
-  store: Record<string, FormWebhookRecord>,
-): Promise<void> {
-  try {
-    await fs.writeFile(STORE_FILE, JSON.stringify(store, null, 2), "utf8");
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `Could not write the form-webhook registry at ${STORE_FILE} (${reason}). ` +
-        `On a read-only or ephemeral host, set FORM_WEBHOOKS_FILE to a writable, ` +
-        `persistent path (e.g. ${path.join(os.tmpdir(), ".form-webhooks.json")} ` +
-        `or a mounted volume).`,
-    );
-  }
-}
-
 /** All registry entries currently saved (env-var fallbacks are not included). */
 export async function listFormWebhooks(): Promise<FormWebhookRecord[]> {
-  const store = await readStore();
-  return Object.values(store);
+  return getDb().select().from(formWebhooks).all();
 }
 
-/** Save (or overwrite) the webhook URL for a form hook. */
+/**
+ * Save (or overwrite) the webhook URL for a form hook. Write failures (e.g. a
+ * read-only volume) propagate to the caller so the API can report them rather
+ * than pretend the save succeeded.
+ */
 export async function setFormWebhook(
   key: string,
   targetUrl: string,
@@ -89,19 +50,20 @@ export async function setFormWebhook(
     target_url: targetUrl,
     updated_at: new Date().toISOString(),
   };
-  const store = await readStore();
-  store[key] = record;
-  await writeStore(store);
+  getDb()
+    .insert(formWebhooks)
+    .values(record)
+    .onConflictDoUpdate({
+      target: formWebhooks.key,
+      set: { target_url: record.target_url, updated_at: record.updated_at },
+    })
+    .run();
   return record;
 }
 
 /** Remove the registered URL for a form hook (env-var fallback still applies). */
 export async function deleteFormWebhook(key: string): Promise<void> {
-  const store = await readStore();
-  if (key in store) {
-    delete store[key];
-    await writeStore(store);
-  }
+  getDb().delete(formWebhooks).where(eq(formWebhooks.key, key)).run();
 }
 
 /**
@@ -111,9 +73,12 @@ export async function deleteFormWebhook(key: string): Promise<void> {
 export async function resolveFormWebhook(
   key: string,
 ): Promise<ResolvedFormWebhook | null> {
-  const store = await readStore();
-  const registered = store[key]?.target_url;
-  if (registered) return { url: registered, source: "registry" };
+  const row = getDb()
+    .select()
+    .from(formWebhooks)
+    .where(eq(formWebhooks.key, key))
+    .get();
+  if (row?.target_url) return { url: row.target_url, source: "registry" };
 
   const envVar = getFormHook(key)?.legacyEnvVar;
   const fromEnv = envVar ? process.env[envVar] : undefined;
