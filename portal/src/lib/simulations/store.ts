@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { desc, eq } from "drizzle-orm";
-import { db } from "../db";
+import { getDb } from "../db";
 import { simulations, simulationRuns } from "../db/schema";
 import { eventsFilePath } from "./paths";
 
@@ -102,12 +102,12 @@ function rowToRecord(row: SimulationRow): SimulationRecord {
  * no read-time reconciliation is needed.
  */
 export async function listSimulations(): Promise<SimulationRecord[]> {
-  const rows = db.select().from(simulations).orderBy(desc(simulations.created_at)).all();
+  const rows = getDb().select().from(simulations).orderBy(desc(simulations.created_at)).all();
   return rows.map(rowToRecord);
 }
 
 export async function getSimulation(id: string): Promise<SimulationRecord | null> {
-  const row = db.select().from(simulations).where(eq(simulations.id, id)).get();
+  const row = getDb().select().from(simulations).where(eq(simulations.id, id)).get();
   return row ? rowToRecord(row) : null;
 }
 
@@ -123,7 +123,7 @@ export async function createSimulation(
     parameters,
   };
 
-  db.insert(simulations).values({
+  getDb().insert(simulations).values({
     id: simulation.id,
     created_at: now,
     updated_at: now,
@@ -135,11 +135,11 @@ export async function createSimulation(
 }
 
 export async function deleteSimulation(id: string): Promise<boolean> {
-  const result = db.delete(simulations).where(eq(simulations.id, id)).run();
+  const result = getDb().delete(simulations).where(eq(simulations.id, id)).run();
   if (result.changes === 0) {
     return false;
   }
-  db.delete(simulationRuns).where(eq(simulationRuns.simulation_id, id)).run();
+  getDb().delete(simulationRuns).where(eq(simulationRuns.simulation_id, id)).run();
   await fs.rm(eventsFilePath(id), { force: true });
   return true;
 }
@@ -154,7 +154,7 @@ function updateSimulation(
   id: string,
   update: (simulation: SimulationRecord, now: string) => SimulationRecord,
 ): SimulationRecord | null {
-  return db.transaction((tx) => {
+  return getDb().transaction((tx) => {
     const row = tx.select().from(simulations).where(eq(simulations.id, id)).get();
     if (!row) return null;
 
@@ -235,7 +235,7 @@ export async function startSimulation(id: string): Promise<SimulationRecord | nu
 
 /** Look up the running worker's pid, if any, for a simulation. */
 function runPid(id: string): number | null {
-  const run = db
+  const run = getDb()
     .select({ pid: simulationRuns.pid })
     .from(simulationRuns)
     .where(eq(simulationRuns.simulation_id, id))
@@ -289,7 +289,7 @@ export async function stopSimulation(id: string): Promise<SimulationRecord | nul
 export async function listRunningRuns(): Promise<
   { simulationId: string; pid: number | null; startedAt: string; updatedAt: string }[]
 > {
-  const rows = db
+  const rows = getDb()
     .select()
     .from(simulationRuns)
     .where(eq(simulationRuns.status, "running"))
