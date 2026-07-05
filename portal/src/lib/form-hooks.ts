@@ -40,13 +40,6 @@ export const FORM_HOOKS: FormHook[] = [
       "Submitted when a parent registers a birth. Payload: mother_national_id, father_national_id (optional), given_name, family_name, date_of_birth, sex, place_of_birth.",
   },
   {
-    key: "death-registration",
-    serviceId: "death-registration",
-    name: "Death registration",
-    description:
-      "Submitted when a family member registers a death. The portal resolves the deceased against Identity before submitting, so the payload carries both the national ID and the citizen UUID. Payload: national_id, citizen_id (and id, an alias of citizen_id for workflows that key off state.data.id), date_of_death, place_of_death, cause_of_death.",
-  },
-  {
     key: "national-id",
     serviceId: "digital-identity",
     name: "National ID application",
