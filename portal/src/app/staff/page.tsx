@@ -23,9 +23,9 @@ async function loadStats(): Promise<{
   const errors: string[] = [];
 
   const citizenPromise = identity
-    .searchCitizens({ name: "" })
+    .getStats()
     .then((data) => {
-      stats.totalCitizens = Array.isArray(data) ? data.length : 0;
+      stats.totalCitizens = data.citizens;
     })
     .catch(() => {
       errors.push("Identity system unavailable");
