@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  getSimulation,
   generateSimulation,
   SimulationTransitionError,
 } from "@/lib/simulations/store";
-import { generateStubEvents } from "@/lib/simulations/stub-generator";
+import { generateEvents } from "@/lib/simulations/generate-events";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +14,7 @@ interface RouteContext {
 
 export async function POST(_request: Request, { params }: RouteContext) {
   try {
-    await generateStubEvents(params.id);
-    const simulation = await generateSimulation(params.id);
-
+    const simulation = await getSimulation(params.id);
     if (!simulation) {
       return NextResponse.json(
         { error: "Simulation not found" },
@@ -23,7 +22,10 @@ export async function POST(_request: Request, { params }: RouteContext) {
       );
     }
 
-    return NextResponse.json({ simulation });
+    await generateEvents(params.id, simulation.parameters);
+    const updated = await generateSimulation(params.id);
+
+    return NextResponse.json({ simulation: updated });
   } catch (err) {
     const status = err instanceof SimulationTransitionError ? 409 : 400;
     const message = err instanceof Error ? err.message : "Generation failed";
