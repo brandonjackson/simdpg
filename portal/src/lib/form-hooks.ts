@@ -33,6 +33,13 @@ export interface FormHook {
 
 export const FORM_HOOKS: FormHook[] = [
   {
+    key: "birth-registration",
+    serviceId: "birth-registration",
+    name: "Birth registration",
+    description:
+      "Submitted when a parent registers a birth. Payload: mother_national_id, father_national_id (optional), given_name, family_name, date_of_birth, sex, place_of_birth.",
+  },
+  {
     key: "national-id",
     serviceId: "digital-identity",
     name: "National ID application",

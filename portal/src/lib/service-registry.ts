@@ -70,15 +70,15 @@ export const SERVICES: ServiceDefinition[] = [
     dciAlignment: "CRVS — Birth Registration",
     href: "/services/birth-registration",
     showOnHomepage: true,
-    formBuilt: false,
-    openfnConnected: false,
+    formBuilt: true,
+    openfnConnected: true,
     customerJourney: [
       "Parent or authorised person visits the portal and selects 'Register a birth'.",
       "Enters the mother's national ID (looked up from Identity system).",
       "Optionally enters the father's national ID.",
       "Enters the child's details: given name, family name, date of birth, sex, place of birth.",
       "Reviews the details and submits the registration.",
-      "Receives a birth certificate reference number on a confirmation page.",
+      "Receives a submission reference number on a confirmation page.",
     ],
     systems: [
       {
@@ -93,7 +93,7 @@ export const SERVICES: ServiceDefinition[] = [
       },
       {
         name: "Health",
-        role: "Registers the newborn as a patient and creates the initial vaccination schedule.",
+        role: "Registers the newborn as a patient.",
         port: 3003,
       },
       {
@@ -101,64 +101,64 @@ export const SERVICES: ServiceDefinition[] = [
         role: "Checks child benefit eligibility and auto-enrols the child if eligible.",
         port: 3004,
       },
+      {
+        name: "Notifications",
+        role: "Emails the mother confirmations of the patient registration and any benefit enrolment.",
+        port: 3005,
+      },
     ],
     simulationNotes: [
       "The birth.ts simulation script directly orchestrates all systems: creates the citizen in Identity, registers them as a patient in Health, and registers the birth in Civil Registry. Rate: ~15 births per 1,000 population per year.",
     ],
     openfnWorkflows: [
       {
-        name: "Birth registered → Create citizen",
+        name: "Register a birth 1 — Create citizen & register birth",
+        trigger: "Webhook: portal form",
+        description:
+          "Receives the portal form submission, looks up the mother in Identity, creates a citizen record for the newborn in the mother's household, and registers the birth in Civil Registry.",
+        prompt: `Build an OpenFn workflow that processes birth registrations submitted from the SimDPG portal.
+
+Trigger: Webhook — the portal form POSTs: mother_national_id, father_national_id (optional), given_name, family_name, date_of_birth, sex, place_of_birth.
+
+Steps:
+1. Look up the mother in Identity (GET http://localhost:3001/citizens?national_id={mother_national_id}) and fetch her household (GET http://localhost:3001/citizens/{id}/household). Fail with a clear error if she is not found.
+2. Create a citizen record for the newborn in Identity (POST http://localhost:3001/citizens) with { given_name, family_name, date_of_birth, sex, household_id: mother's household, relationship: "child" }.
+3. If father_national_id was provided, look up the father's citizen ID in Identity.
+4. Register the birth in Civil Registry (POST http://localhost:3002/births) with { child_citizen_id, mother_citizen_id, father_citizen_id (or null), date_of_birth, place_of_birth }.
+
+The birth.registered event emitted by Civil Registry then fans out to the downstream workflows.`,
+      },
+      {
+        name: "Register a birth 2 — Register patient & notify mother",
+        trigger: "Webhook: birth.registered (child under 1)",
+        description:
+          "When a birth is registered in Civil Registry, register the newborn as a patient in the Health system and email the mother a confirmation. Skips children aged 1 or older.",
+        prompt: `Build an OpenFn workflow that registers a newborn as a Health patient when a birth is registered in SimDPG.
+
+Trigger: Webhook event \`birth.registered\` from Civil Registry (http://localhost:3002). The event envelope's \`data\` contains: child_citizen_id, mother_citizen_id, father_citizen_id (optional), date_of_birth, place_of_birth, registration_date, id.
+
+Steps:
+1. Validate the child is under 1 year old from date_of_birth; otherwise skip the rest of the workflow peacefully.
+2. Register the child as a patient in Health (POST http://localhost:3003/patients) with { citizen_id: child_citizen_id }.
+3. Look up the mother's email from Identity (GET http://localhost:3001/citizens/{mother_citizen_id}), logging rather than failing when it is missing.
+4. Send the mother a notification confirming the patient registration (POST http://localhost:3005/notifications) with channel "email".`,
+      },
+      {
+        name: "Register a birth 3 — Child Benefit auto-enrolment",
         trigger: "Webhook: birth.registered",
         description:
-          "When a birth is registered in Civil Registry, create a corresponding citizen record in the Identity system with the child's details.",
-        prompt: `Build an OpenFn workflow that creates an Identity citizen record when a birth is registered in SimDPG.
+          "When a birth is registered, check the child's eligibility for the Child Benefit programme (50/month for children under 5), auto-enrol if eligible, and email the mother an enrolment confirmation.",
+        prompt: `Build an OpenFn workflow that auto-enrols a newborn in Child Benefit when a birth is registered in SimDPG.
 
-Trigger: Webhook event \`birth.registered\` from the Civil Registry system (http://localhost:3002).
-
-The webhook payload contains: child_citizen_id, mother_citizen_id, father_citizen_id (optional), date_of_birth, place_of_birth, registration_date, id.
+Trigger: Webhook event \`birth.registered\` from Civil Registry (http://localhost:3002). The event envelope's \`data\` contains: child_citizen_id, mother_citizen_id, date_of_birth.
 
 Steps:
-1. Fetch the birth record from Civil Registry (GET http://localhost:3002/births/{id}) to obtain the child's given_name, family_name, and sex.
-2. Create a corresponding citizen record for the child in Identity (POST http://localhost:3001/citizens) with { given_name, family_name, date_of_birth, sex, mother_citizen_id, father_citizen_id }. The response includes the assigned national_id (SIM-XXXXXX format).
-3. Update household membership in Identity so the newborn is linked to the parents' household.
-
-The birth registration in Civil Registry is the source of truth. If Identity is unavailable, queue the event for retry.`,
-      },
-      {
-        name: "Citizen created (newborn) → Register patient & schedule vaccinations",
-        trigger: "Webhook: citizen.created (where age < 1)",
-        description:
-          "When a new citizen is created for a newborn, register them as a patient in the Health system and schedule age-appropriate vaccinations.",
-        prompt: `Build an OpenFn workflow that registers a newborn as a Health patient and schedules their vaccinations in SimDPG.
-
-Trigger: Webhook event \`citizen.created\` from Identity (http://localhost:3001), filtered to newborns (age < 1).
-
-Payload: citizen_id, given_name, family_name, date_of_birth, sex, mother_citizen_id.
-
-Steps:
-1. Register the child as a patient in Health (POST http://localhost:3003/patients) with citizen_id, given_name, family_name, date_of_birth, and sex.
-2. Schedule vaccinations in Health: BCG and OPV-0 at birth, DPT-1 and OPV-1 at 6 weeks, DPT-2 and OPV-2 at 10 weeks, DPT-3 and OPV-3 at 14 weeks, Measles at 9 months.
-3. Look up the mother's email from Identity, then send a notification confirming the patient registration (POST http://localhost:3005/notifications) with channel "email".
-
-If a downstream step fails, log the error and continue with the remaining steps.`,
-      },
-      {
-        name: "Citizen created (newborn) → Check child benefit eligibility",
-        trigger: "Webhook: citizen.created (where age < 1)",
-        description:
-          "When a newborn citizen is created, check eligibility for the Child Benefit programme (50/month for families with children under 5). Enrol automatically if eligible.",
-        prompt: `Build an OpenFn workflow that checks Child Benefit eligibility for a newborn in SimDPG.
-
-Trigger: Webhook event \`citizen.created\` from Identity (http://localhost:3001), filtered to newborns (age < 1).
-
-Payload: citizen_id, date_of_birth, mother_citizen_id.
-
-Steps:
-1. Check Child Benefit eligibility (POST http://localhost:3004/eligibility/check) — Child Benefit pays 50/month for children under 5.
+1. Check Child Benefit eligibility for the child (POST http://localhost:3004/eligibility/check) with { citizen_id: child_citizen_id, program_id: <Child Benefit programme id> } — Child Benefit pays 50/month for children under 5.
 2. If eligible, auto-enrol the child (POST http://localhost:3004/enrollments).
-3. Look up the mother's email from Identity, then send an enrolment confirmation notification (POST http://localhost:3005/notifications) with channel "email".
+3. Look up the mother's email from Identity (GET http://localhost:3001/citizens/{mother_citizen_id}), logging rather than failing when it is missing.
+4. Send the mother an enrolment confirmation notification (POST http://localhost:3005/notifications) with channel "email".
 
-If a downstream step fails, log the error and continue with the remaining steps.`,
+If a lookup or notification step fails, log the error and continue.`,
       },
     ],
   },
