@@ -14,9 +14,9 @@ let tempDir: string;
 const origDbFile = process.env.PORTAL_DB_FILE;
 const origSimDataDir = process.env.SIM_DATA_DIR;
 
-// The db module opens its connection from PORTAL_DB_FILE at load time, so each
+// The db module opens its connection from PORTAL_DB_FILE on first use, so each
 // test points it at a fresh temp file and resets the module registry before
-// dynamically importing the store.
+// dynamically importing the store (the cached connection lives in module state).
 beforeEach(async () => {
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "simdpg-store-test-"));
   process.env.PORTAL_DB_FILE = path.join(tempDir, "test.sqlite");
@@ -37,11 +37,11 @@ async function loadStore() {
 }
 
 async function loadDb() {
-  const [{ db }, schema] = await Promise.all([
+  const [{ getDb }, schema] = await Promise.all([
     import("@/lib/db"),
     import("@/lib/db/schema"),
   ]);
-  return { db, ...schema };
+  return { db: getDb(), ...schema };
 }
 
 describe("store CRUD", () => {

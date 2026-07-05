@@ -15,7 +15,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import { db } from "./db";
+import { getDb } from "./db";
 import { formWebhooks } from "./db/schema";
 import { getFormHook } from "./form-hooks";
 
@@ -33,7 +33,7 @@ export interface ResolvedFormWebhook {
 
 /** All registry entries currently saved (env-var fallbacks are not included). */
 export async function listFormWebhooks(): Promise<FormWebhookRecord[]> {
-  return db.select().from(formWebhooks).all();
+  return getDb().select().from(formWebhooks).all();
 }
 
 /**
@@ -50,7 +50,8 @@ export async function setFormWebhook(
     target_url: targetUrl,
     updated_at: new Date().toISOString(),
   };
-  db.insert(formWebhooks)
+  getDb()
+    .insert(formWebhooks)
     .values(record)
     .onConflictDoUpdate({
       target: formWebhooks.key,
@@ -62,7 +63,7 @@ export async function setFormWebhook(
 
 /** Remove the registered URL for a form hook (env-var fallback still applies). */
 export async function deleteFormWebhook(key: string): Promise<void> {
-  db.delete(formWebhooks).where(eq(formWebhooks.key, key)).run();
+  getDb().delete(formWebhooks).where(eq(formWebhooks.key, key)).run();
 }
 
 /**
@@ -72,7 +73,7 @@ export async function deleteFormWebhook(key: string): Promise<void> {
 export async function resolveFormWebhook(
   key: string,
 ): Promise<ResolvedFormWebhook | null> {
-  const row = db
+  const row = getDb()
     .select()
     .from(formWebhooks)
     .where(eq(formWebhooks.key, key))
