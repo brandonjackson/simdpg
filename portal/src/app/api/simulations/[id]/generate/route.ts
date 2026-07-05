@@ -22,6 +22,16 @@ export async function POST(_request: Request, { params }: RouteContext) {
       );
     }
 
+    // Guard before generating: re-running generate on an already-generated (or
+    // otherwise non-created) simulation would overwrite its persisted event
+    // script with fresh random events before generateSimulation rejects the
+    // transition. Reject first so a 409 never mutates state.
+    if (simulation.status !== "created") {
+      throw new SimulationTransitionError(
+        "Only created simulations can be generated",
+      );
+    }
+
     await generateEvents(params.id, simulation.parameters);
     const updated = await generateSimulation(params.id);
 
