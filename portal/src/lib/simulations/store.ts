@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { reconcile } from "./reconcile";
-import { readRunState } from "./run-state";
-import { eventsFilePath, runStateFilePath } from "./paths";
+import { desc, eq } from "drizzle-orm";
+import { db } from "../db";
+import { simulations, simulationRuns } from "../db/schema";
+import { eventsFilePath } from "./paths";
 
 export const CLOCK_SPEED_OPTIONS = [1, 60, 3600, 86400] as const;
 
@@ -44,8 +45,7 @@ export class SimulationTransitionError extends Error {
   }
 }
 
-const SIMULATIONS_FILE = path.join(process.cwd(), ".simulations.json");
-const MAX_SIMULATIONS = 100;
+type SimulationRow = typeof simulations.$inferSelect;
 
 function isClockSpeed(value: number): value is ClockSpeed {
   return CLOCK_SPEED_OPTIONS.includes(value as ClockSpeed);
@@ -79,36 +79,36 @@ export function parseSimulationParameters(input: unknown): SimulationParameters 
   };
 }
 
-async function readSimulations(): Promise<SimulationRecord[]> {
-  try {
-    const raw = await fs.readFile(SIMULATIONS_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as SimulationRecord[]) : [];
-  } catch {
-    return [];
-  }
+/** Map a DB row to the record shape the API and UI consume. */
+function rowToRecord(row: SimulationRow): SimulationRecord {
+  const record: SimulationRecord = {
+    id: row.id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    status: row.status,
+    parameters: JSON.parse(row.parameters) as SimulationParameters,
+  };
+  if (row.generated_at) record.generatedAt = row.generated_at;
+  if (row.started_at) record.startedAt = row.started_at;
+  if (row.stopped_at) record.stoppedAt = row.stopped_at;
+  if (row.completed_at) record.completedAt = row.completed_at;
+  if (row.stats) record.stats = JSON.parse(row.stats) as Record<string, unknown>;
+  return record;
 }
 
-async function writeSimulations(simulations: SimulationRecord[]): Promise<void> {
-  await fs.writeFile(
-    SIMULATIONS_FILE,
-    JSON.stringify(simulations.slice(0, MAX_SIMULATIONS), null, 2),
-    "utf8",
-  );
-}
-
+/**
+ * List simulations, newest first. Status and stats come straight from the
+ * authoritative `simulations` row — the worker keeps terminal state current, so
+ * no read-time reconciliation is needed.
+ */
 export async function listSimulations(): Promise<SimulationRecord[]> {
-  const simulations = await readSimulations();
-  return Promise.all(
-    simulations.map(async (sim) =>
-      sim.status === "running" ? reconcile(sim, await readRunState(sim.id)) : sim,
-    ),
-  );
+  const rows = db.select().from(simulations).orderBy(desc(simulations.created_at)).all();
+  return rows.map(rowToRecord);
 }
 
 export async function getSimulation(id: string): Promise<SimulationRecord | null> {
-  const simulations = await listSimulations();
-  return simulations.find((simulation) => simulation.id === id) ?? null;
+  const row = db.select().from(simulations).where(eq(simulations.id, id)).get();
+  return row ? rowToRecord(row) : null;
 }
 
 export async function createSimulation(
@@ -123,42 +123,61 @@ export async function createSimulation(
     parameters,
   };
 
-  const simulations = await listSimulations();
-  await writeSimulations([simulation, ...simulations]);
+  db.insert(simulations).values({
+    id: simulation.id,
+    created_at: now,
+    updated_at: now,
+    status: "created",
+    parameters: JSON.stringify(parameters),
+  }).run();
+
   return simulation;
 }
 
 export async function deleteSimulation(id: string): Promise<boolean> {
-  const simulations = await listSimulations();
-  const next = simulations.filter((simulation) => simulation.id !== id);
-  if (next.length === simulations.length) {
+  const result = db.delete(simulations).where(eq(simulations.id, id)).run();
+  if (result.changes === 0) {
     return false;
   }
-  await writeSimulations(next);
-  await Promise.all([
-    fs.rm(eventsFilePath(id), { force: true }),
-    fs.rm(runStateFilePath(id), { force: true }),
-  ]);
+  db.delete(simulationRuns).where(eq(simulationRuns.simulation_id, id)).run();
+  await fs.rm(eventsFilePath(id), { force: true });
   return true;
 }
 
-async function updateSimulation(
+/**
+ * Atomically load a simulation, apply a transition, and persist it. The
+ * transition callback may throw (e.g. SimulationTransitionError) to reject an
+ * illegal state change; the transaction then rolls back. Returns null when the
+ * simulation doesn't exist.
+ */
+function updateSimulation(
   id: string,
   update: (simulation: SimulationRecord, now: string) => SimulationRecord,
-): Promise<SimulationRecord | null> {
-  const simulations = await listSimulations();
-  const index = simulations.findIndex((simulation) => simulation.id === id);
+): SimulationRecord | null {
+  return db.transaction((tx) => {
+    const row = tx.select().from(simulations).where(eq(simulations.id, id)).get();
+    if (!row) return null;
 
-  if (index === -1) {
-    return null;
-  }
+    const now = new Date().toISOString();
+    const next = update(rowToRecord(row), now);
+    const updated: SimulationRecord = { ...next, updatedAt: now };
 
-  const now = new Date().toISOString();
-  const next = update(simulations[index], now);
-  const updated = { ...next, updatedAt: now };
-  simulations[index] = updated;
-  await writeSimulations(simulations);
-  return updated;
+    tx.update(simulations)
+      .set({
+        status: updated.status,
+        parameters: JSON.stringify(updated.parameters),
+        updated_at: now,
+        generated_at: updated.generatedAt ?? null,
+        started_at: updated.startedAt ?? null,
+        stopped_at: updated.stoppedAt ?? null,
+        completed_at: updated.completedAt ?? null,
+        stats: updated.stats ? JSON.stringify(updated.stats) : null,
+      })
+      .where(eq(simulations.id, id))
+      .run();
+
+    return updated;
+  });
 }
 
 export async function generateSimulation(
@@ -197,7 +216,7 @@ function spawnWorker(id: string): void {
 }
 
 export async function startSimulation(id: string): Promise<SimulationRecord | null> {
-  const updated = await updateSimulation(id, (simulation, now) => {
+  const updated = updateSimulation(id, (simulation, now) => {
     if (simulation.status !== "generated") {
       throw new SimulationTransitionError("Only generated simulations can be started");
     }
@@ -214,13 +233,23 @@ export async function startSimulation(id: string): Promise<SimulationRecord | nu
   return updated;
 }
 
-async function terminateWorker(id: string): Promise<void> {
-  const runState = await readRunState(id);
-  if (!runState?.pid) return;
+/** Look up the running worker's pid, if any, for a simulation. */
+function runPid(id: string): number | null {
+  const run = db
+    .select({ pid: simulationRuns.pid })
+    .from(simulationRuns)
+    .where(eq(simulationRuns.simulation_id, id))
+    .get();
+  return run?.pid ?? null;
+}
+
+function terminateWorker(id: string): void {
+  const pid = runPid(id);
+  if (!pid) return;
   try {
-    process.kill(runState.pid, "SIGTERM");
+    process.kill(pid, "SIGTERM");
   } catch {
-    // Worker already exited; reconciliation will surface its terminal state.
+    // Worker already exited; its terminal run-state is already persisted.
   }
 }
 
@@ -231,8 +260,8 @@ export async function stopSimulation(id: string): Promise<SimulationRecord | nul
   if (!current) return null;
 
   // Idempotent stop: a record already in a terminal state is returned as-is,
-  // including the race where the worker completed/failed just before the
-  // user clicked Stop.
+  // including the race where the worker completed/failed just before the user
+  // clicked Stop (the worker persists terminal state directly now).
   if (TERMINAL_STATUSES.includes(current.status)) {
     return current;
   }
@@ -241,13 +270,34 @@ export async function stopSimulation(id: string): Promise<SimulationRecord | nul
     throw new SimulationTransitionError("Only running simulations can be stopped");
   }
 
-  await terminateWorker(id);
+  terminateWorker(id);
   return updateSimulation(id, (simulation, now) => {
     if (simulation.status !== "running") {
-      // Reconciliation caught up between the check above and this update
-      // (worker completed/failed in the meantime); leave it as-is.
+      // The worker reached a terminal state between the check above and this
+      // transaction; leave whatever it wrote in place.
       return simulation;
     }
     return { ...simulation, status: "stopped", stoppedAt: now };
   });
+}
+
+/**
+ * Run-state rows still marked `running`. A crashed or abandoned worker leaves
+ * its row here (its pid no longer alive), so a future reaper can query these
+ * and flip them terminal — the file model had no way to detect this.
+ */
+export async function listRunningRuns(): Promise<
+  { simulationId: string; pid: number | null; startedAt: string; updatedAt: string }[]
+> {
+  const rows = db
+    .select()
+    .from(simulationRuns)
+    .where(eq(simulationRuns.status, "running"))
+    .all();
+  return rows.map((r) => ({
+    simulationId: r.simulation_id,
+    pid: r.pid,
+    startedAt: r.started_at,
+    updatedAt: r.updated_at,
+  }));
 }

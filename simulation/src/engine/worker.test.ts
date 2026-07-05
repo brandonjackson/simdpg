@@ -3,10 +3,9 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
-import { runWorker } from "./worker.js";
-import { eventsFilePath, runStateFilePath } from "./paths.js";
+import { eq } from "drizzle-orm";
+import { eventsFilePath } from "./paths.js";
 import type { SimulationEvent } from "./events.js";
-import type { SimulationRunState } from "./run-state.js";
 
 let dir: string;
 
@@ -14,13 +13,43 @@ async function writeEvents(id: string, events: SimulationEvent[]): Promise<void>
   await fs.mkdir(path.join(dir, ".simulations"), { recursive: true });
   await fs.writeFile(eventsFilePath(id), JSON.stringify(events));
 }
-async function readRunState(id: string): Promise<SimulationRunState> {
-  return JSON.parse(await fs.readFile(runStateFilePath(id), "utf8"));
+
+/**
+ * Load the worker and the shared DB against the current tempdir. getDb() opens
+ * its connection (and creates the file) lazily, so each test resets the module
+ * registry (in beforeEach) and imports fresh to get an isolated database.
+ */
+async function load() {
+  const [{ runWorker }, { getDb, simulations, simulationRuns }] = await Promise.all([
+    import("./worker.js"),
+    import("./db.js"),
+  ]);
+  return { runWorker, db: getDb(), simulations, simulationRuns };
+}
+
+/** Seed a running simulation record, as the portal would before spawning the worker. */
+function seedRunning(
+  db: Awaited<ReturnType<typeof load>>["db"],
+  simulations: Awaited<ReturnType<typeof load>>["simulations"],
+  id: string,
+): void {
+  db.insert(simulations)
+    .values({
+      id,
+      created_at: "t0",
+      updated_at: "t0",
+      status: "running",
+      parameters: JSON.stringify({ clockSpeed: 60, durationSeconds: 120, usesExistingPopulation: true }),
+      started_at: "t1",
+    })
+    .run();
 }
 
 beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "sim-worker-"));
   process.env.SIM_DATA_DIR = dir;
+  delete process.env.PORTAL_DB_FILE;
+  vi.resetModules();
 });
 afterEach(async () => {
   delete process.env.SIM_DATA_DIR;
@@ -28,7 +57,10 @@ afterEach(async () => {
 });
 
 describe("runWorker", () => {
-  it("delivers events to a live webhook and writes completed run-state", async () => {
+  it("delivers events, records completed run-state, and flips the record terminal", async () => {
+    const { runWorker, db, simulations, simulationRuns } = await load();
+    seedRunning(db, simulations, "s1");
+
     const received: unknown[] = [];
     const server = http.createServer((req, res) => {
       let body = "";
@@ -47,16 +79,31 @@ describe("runWorker", () => {
     await new Promise<void>((r) => server.close(() => r()));
 
     expect(received).toEqual([{ n: 1 }]);
-    const state = await readRunState("s1");
-    expect(state.status).toBe("completed");
-    expect(state).toMatchObject({ delivered: 1, skipped: 1, failed: 0, total: 2 });
-    expect(state.completedAt).toBeTruthy();
+
+    // Worker-owned run-state row.
+    const run = db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "s1")).get();
+    expect(run?.status).toBe("completed");
+    expect(run).toMatchObject({ delivered: 1, skipped: 1, failed: 0, total: 2 });
+    expect(run?.completed_at).toBeTruthy();
+
+    // Authoritative record a portal read would return — terminal status + counts,
+    // no reconciliation needed.
+    const sim = db.select().from(simulations).where(eq(simulations.id, "s1")).get();
+    expect(sim?.status).toBe("completed");
+    expect(JSON.parse(sim!.stats!)).toEqual({ delivered: 1, skipped: 1, failed: 0, total: 2 });
   });
 
-  it("writes failed run-state when the events file is missing", async () => {
+  it("records failed run-state (and record) when the events file is missing", async () => {
+    const { runWorker, db, simulations, simulationRuns } = await load();
+    seedRunning(db, simulations, "missing");
+
     await runWorker("missing");
-    const state = await readRunState("missing");
-    expect(state.status).toBe("failed");
-    expect(state.error).toBeTruthy();
+
+    const run = db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "missing")).get();
+    expect(run?.status).toBe("failed");
+    expect(run?.error).toBeTruthy();
+
+    const sim = db.select().from(simulations).where(eq(simulations.id, "missing")).get();
+    expect(sim?.status).toBe("failed");
   });
 });

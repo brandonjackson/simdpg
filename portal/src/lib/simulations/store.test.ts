@@ -2,101 +2,175 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import type { SimulationRecord } from "./store";
-import type { SimulationRunState } from "./run-state";
+import type { SimulationParameters } from "./store";
 
-const originalCwd = process.cwd();
-const originalSimDataDir = process.env.SIM_DATA_DIR;
+const PARAMS: SimulationParameters = {
+  clockSpeed: 60,
+  durationSeconds: 120,
+  usesExistingPopulation: true,
+};
+
 let tempDir: string;
+const origDbFile = process.env.PORTAL_DB_FILE;
+const origSimDataDir = process.env.SIM_DATA_DIR;
 
-function baseRecord(id: string, over: Partial<SimulationRecord> = {}): SimulationRecord {
-  return {
-    id,
-    createdAt: "t0",
-    updatedAt: "t0",
-    status: "running",
-    parameters: { clockSpeed: 60, durationSeconds: 120, usesExistingPopulation: true },
-    startedAt: "t1",
-    ...over,
-  };
-}
-
-async function writeSimulationsFile(records: SimulationRecord[]) {
-  await fs.writeFile(
-    path.join(tempDir, ".simulations.json"),
-    JSON.stringify(records, null, 2),
-    "utf8",
-  );
-}
-
-async function writeRunState(id: string, runState: SimulationRunState) {
-  const dir = path.join(tempDir, ".simulations");
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(
-    path.join(dir, `${id}.run.json`),
-    JSON.stringify(runState, null, 2),
-    "utf8",
-  );
-}
-
+// The db module opens its connection from PORTAL_DB_FILE at load time, so each
+// test points it at a fresh temp file and resets the module registry before
+// dynamically importing the store.
 beforeEach(async () => {
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "simdpg-store-test-"));
-  process.chdir(tempDir);
+  process.env.PORTAL_DB_FILE = path.join(tempDir, "test.sqlite");
   process.env.SIM_DATA_DIR = tempDir;
-  // store.ts computes SIMULATIONS_FILE from process.cwd() at module-eval
-  // time, so the module cache must be cleared after each chdir to force
-  // re-evaluation against the new tempDir.
   vi.resetModules();
 });
 
 afterEach(async () => {
-  process.chdir(originalCwd);
-  if (originalSimDataDir === undefined) {
-    delete process.env.SIM_DATA_DIR;
-  } else {
-    process.env.SIM_DATA_DIR = originalSimDataDir;
-  }
+  if (origDbFile === undefined) delete process.env.PORTAL_DB_FILE;
+  else process.env.PORTAL_DB_FILE = origDbFile;
+  if (origSimDataDir === undefined) delete process.env.SIM_DATA_DIR;
+  else process.env.SIM_DATA_DIR = origSimDataDir;
   await fs.rm(tempDir, { recursive: true, force: true });
 });
 
-describe("stopSimulation", () => {
-  it("does not throw when the worker completed before the stop request lands (race)", async () => {
-    const id = "race-1";
-    await writeSimulationsFile([baseRecord(id, { status: "running" })]);
-    await writeRunState(id, {
-      // A pid guaranteed not to correspond to a live process, so
-      // terminateWorker's process.kill throws and is swallowed.
-      pid: 999999999,
-      status: "completed",
-      startedAt: "t1",
-      completedAt: "t2",
-      delivered: 10,
-      skipped: 0,
-      failed: 0,
-      total: 10,
-    });
+async function loadStore() {
+  return import("./store");
+}
 
-    const { stopSimulation } = await import("./store");
+async function loadDb() {
+  const [{ db }, schema] = await Promise.all([
+    import("@/lib/db"),
+    import("@/lib/db/schema"),
+  ]);
+  return { db, ...schema };
+}
 
-    let result: SimulationRecord | null = null;
-    await expect(
-      (async () => {
-        result = await stopSimulation(id);
-      })(),
-    ).resolves.not.toThrow();
+describe("store CRUD", () => {
+  it("creates, reads, and lists a simulation", async () => {
+    const store = await loadStore();
+    const sim = await store.createSimulation(PARAMS);
+    expect(sim.status).toBe("created");
 
-    expect(result).not.toBeNull();
-    expect(result!.status).toBe("completed");
-    expect(result!.status).not.toBe("stopped");
+    const got = await store.getSimulation(sim.id);
+    expect(got?.id).toBe(sim.id);
+    expect(got?.parameters).toEqual(PARAMS);
+
+    const list = await store.listSimulations();
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(sim.id);
   });
 
-  it("rejects with SimulationTransitionError for a never-started (generated) simulation", async () => {
-    const id = "never-started-1";
-    await writeSimulationsFile([baseRecord(id, { status: "generated", startedAt: undefined })]);
+  it("deletes a simulation and its events file, and reports missing on re-delete", async () => {
+    const store = await loadStore();
+    const { eventsFilePath } = await import("./paths");
+    const sim = await store.createSimulation(PARAMS);
 
-    const { stopSimulation, SimulationTransitionError } = await import("./store");
+    await fs.mkdir(path.dirname(eventsFilePath(sim.id)), { recursive: true });
+    await fs.writeFile(eventsFilePath(sim.id), "[]");
 
-    await expect(stopSimulation(id)).rejects.toThrow(SimulationTransitionError);
-    await expect(stopSimulation(id)).rejects.toThrow("Only running simulations can be stopped");
+    expect(await store.deleteSimulation(sim.id)).toBe(true);
+    expect(await store.getSimulation(sim.id)).toBeNull();
+    await expect(fs.access(eventsFilePath(sim.id))).rejects.toThrow();
+    expect(await store.deleteSimulation(sim.id)).toBe(false);
+  });
+});
+
+describe("transitions", () => {
+  it("generates a created simulation and rejects generating it twice", async () => {
+    const store = await loadStore();
+    const sim = await store.createSimulation(PARAMS);
+
+    const generated = await store.generateSimulation(sim.id);
+    expect(generated?.status).toBe("generated");
+    expect(generated?.generatedAt).toBeTruthy();
+
+    await expect(store.generateSimulation(sim.id)).rejects.toThrow(
+      store.SimulationTransitionError,
+    );
+  });
+
+  it("rejects stopping a never-started (generated) simulation", async () => {
+    const store = await loadStore();
+    const sim = await store.createSimulation(PARAMS);
+    await store.generateSimulation(sim.id);
+
+    await expect(store.stopSimulation(sim.id)).rejects.toThrow(
+      store.SimulationTransitionError,
+    );
+    await expect(store.stopSimulation(sim.id)).rejects.toThrow(
+      "Only running simulations can be stopped",
+    );
+  });
+
+  it("returns a terminal record unchanged when Stop lands after the worker finished (race)", async () => {
+    const store = await loadStore();
+    const { db, simulations, simulationRuns } = await loadDb();
+
+    // The worker persisted a completed record + run row before the Stop click.
+    db.insert(simulations)
+      .values({
+        id: "race-1",
+        created_at: "t0",
+        updated_at: "t2",
+        status: "completed",
+        parameters: JSON.stringify(PARAMS),
+        started_at: "t1",
+        completed_at: "t2",
+        stats: JSON.stringify({ delivered: 10, skipped: 0, failed: 0, total: 10 }),
+      })
+      .run();
+    db.insert(simulationRuns)
+      .values({
+        simulation_id: "race-1",
+        pid: 999999999,
+        status: "completed",
+        started_at: "t1",
+        completed_at: "t2",
+        delivered: 10,
+        skipped: 0,
+        failed: 0,
+        total: 10,
+        updated_at: "t2",
+      })
+      .run();
+
+    const result = await store.stopSimulation("race-1");
+    expect(result?.status).toBe("completed");
+    expect(result?.status).not.toBe("stopped");
+  });
+});
+
+describe("listRunningRuns (crash detection)", () => {
+  it("surfaces run rows still marked running so a reaper can find abandoned workers", async () => {
+    const store = await loadStore();
+    const { db, simulations, simulationRuns } = await loadDb();
+
+    db.insert(simulations)
+      .values({
+        id: "r1",
+        created_at: "t0",
+        updated_at: "t0",
+        status: "running",
+        parameters: JSON.stringify(PARAMS),
+        started_at: "t1",
+      })
+      .run();
+    db.insert(simulationRuns)
+      .values({
+        simulation_id: "r1",
+        pid: 999999999,
+        status: "running",
+        started_at: "t1",
+        delivered: 0,
+        skipped: 0,
+        failed: 0,
+        total: 5,
+        updated_at: "t1",
+      })
+      .run();
+
+    const running = await store.listRunningRuns();
+    expect(running).toHaveLength(1);
+    expect(running[0].simulationId).toBe("r1");
+    expect(running[0].pid).toBe(999999999);
   });
 });

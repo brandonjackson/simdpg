@@ -5,8 +5,10 @@ import { sleep, log, logError } from "../utils.js";
 
 /**
  * Execute a generated simulation: schedule every event's POST by real time,
- * then record the terminal run-state. The portal reconciles the simulation
- * record from this file. Never throws — failures are written as run-state.
+ * then record the terminal run-state to the shared database. writeRunState also
+ * stamps the authoritative `simulations` record, so the portal reads a
+ * consistent status with no reconciliation. Never throws — failures are written
+ * as run-state.
  */
 export async function runWorker(id: string): Promise<void> {
   const startedAt = new Date().toISOString();
