@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  getSimulation,
   generateSimulation,
   SimulationTransitionError,
 } from "@/lib/simulations/store";
-import { generateStubEvents } from "@/lib/simulations/stub-generator";
+import { generateEvents } from "@/lib/simulations/generate-events";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +14,7 @@ interface RouteContext {
 
 export async function POST(_request: Request, { params }: RouteContext) {
   try {
-    await generateStubEvents(params.id);
-    const simulation = await generateSimulation(params.id);
-
+    const simulation = await getSimulation(params.id);
     if (!simulation) {
       return NextResponse.json(
         { error: "Simulation not found" },
@@ -23,7 +22,20 @@ export async function POST(_request: Request, { params }: RouteContext) {
       );
     }
 
-    return NextResponse.json({ simulation });
+    // Guard before generating: re-running generate on an already-generated (or
+    // otherwise non-created) simulation would overwrite its persisted event
+    // script with fresh random events before generateSimulation rejects the
+    // transition. Reject first so a 409 never mutates state.
+    if (simulation.status !== "created") {
+      throw new SimulationTransitionError(
+        "Only created simulations can be generated",
+      );
+    }
+
+    await generateEvents(params.id, simulation.parameters);
+    const updated = await generateSimulation(params.id);
+
+    return NextResponse.json({ simulation: updated });
   } catch (err) {
     const status = err instanceof SimulationTransitionError ? 409 : 400;
     const message = err instanceof Error ? err.message : "Generation failed";
