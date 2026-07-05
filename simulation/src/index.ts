@@ -23,6 +23,7 @@
 import { generate, configFromEnv } from "./generate.js";
 import { runYear, runScale, yearConfigFromEnv, scaleConfigFromEnv } from "./run.js";
 import { runApplications, applyConfigFromEnv } from "./events/application.js";
+import { runWorker } from "./engine/worker.js";
 import { log, logError } from "./utils.js";
 
 const command = process.argv[2];
@@ -53,6 +54,15 @@ async function main(): Promise<void> {
       const config = applyConfigFromEnv();
       const report = await runApplications(config);
       report.print();
+      break;
+    }
+    case "run": {
+      const id = process.argv[3];
+      if (!id) {
+        logError("Usage: tsx src/index.ts run <simulationId>", new Error("missing id"));
+        process.exit(1);
+      }
+      await runWorker(id);
       break;
     }
     default:

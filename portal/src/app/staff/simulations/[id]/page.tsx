@@ -50,6 +50,7 @@ function statusTagClass(status: SimulationStatus): string {
     case "completed":
       return "govuk-tag govuk-tag--green";
     case "stopped":
+    case "failed":
       return "govuk-tag govuk-tag--yellow";
   }
 }
@@ -66,6 +67,8 @@ function statusLabel(status: SimulationStatus): string {
       return "Stopped";
     case "completed":
       return "Completed";
+    case "failed":
+      return "Failed";
   }
 }
 
@@ -273,7 +276,8 @@ export default function SimulationDetails({ params }: PageProps) {
           )}
 
           {(simulation.status === "stopped" ||
-            simulation.status === "completed") && (
+            simulation.status === "completed" ||
+            simulation.status === "failed") && (
             <div className="govuk-inset-text">
               The simulation has finished running. Stats will appear here once
               event logging is connected.
@@ -361,7 +365,8 @@ export default function SimulationDetails({ params }: PageProps) {
           </dl>
 
           {(simulation.status === "stopped" ||
-            simulation.status === "completed") && (
+            simulation.status === "completed" ||
+            simulation.status === "failed") && (
             <>
               <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
               <h2 className="govuk-heading-l">Stats</h2>

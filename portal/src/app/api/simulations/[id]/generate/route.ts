@@ -3,6 +3,7 @@ import {
   generateSimulation,
   SimulationTransitionError,
 } from "@/lib/simulations/store";
+import { generateStubEvents } from "@/lib/simulations/stub-generator";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ interface RouteContext {
 
 export async function POST(_request: Request, { params }: RouteContext) {
   try {
+    await generateStubEvents(params.id);
     const simulation = await generateSimulation(params.id);
 
     if (!simulation) {

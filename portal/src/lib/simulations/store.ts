@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { reconcile } from "./reconcile";
+import { readRunState } from "./run-state";
+import { eventsFilePath, runStateFilePath } from "./paths";
 
 export const CLOCK_SPEED_OPTIONS = [1, 60, 3600, 86400] as const;
 
@@ -11,7 +15,8 @@ export type SimulationStatus =
   | "generated"
   | "running"
   | "stopped"
-  | "completed";
+  | "completed"
+  | "failed";
 
 export interface SimulationParameters {
   clockSpeed: ClockSpeed;
@@ -74,37 +79,6 @@ export function parseSimulationParameters(input: unknown): SimulationParameters 
   };
 }
 
-function resolveCompletedSimulation(
-  simulation: SimulationRecord,
-  now = Date.now(),
-): SimulationRecord {
-  if (simulation.status !== "running" || !simulation.startedAt) {
-    return simulation;
-  }
-
-  const startedAt = Date.parse(simulation.startedAt);
-  if (Number.isNaN(startedAt)) {
-    return simulation;
-  }
-
-  const realDurationMs = Math.ceil(
-    (simulation.parameters.durationSeconds /
-      simulation.parameters.clockSpeed) *
-      1000,
-  );
-  const completedAt = startedAt + realDurationMs;
-
-  if (completedAt > now) {
-    return simulation;
-  }
-
-  return {
-    ...simulation,
-    status: "completed",
-    completedAt: new Date(completedAt).toISOString(),
-  };
-}
-
 async function readSimulations(): Promise<SimulationRecord[]> {
   try {
     const raw = await fs.readFile(SIMULATIONS_FILE, "utf8");
@@ -125,12 +99,14 @@ async function writeSimulations(simulations: SimulationRecord[]): Promise<void> 
 
 export async function listSimulations(): Promise<SimulationRecord[]> {
   const simulations = await readSimulations();
-  return simulations.map((simulation) => resolveCompletedSimulation(simulation));
+  return Promise.all(
+    simulations.map(async (sim) =>
+      sim.status === "running" ? reconcile(sim, await readRunState(sim.id)) : sim,
+    ),
+  );
 }
 
-export async function getSimulation(
-  id: string,
-): Promise<SimulationRecord | null> {
+export async function getSimulation(id: string): Promise<SimulationRecord | null> {
   const simulations = await listSimulations();
   return simulations.find((simulation) => simulation.id === id) ?? null;
 }
@@ -159,6 +135,10 @@ export async function deleteSimulation(id: string): Promise<boolean> {
     return false;
   }
   await writeSimulations(next);
+  await Promise.all([
+    fs.rm(eventsFilePath(id), { force: true }),
+    fs.rm(runStateFilePath(id), { force: true }),
+  ]);
   return true;
 }
 
@@ -199,16 +179,28 @@ export async function generateSimulation(
   });
 }
 
-export async function startSimulation(
-  id: string,
-): Promise<SimulationRecord | null> {
-  return updateSimulation(id, (simulation, now) => {
-    if (simulation.status !== "generated") {
-      throw new SimulationTransitionError(
-        "Only generated simulations can be started",
-      );
-    }
+function spawnWorker(id: string): void {
+  const entry =
+    process.env.SIM_WORKER_ENTRY ??
+    path.resolve(process.cwd(), "..", "simulation", "src", "index.ts");
+  const command = process.env.SIM_WORKER_CMD ?? "npx";
+  const args =
+    process.env.SIM_WORKER_CMD ? [entry, "run", id] : ["tsx", entry, "run", id];
 
+  const child = spawn(command, args, {
+    detached: true,
+    stdio: "ignore",
+    cwd: process.cwd(),
+    env: { ...process.env, SIM_DATA_DIR: process.env.SIM_DATA_DIR ?? process.cwd() },
+  });
+  child.unref();
+}
+
+export async function startSimulation(id: string): Promise<SimulationRecord | null> {
+  const updated = await updateSimulation(id, (simulation, now) => {
+    if (simulation.status !== "generated") {
+      throw new SimulationTransitionError("Only generated simulations can be started");
+    }
     return {
       ...simulation,
       status: "running",
@@ -217,22 +209,45 @@ export async function startSimulation(
       completedAt: undefined,
     };
   });
+
+  if (updated) spawnWorker(id);
+  return updated;
 }
 
-export async function stopSimulation(
-  id: string,
-): Promise<SimulationRecord | null> {
+async function terminateWorker(id: string): Promise<void> {
+  const runState = await readRunState(id);
+  if (!runState?.pid) return;
+  try {
+    process.kill(runState.pid, "SIGTERM");
+  } catch {
+    // Worker already exited; reconciliation will surface its terminal state.
+  }
+}
+
+const TERMINAL_STATUSES: SimulationStatus[] = ["completed", "failed", "stopped"];
+
+export async function stopSimulation(id: string): Promise<SimulationRecord | null> {
+  const current = await getSimulation(id);
+  if (!current) return null;
+
+  // Idempotent stop: a record already in a terminal state is returned as-is,
+  // including the race where the worker completed/failed just before the
+  // user clicked Stop.
+  if (TERMINAL_STATUSES.includes(current.status)) {
+    return current;
+  }
+
+  if (current.status !== "running") {
+    throw new SimulationTransitionError("Only running simulations can be stopped");
+  }
+
+  await terminateWorker(id);
   return updateSimulation(id, (simulation, now) => {
     if (simulation.status !== "running") {
-      throw new SimulationTransitionError(
-        "Only running simulations can be stopped",
-      );
+      // Reconciliation caught up between the check above and this update
+      // (worker completed/failed in the meantime); leave it as-is.
+      return simulation;
     }
-
-    return {
-      ...simulation,
-      status: "stopped",
-      stoppedAt: now,
-    };
+    return { ...simulation, status: "stopped", stoppedAt: now };
   });
 }
