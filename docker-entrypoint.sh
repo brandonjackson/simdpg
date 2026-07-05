@@ -39,10 +39,16 @@ case "$svc" in
     ;;
 esac
 
-# Systems get a one-time seed on a fresh volume unless told otherwise.
+# Systems get a one-time seed on a fresh volume unless told otherwise. Only the
+# seven systems below define a `db:seed` script; other workspaces (portal,
+# simulation, api-clients, system-kit) have nothing to seed. Deriving a SEED_CMD
+# for them would run `npm run db:seed -w @simdpg/<svc>` against a missing script
+# and crash-loop the container, so only auto-derive for known systems. An
+# explicit SEED_CMD (e.g. from docker-compose) always still wins.
 case "$svc" in
-  ""|portal) : ;;
-  *) [ -n "${SERVICE_DIR:-}" ] && : "${SEED_CMD:=npm run db:seed -w @simdpg/$svc}" ;;
+  identity|civil-registry|health|benefits|notifications|payments|social-registry)
+    [ -n "${SERVICE_DIR:-}" ] && : "${SEED_CMD:=npm run db:seed -w @simdpg/$svc}" ;;
+  *) : ;;
 esac
 
 cd "/app/${SERVICE_DIR:?SERVICE_DIR not set and no RAILWAY_SERVICE_NAME mapping}"
