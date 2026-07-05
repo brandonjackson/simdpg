@@ -2,15 +2,15 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { eventsFilePath, runStateFilePath } from "./paths.js";
+import { eventsFilePath, simDbPath } from "./paths.js";
 import { readEvents } from "./events.js";
-import { writeRunState, type SimulationRunState } from "./run-state.js";
 
 let dir: string;
 
 beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "sim-engine-"));
   process.env.SIM_DATA_DIR = dir;
+  delete process.env.PORTAL_DB_FILE;
 });
 afterEach(async () => {
   delete process.env.SIM_DATA_DIR;
@@ -18,9 +18,17 @@ afterEach(async () => {
 });
 
 describe("paths", () => {
-  it("resolves event/run-state files under .simulations in SIM_DATA_DIR", () => {
+  it("resolves the events file under .simulations in SIM_DATA_DIR", () => {
     expect(eventsFilePath("abc")).toBe(path.join(dir, ".simulations", "abc.events.json"));
-    expect(runStateFilePath("abc")).toBe(path.join(dir, ".simulations", "abc.run.json"));
+  });
+
+  it("resolves the shared sqlite db under data/ in SIM_DATA_DIR", () => {
+    expect(simDbPath()).toBe(path.join(dir, "data", "simulations.sqlite"));
+  });
+
+  it("honours PORTAL_DB_FILE as an explicit override", () => {
+    process.env.PORTAL_DB_FILE = "/mnt/vol/portal.sqlite";
+    expect(simDbPath()).toBe("/mnt/vol/portal.sqlite");
   });
 });
 
@@ -38,17 +46,5 @@ describe("readEvents", () => {
 
   it("throws when the events file is missing", async () => {
     await expect(readEvents("missing")).rejects.toThrow();
-  });
-});
-
-describe("writeRunState", () => {
-  it("creates the directory and writes run state", async () => {
-    const state: SimulationRunState = {
-      pid: 123, status: "running", startedAt: "2026-07-04T00:00:00.000Z",
-      delivered: 0, skipped: 0, failed: 0, total: 3,
-    };
-    await writeRunState("abc", state);
-    const raw = await fs.readFile(runStateFilePath("abc"), "utf8");
-    expect(JSON.parse(raw)).toEqual(state);
   });
 });
