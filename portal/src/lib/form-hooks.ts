@@ -40,11 +40,25 @@ export const FORM_HOOKS: FormHook[] = [
       "Submitted when a parent registers a birth. Payload: mother_national_id, father_national_id (optional), given_name, family_name, date_of_birth, sex, place_of_birth.",
   },
   {
-    key: "death-registration",
+    key: "death-registration-lookup",
     serviceId: "death-registration",
-    name: "Death registration",
+    name: "Death registration — citizen lookup (step 1)",
     description:
-      "Submitted when a family member registers a death. The portal resolves the deceased against Identity before submitting, so the payload carries both the national ID and the citizen UUID. Payload: national_id, citizen_id (and id, an alias of citizen_id for workflows that key off state.data.id), date_of_death, place_of_death, cause_of_death.",
+      "Validates the deceased's national ID against Identity and returns their citizen record. Payload: national_id.",
+  },
+  {
+    key: "death-registration-preview",
+    serviceId: "death-registration",
+    name: "Death registration — preview (step 2)",
+    description:
+      "Takes the looked-up citizen plus the entered death details and checks Civil Registry, Benefits enrolments, and pending payments so the portal can preview what will be closed. Payload: citizen_data, userInput (dateOfDeath, placeOfDeath, causeOfDeath).",
+  },
+  {
+    key: "death-registration-confirm",
+    serviceId: "death-registration",
+    name: "Death registration — confirm (step 3)",
+    description:
+      "Registers the death in Civil Registry and cascades the closure across Identity and Benefits. Payload: the preview response (citizen_data, deathRegistration, enrollment_data, payment_data).",
   },
   {
     key: "national-id",

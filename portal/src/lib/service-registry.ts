@@ -207,6 +207,27 @@ If a lookup or notification step fails, log the error and continue.`,
     ],
     openfnWorkflows: [
       {
+        name: "Register a death 1 — Look up citizen",
+        trigger: "Webhook: portal form",
+        description:
+          "Receives the portal lookup submission and validates the deceased's national ID against Identity, returning their citizen record so the portal can confirm the identity.",
+        prompt: "",
+      },
+      {
+        name: "Register a death 2 — Preview closures",
+        trigger: "Webhook: portal form",
+        description:
+          "Takes the confirmed citizen and entered death details, checks Civil Registry for an existing death record, and gathers active Benefits enrolments and pending payments so the portal can preview what will be closed.",
+        prompt: "",
+      },
+      {
+        name: "Register a death 3 — Register death & cascade closure",
+        trigger: "Webhook: portal form",
+        description:
+          "Registers the death in Civil Registry, patches the citizen's Identity status to 'deceased', and terminates active enrolments and pending payments in Benefits.",
+        prompt: "",
+      },
+      {
         name: "Death registered → Close records across systems",
         trigger: "Webhook: death.registered",
         description:
