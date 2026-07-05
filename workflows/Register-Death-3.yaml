@@ -1,0 +1,136 @@
+name: Register Death 3
+jobs:
+  Post-civil-registry:
+    name: Post civil registry
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      fn(state => {
+            // Unwraps the payload so they survive the API calls!
+            return {
+              ...state,
+              ...state.data
+            };
+          });
+
+      post(
+          `https://simdpgcivil-registry-production.up.railway.app/deaths`,
+          state => ({
+            "citizen_id": state.citizen_data.id,
+            "date_of_death": state.deathRegistration.dateOfDeath,
+            "place_of_death": state.deathRegistration.placeOfDeath,
+            "cause_of_death": state.deathRegistration.causeOfDeath
+          })
+      );
+  Patch-Identity:
+    name: Patch Identity
+    adaptor: "@openfn/language-http@7.3.2"
+    body: >-
+      // Check out the Job Writing Guide for help getting started:
+
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+
+      patch(
+          state => `https://simdpgidentity-production.up.railway.app/citizens/${state.citizen_data.id}`,
+          state => ({
+            "status": "deceased",
+            "date_of_death": state.deathRegistration.dateOfDeath
+          })
+      );
+  Patch-Enrollment-Benefits:
+    name: Patch Enrollment Benefits
+    adaptor: "@openfn/language-http@7.3.2"
+    body: >-
+      // Check out the Job Writing Guide for help getting started:
+
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+
+      each(
+            "$.enrollment_data.data[*]",
+            patch(
+              state => `https://simdpgbenefits-production.up.railway.app/enrollments/${state.data.id}`,
+              state => ({ "status": "terminated" })
+            )
+          );
+  Patch-Payment-Benefits:
+    name: Patch Payment Benefits
+    adaptor: "@openfn/language-http@7.3.2"
+    body: >-
+      // Check out the Job Writing Guide for help getting started:
+
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+
+      each(
+            "$.payment_data.data[*]",
+            patch(
+              state => `https://simdpgbenefits-production.up.railway.app/payments/${state.data.id}`,
+              state => ({ "status": "failed" })
+            )
+          );
+  Patch-Health:
+    name: Patch Health
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      // Check out the Job Writing Guide for help getting started:
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+      fn(state => state);
+  Present-Death-Certificate:
+    name: Present Death Certificate
+    adaptor: "@openfn/language-common@3.3.4"
+    body: >-
+      // Check out the Job Writing Guide for help getting started:
+
+      // https://docs.openfn.org/documentation/jobs/job-writing-guide
+
+
+      fn(state => {
+            console.log('Death certificate sent with id', state.citizen_data.id);
+
+            // Return a clean, lightweight success payload to the portal
+            state.data = {
+              id: state.citizen_data.id,
+              success: true
+            };
+
+            return state.data;
+          });
+triggers:
+  webhook:
+    type: webhook
+    enabled: true
+    webhook_reply: after_completion
+edges:
+  webhook->Post-civil-registry:
+    condition_type: always
+    enabled: true
+    target_job: Post-civil-registry
+    source_trigger: webhook
+  Post-civil-registry->Patch-Identity:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Patch-Identity
+    source_job: Post-civil-registry
+  Patch-Identity->Patch-Enrollment-Benefits:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Patch-Enrollment-Benefits
+    source_job: Patch-Identity
+    condition_expression: state.enrollment_found !== true && state.payment_found === true
+  Patch-Enrollment-Benefits->Patch-Payment-Benefits:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Patch-Payment-Benefits
+    source_job: Patch-Enrollment-Benefits
+    condition_expression: state.payment_found === true
+  Patch-Payment-Benefits->Patch-Health:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Patch-Health
+    source_job: Patch-Payment-Benefits
+  Patch-Health->Present-Death-Certificate:
+    condition_type: always
+    enabled: true
+    target_job: Present-Death-Certificate
+    source_job: Patch-Health

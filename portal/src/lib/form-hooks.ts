@@ -64,6 +64,30 @@ export const FORM_HOOKS: FormHook[] = [
       "Creates the enrolment in Benefits when a citizen confirms an eligible programme. Payload: citizen_id, program_id.",
     legacyEnvVar: "OPENFN_BENEFIT_ELIGIBILITY_PART3_URL",
   },
+  {
+    key: "death-registration-lookup",
+    serviceId: "death-registration",
+    name: "Death registration — citizen lookup (step 1)",
+    description:
+      "Validates a national ID against Identity and returns citizen details. Payload: national_id.",
+    legacyEnvVar: "OPENFN_DEATH_REGISTRATION_PART1_URL",
+  },
+  {
+    key: "death-registration-preview",
+    serviceId: "death-registration",
+    name: "Death registration — preview (step 2)",
+    description:
+      "Gathers death details and prepares the drafted record. Payload: id, userInput.",
+    legacyEnvVar: "OPENFN_DEATH_REGISTRATION_PART2_URL",
+  },
+  {
+    key: "death-registration-confirm",
+    serviceId: "death-registration",
+    name: "Death registration — confirm (step 3)",
+    description:
+      "Submits the confirmed death registration. Payload: citizen_data, deathRegistration.",
+    legacyEnvVar: "OPENFN_DEATH_REGISTRATION_PART3_URL",
+  },
 ];
 
 const FORM_HOOKS_BY_KEY = new Map(FORM_HOOKS.map((h) => [h.key, h]));

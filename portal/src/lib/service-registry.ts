@@ -170,8 +170,8 @@ If a downstream step fails, log the error and continue with the remaining steps.
     dciAlignment: "CRVS — Death Registration",
     href: "/services/death-registration",
     showOnHomepage: true,
-    formBuilt: false,
-    openfnConnected: false,
+    formBuilt: true,
+    openfnConnected: true,
     customerJourney: [
       "Family member or authorised person visits the portal and selects 'Register a death'.",
       "Enters the deceased citizen's national ID to look up their record.",
@@ -206,6 +206,27 @@ If a downstream step fails, log the error and continue with the remaining steps.
       "The death.ts simulation script updates the citizen status in Identity and registers the death in Civil Registry. Deaths are weighted by age (higher probability for elderly). Rate: ~8 deaths per 1,000 population per year.",
     ],
     openfnWorkflows: [
+      {
+        name: "Death registration (Part 1 - Lookup)",
+        trigger: "Webhook: portal form",
+        description: "Validates a citizen's national ID against Identity and returns their details.",
+        prompt: "",
+        envVar: "OPENFN_DEATH_REGISTRATION_PART1_URL",
+      },
+      {
+        name: "Death registration (Part 2 - Preview)",
+        trigger: "Webhook: portal form",
+        description: "Gathers death details and checks for active enrolments and payments to cancel.",
+        prompt: "",
+        envVar: "OPENFN_DEATH_REGISTRATION_PART2_URL",
+      },
+      {
+        name: "Death registration (Part 3 - Confirm)",
+        trigger: "Webhook: portal form",
+        description: "Registers the death in Civil Registry and cascades the closure.",
+        prompt: "",
+        envVar: "OPENFN_DEATH_REGISTRATION_PART3_URL",
+      },
       {
         name: "Death registered → Close records across systems",
         trigger: "Webhook: death.registered",

@@ -43,3 +43,7 @@ coverage/
 
 # TypeScript
 *.tsbuildinfo
+
+# Agent files
+AGENTS.md
+HANDOFF.md
