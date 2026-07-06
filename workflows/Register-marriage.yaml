@@ -136,7 +136,7 @@ jobs:
       });
 
   Add-Household-2-Members-to-Household-1:
-    name: Merge household 2 into household 1 (add)
+    name: Merge household 2 into household 1 add
     adaptor: "@openfn/language-http@7.3.2"
     body: |-
       patch(
@@ -153,7 +153,7 @@ jobs:
       });
 
   Remove-Household-2-Members:
-    name: Merge household 2 into household 1 (remove)
+    name: Merge household 2 into household 1 remove
     adaptor: "@openfn/language-http@7.3.2"
     body: |-
       patch(

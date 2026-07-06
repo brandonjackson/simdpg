@@ -20,13 +20,16 @@ export default function MarriageRegistrationPage() {
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<any>(null);
 
-  async function lookupCitizen(id: string): Promise<Citizen> {
-    const response = await fetch(`/api/proxy/identity/citizens/${encodeURIComponent(id)}`, {
+  async function lookupCitizenByNationalId(nationalId: string): Promise<Citizen> {
+    const response = await fetch(
+      `/api/proxy/identity/citizens?national_id=${encodeURIComponent(nationalId)}`,
+      {
       cache: "no-store",
-    });
+      },
+    );
 
     if (!response.ok) {
-      throw new Error(`Citizen not found for ID ${id}`);
+      throw new Error(`Citizen not found for national ID ${nationalId}`);
     }
 
     return response.json();
@@ -45,8 +48,8 @@ export default function MarriageRegistrationPage() {
     }
 
     try {
-      const spouse1 = await lookupCitizen(spouse1NationalId.trim());
-      const spouse2 = await lookupCitizen(spouse2NationalId.trim());
+      const spouse1 = await lookupCitizenByNationalId(spouse1NationalId.trim());
+      const spouse2 = await lookupCitizenByNationalId(spouse2NationalId.trim());
 
       const payload = {
         spouse_1_citizen_id: spouse1.id,
@@ -107,7 +110,7 @@ export default function MarriageRegistrationPage() {
             className="govuk-input"
             value={spouse1NationalId}
             onChange={(event) => setSpouse1NationalId(event.target.value)}
-            placeholder="e.g. 9b2f8f7c-1a2b-4c3d-9e0f-1234567890ab"
+            placeholder="e.g. SIM-000123"
           />
         </div>
 
@@ -121,7 +124,7 @@ export default function MarriageRegistrationPage() {
             className="govuk-input"
             value={spouse2NationalId}
             onChange={(event) => setSpouse2NationalId(event.target.value)}
-            placeholder="e.g. 4d5c6b7a-8e9f-0a1b-2c3d-456789abcdef"
+            placeholder="e.g. SIM-000456"
           />
         </div>
 
