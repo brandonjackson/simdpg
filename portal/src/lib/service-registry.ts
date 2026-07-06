@@ -290,21 +290,38 @@ All steps should execute even if one fails — the death record in Civil Registr
     ],
     openfnWorkflows: [
       {
-        name: "Marriage registered → Link households & reassess benefits",
+        name: "Marriage registration — Link households & reassess benefits",
+        trigger: "Webhook: portal form",
+        description:
+          "Runs synchronous pre-registration checks (identity lookup, household reconciliation, benefits eligibility reassessment) and registers the marriage in Civil Registry.",
+        prompt: `Build an OpenFn workflow that processes marriage registrations in SimDPG.
+
+Trigger: Webhook from portal form submission.
+
+Payload: spouse_1_national_id, spouse_2_national_id, date_of_marriage, place_of_marriage.
+
+Steps:
+1. Look up both spouses by national ID from Identity (GET http://localhost:3001/citizens?national_id={id}).
+2. Check each spouse's household (GET http://localhost:3001/citizens/{id}/household). If one has a household and the other does not, add the other as spouse (PATCH http://localhost:3001/households/{id}/members). If both have different households, merge household 2 into household 1.
+3. Re-assess benefit eligibility for both spouses across active programmes (POST http://localhost:3004/eligibility/check).
+4. Register the marriage in Civil Registry (POST http://localhost:3002/marriages).
+5. Return the marriage certificate reference number in the workflow response.`,
+      },
+      {
+        name: "Marriage registered event — notify spouses",
         trigger: "Webhook: marriage.registered",
         description:
-          "When a marriage is registered, link or merge the two spouses' households in Identity. Then re-assess benefit eligibility for both spouses.",
-        prompt: `Build an OpenFn workflow that processes marriage registrations in SimDPG.
+          "After Civil Registry registration succeeds, look up spouse contact details and send confirmation notifications to both spouses.",
+        prompt: `Build an OpenFn workflow triggered by marriage.registered in SimDPG.
 
 Trigger: Webhook event \`marriage.registered\` from Civil Registry (http://localhost:3002).
 
-Payload: spouse_1_citizen_id, spouse_2_citizen_id, date_of_marriage, place_of_marriage.
+Payload: spouse_1_citizen_id, spouse_2_citizen_id, date_of_marriage, place_of_marriage, id.
 
 Steps:
-1. Look up both spouses from Identity (GET http://localhost:3001/citizens/{id} for each).
-2. Check each spouse's household (GET http://localhost:3001/citizens/{id}/household). If one has a household and the other does not, add the other as a "spouse" member (PATCH http://localhost:3001/households/{id}/members). If both have households, merge into one.
-3. Re-assess benefit eligibility for both spouses (POST http://localhost:3004/eligibility/check for each) — combined household composition may affect programme eligibility.
-4. Send marriage confirmation notifications to both spouses via Notifications (POST http://localhost:3005/notifications). Look up contact details from Identity first.`,
+1. Look up both spouses from Identity by citizen ID.
+2. Send notifications to both spouses including marriage date, place, certificate number, and both spouse names.
+3. Do not write back to Civil Registry in this workflow.`,
       },
     ],
   },

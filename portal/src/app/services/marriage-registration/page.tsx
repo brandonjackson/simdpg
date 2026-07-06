@@ -1,17 +1,25 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { formHooksForService } from "@/lib/form-hooks";
 
-type Citizen = {
-  id: string;
-  given_name: string;
-  family_name: string;
-  national_id: string;
-  email?: string;
-  phone_number?: string;
-};
+const HOOK = formHooksForService("marriage-registration")[0];
+
+async function callWorkflow(payload: Record<string, unknown>) {
+  const res = await fetch(`/api/forms/${encodeURIComponent(HOOK.key)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const json = await res.json();
+  const data = json?.data ?? json;
+  return { ok: res.ok, data };
+}
+
+type Step = "details" | "success";
 
 export default function MarriageRegistrationPage() {
+  const [step, setStep] = useState<Step>("details");
   const [spouse1NationalId, setSpouse1NationalId] = useState("");
   const [spouse2NationalId, setSpouse2NationalId] = useState("");
   const [dateOfMarriage, setDateOfMarriage] = useState("");
@@ -19,21 +27,6 @@ export default function MarriageRegistrationPage() {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<any>(null);
-
-  async function lookupCitizenByNationalId(nationalId: string): Promise<Citizen> {
-    const response = await fetch(
-      `/api/proxy/identity/citizens?national_id=${encodeURIComponent(nationalId)}`,
-      {
-      cache: "no-store",
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(`Citizen not found for national ID ${nationalId}`);
-    }
-
-    return response.json();
-  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,31 +41,32 @@ export default function MarriageRegistrationPage() {
     }
 
     try {
-      const spouse1 = await lookupCitizenByNationalId(spouse1NationalId.trim());
-      const spouse2 = await lookupCitizenByNationalId(spouse2NationalId.trim());
-
-      const payload = {
-        spouse_1_citizen_id: spouse1.id,
-        spouse_2_citizen_id: spouse2.id,
+      const payload: Record<string, unknown> = {
+        spouse_1_national_id: spouse1NationalId.trim(),
+        spouse_2_national_id: spouse2NationalId.trim(),
         date_of_marriage: dateOfMarriage,
         place_of_marriage: placeOfMarriage,
       };
 
-      const response = await fetch(`/api/forms/marriage-registration`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(body || "Failed to register marriage.");
+      const { ok, data } = await callWorkflow(payload);
+      if (!ok || data?.success === false || data?.error) {
+        throw new Error(data?.error || data?.message || "Marriage registration failed.");
       }
 
-      const data = await response.json();
-      setStatus("success");
-      setMessage("Marriage registration submitted successfully.");
+      const registrationNumber =
+        data?.marriage_registration_number ??
+        data?.marriage_id ??
+        data?.id ??
+        null;
+
       setResult(data);
+      setStatus("success");
+      setMessage(
+        registrationNumber
+          ? `Marriage registration submitted successfully. Registration number: ${registrationNumber}`
+          : "Marriage registration submitted successfully.",
+      );
+      setStep("success");
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "An unexpected error occurred.");
@@ -99,10 +93,11 @@ export default function MarriageRegistrationPage() {
         Civil Registry. Provide your personal details along with your date and place of marriage.
       </p>
 
+      {step === "details" && (
       <form className="govuk-form-group" onSubmit={handleSubmit}>
         <div className="govuk-form-group">
           <label className="govuk-label" htmlFor="spouse1">
-            First spouse citizen ID
+            First spouse national ID
           </label>
           <input
             id="spouse1"
@@ -116,7 +111,7 @@ export default function MarriageRegistrationPage() {
 
         <div className="govuk-form-group">
           <label className="govuk-label" htmlFor="spouse2">
-            Second spouse citizen ID
+            Second spouse national ID
           </label>
           <input
             id="spouse2"
@@ -157,9 +152,10 @@ export default function MarriageRegistrationPage() {
         </div>
 
         <button className="govuk-button" type="submit" disabled={status === "loading"}>
-          {status === "loading" ? "Registering…" : "Register marriage"}
+          {status === "loading" ? "Submitting…" : "Submit registration"}
         </button>
       </form>
+      )}
 
       {message ? (
         <div

@@ -34,11 +34,16 @@ describe("form-hooks.ts for death-registration", () => {
 });
 
 describe("form-hooks.ts for marriage-registration", () => {
-  test("includes marriage-registration with the expected service and legacy fallback", () => {
-    const hook = getFormHook("marriage-registration");
-    expect(hook).toBeDefined();
-    expect(hook?.serviceId).toBe("marriage-registration");
-    expect(hook?.legacyEnvVar).toBe("OPENFN_MARRIAGE_WEBHOOK_URL");
+  test("returns single marriage-registration hook", () => {
+    const hooks = formHooksForService("marriage-registration");
+    expect(hooks.map((h) => h.key)).toEqual(["marriage-registration"]);
+  });
+
+  test("marriage-registration hook includes expected legacy env var", () => {
+    const hooks = formHooksForService("marriage-registration");
+    expect(hooks.map((h) => h.legacyEnvVar)).toEqual([
+      "OPENFN_MARRIAGE_REGISTRATION_WEBHOOK_URL",
+    ]);
   });
 });
 
