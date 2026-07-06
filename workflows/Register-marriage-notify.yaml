@@ -1,0 +1,258 @@
+name: Marriage Registered Notify
+jobs:
+  Initialize-Event-Payload:
+    name: Initialize event payload
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      fn(state => {
+        const event = state.data || {};
+        const payload = event.data || event;
+
+        if (
+          !payload.spouse_1_citizen_id ||
+          !payload.spouse_2_citizen_id ||
+          !payload.date_of_marriage ||
+          !payload.place_of_marriage
+        ) {
+          throw new Error("Missing required payload fields for marriage.registered event workflow.");
+        }
+
+        state.application = payload;
+        state.marriageRecord = payload;
+        return state;
+      });
+
+  Lookup-Spouse-1-By-ID:
+    name: Lookup spouse 1 by id
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get(
+        state => `https://simdpgidentity-production.up.railway.app/citizens/${state.application.spouse_1_citizen_id}`
+      );
+
+      fn(state => {
+        state.spouse1ById = state.data;
+        return state;
+      });
+
+  Lookup-Spouse-2-By-ID:
+    name: Lookup spouse 2 by id
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get(
+        state => `https://simdpgidentity-production.up.railway.app/citizens/${state.application.spouse_2_citizen_id}`
+      );
+
+      fn(state => {
+        state.spouse2ById = state.data;
+        return state;
+      });
+
+  Prepare-Notification-Spouse-1:
+    name: Prepare notification spouse 1
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      fn(state => {
+        const c = state.spouse1ById || {};
+        const partner = state.spouse2ById || {};
+        const channel = c.email ? "email" : c.phone_number ? "sms" : null;
+        const destination = c.email || c.phone_number || null;
+
+        if (!channel || !destination) {
+          state.notification1Skipped = true;
+          return state;
+        }
+
+        state.notification1Skipped = false;
+        const spouse1Name = `${c.given_name || ""} ${c.family_name || ""}`.trim();
+        const spouse2Name = `${partner.given_name || ""} ${partner.family_name || ""}`.trim();
+        state.notification1 = {
+          citizen_id: c.id || state.application.spouse_1_citizen_id,
+          channel,
+          destination,
+          subject: "Marriage registered",
+          body: `Dear ${spouse1Name || "Citizen"}, your marriage to ${spouse2Name || "your spouse"} was registered on ${state.application.date_of_marriage} at ${state.application.place_of_marriage}. Certificate number: ${state.marriageRecord?.id}.`,
+          source_system: "openfn",
+          source_event: "marriage.registered",
+        };
+        return state;
+      });
+
+  Send-Notification-Spouse-1:
+    name: Send notification spouse 1
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      post(
+        "https://simdpgnotifications-production.up.railway.app/notifications",
+        state => state.notification1
+      );
+
+  Prepare-Notification-Spouse-2:
+    name: Prepare notification spouse 2
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      fn(state => {
+        const c = state.spouse2ById || {};
+        const partner = state.spouse1ById || {};
+        const channel = c.email ? "email" : c.phone_number ? "sms" : null;
+        const destination = c.email || c.phone_number || null;
+
+        if (!channel || !destination) {
+          state.notification2Skipped = true;
+          return state;
+        }
+
+        state.notification2Skipped = false;
+        const spouse2Name = `${c.given_name || ""} ${c.family_name || ""}`.trim();
+        const spouse1Name = `${partner.given_name || ""} ${partner.family_name || ""}`.trim();
+        state.notification2 = {
+          citizen_id: c.id || state.application.spouse_2_citizen_id,
+          channel,
+          destination,
+          subject: "Marriage registered",
+          body: `Dear ${spouse2Name || "Citizen"}, your marriage to ${spouse1Name || "your spouse"} was registered on ${state.application.date_of_marriage} at ${state.application.place_of_marriage}. Certificate number: ${state.marriageRecord?.id}.`,
+          source_system: "openfn",
+          source_event: "marriage.registered",
+        };
+        return state;
+      });
+
+  Send-Notification-Spouse-2:
+    name: Send notification spouse 2
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      post(
+        "https://simdpgnotifications-production.up.railway.app/notifications",
+        state => state.notification2
+      );
+
+  Present-Event-Response:
+    name: Present event response
+    adaptor: "@openfn/language-common@3.3.4"
+    body: |-
+      fn(state => {
+        state.data = {
+          success: true,
+          event: "marriage.registered",
+          marriage_id: state.marriageRecord?.id ?? null,
+          spouse_1_citizen_id: state.application.spouse_1_citizen_id,
+          spouse_2_citizen_id: state.application.spouse_2_citizen_id,
+          notifications: {
+            spouse1: state.notification1Skipped ? "skipped" : "sent",
+            spouse2: state.notification2Skipped ? "skipped" : "sent",
+          },
+        };
+        return state.data;
+      });
+
+  Queue-for-retry:
+    name: Queue for retry
+    adaptor: "@openfn/language-common@3.3.4"
+    body: |-
+      fn(state => {
+        const application = state.application ?? state.data;
+        state.data = {
+          success: false,
+          error: "Downstream service unavailable. Request queued for retry.",
+          retryQueue: {
+            status: "queued_for_retry",
+            queued_at: new Date().toISOString(),
+            application,
+          },
+        };
+        return state.data;
+      });
+
+triggers:
+  webhook:
+    type: webhook
+    enabled: true
+    webhook_reply: after_completion
+
+edges:
+  webhook->Initialize-Event-Payload:
+    condition_type: always
+    enabled: true
+    source_trigger: webhook
+    target_job: Initialize-Event-Payload
+
+  Initialize-Event-Payload->Lookup-Spouse-1-By-ID:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Initialize-Event-Payload
+    target_job: Lookup-Spouse-1-By-ID
+  Initialize-Event-Payload->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Initialize-Event-Payload
+    target_job: Queue-for-retry
+
+  Lookup-Spouse-1-By-ID->Lookup-Spouse-2-By-ID:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Lookup-Spouse-1-By-ID
+    target_job: Lookup-Spouse-2-By-ID
+  Lookup-Spouse-1-By-ID->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Lookup-Spouse-1-By-ID
+    target_job: Queue-for-retry
+
+  Lookup-Spouse-2-By-ID->Prepare-Notification-Spouse-1:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Lookup-Spouse-2-By-ID
+    target_job: Prepare-Notification-Spouse-1
+  Lookup-Spouse-2-By-ID->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Lookup-Spouse-2-By-ID
+    target_job: Queue-for-retry
+
+  Prepare-Notification-Spouse-1->Send-Notification-Spouse-1:
+    condition_type: js_expression
+    enabled: true
+    source_job: Prepare-Notification-Spouse-1
+    target_job: Send-Notification-Spouse-1
+    condition_expression: "!state.notification1Skipped"
+  Prepare-Notification-Spouse-1->Prepare-Notification-Spouse-2:
+    condition_type: js_expression
+    enabled: true
+    source_job: Prepare-Notification-Spouse-1
+    target_job: Prepare-Notification-Spouse-2
+    condition_expression: "state.notification1Skipped"
+
+  Send-Notification-Spouse-1->Prepare-Notification-Spouse-2:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Send-Notification-Spouse-1
+    target_job: Prepare-Notification-Spouse-2
+  Send-Notification-Spouse-1->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Send-Notification-Spouse-1
+    target_job: Queue-for-retry
+
+  Prepare-Notification-Spouse-2->Send-Notification-Spouse-2:
+    condition_type: js_expression
+    enabled: true
+    source_job: Prepare-Notification-Spouse-2
+    target_job: Send-Notification-Spouse-2
+    condition_expression: "!state.notification2Skipped"
+  Prepare-Notification-Spouse-2->Present-Event-Response:
+    condition_type: js_expression
+    enabled: true
+    source_job: Prepare-Notification-Spouse-2
+    target_job: Present-Event-Response
+    condition_expression: "state.notification2Skipped"
+
+  Send-Notification-Spouse-2->Present-Event-Response:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Send-Notification-Spouse-2
+    target_job: Present-Event-Response
+  Send-Notification-Spouse-2->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Send-Notification-Spouse-2
+    target_job: Queue-for-retry

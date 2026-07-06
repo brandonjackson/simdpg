@@ -1,0 +1,528 @@
+name: Register a Marriage
+jobs:
+  Initialize-Submission:
+    name: Initialize submission
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      fn(state => {
+        const payload = state.data || {};
+        if (
+          !payload.spouse_1_national_id ||
+          !payload.spouse_2_national_id ||
+          !payload.date_of_marriage ||
+          !payload.place_of_marriage
+        ) {
+          state.validationError =
+            "Missing required fields: spouse_1_national_id, spouse_2_national_id, date_of_marriage, place_of_marriage.";
+          state.valid = false;
+          return state;
+        }
+
+        state.application = payload;
+        state.valid = true;
+        state.householdActions = [];
+        return state;
+      });
+
+  Lookup-Spouse-1-By-National-ID:
+    name: Lookup spouse 1 by national id
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get(
+        "https://simdpgidentity-production.up.railway.app/citizens",
+        state => ({
+          query: { national_id: state.application.spouse_1_national_id },
+          errors: { 404: false },
+        })
+      );
+
+      fn(state => {
+        if (state.response.statusCode === 404 || !state.data?.id) {
+          state.validationError = `Spouse 1 national ID not found: ${state.application.spouse_1_national_id}`;
+          state.spouse1Found = false;
+          return state;
+        }
+        state.spouse1 = state.data;
+        state.spouse1Found = true;
+        return state;
+      });
+
+  Lookup-Spouse-2-By-National-ID:
+    name: Lookup spouse 2 by national id
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get(
+        "https://simdpgidentity-production.up.railway.app/citizens",
+        state => ({
+          query: { national_id: state.application.spouse_2_national_id },
+          errors: { 404: false },
+        })
+      );
+
+      fn(state => {
+        if (state.response.statusCode === 404 || !state.data?.id) {
+          state.validationError = `Spouse 2 national ID not found: ${state.application.spouse_2_national_id}`;
+          state.spouse2Found = false;
+          return state;
+        }
+        state.spouse2 = state.data;
+        state.spouse2Found = true;
+
+        state.application.spouse_1_citizen_id = state.spouse1.id;
+        state.application.spouse_2_citizen_id = state.spouse2.id;
+        return state;
+      });
+
+  Check-Spouse-1-Household:
+    name: Check spouse 1 household
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get(
+        state => `https://simdpgidentity-production.up.railway.app/citizens/${state.application.spouse_1_citizen_id}/household`,
+        state => ({ errors: { 404: false } })
+      );
+
+      fn(state => {
+        state.spouse1Household = state.response.statusCode === 404 ? null : state.data;
+        state.spouse1HasHousehold = Boolean(state.spouse1Household?.household_id);
+        state.household1Id = state.spouse1Household?.household_id ?? null;
+        return state;
+      });
+
+  Check-Spouse-2-Household:
+    name: Check spouse 2 household
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get(
+        state => `https://simdpgidentity-production.up.railway.app/citizens/${state.application.spouse_2_citizen_id}/household`,
+        state => ({ errors: { 404: false } })
+      );
+
+      fn(state => {
+        state.spouse2Household = state.response.statusCode === 404 ? null : state.data;
+        state.spouse2HasHousehold = Boolean(state.spouse2Household?.household_id);
+        state.household2Id = state.spouse2Household?.household_id ?? null;
+
+        state.onlySpouse1HasHousehold = state.spouse1HasHousehold && !state.spouse2HasHousehold;
+        state.onlySpouse2HasHousehold = !state.spouse1HasHousehold && state.spouse2HasHousehold;
+        state.shouldMergeHouseholds =
+          state.spouse1HasHousehold &&
+          state.spouse2HasHousehold &&
+          state.household1Id !== state.household2Id;
+
+        const h1Members = state.spouse1Household?.members ?? [];
+        const h2Members = state.spouse2Household?.members ?? [];
+        state.membersToMove = h2Members
+          .filter(m => !h1Members.some(x => x.citizen_id === m.citizen_id))
+          .map(m => ({ citizen_id: m.citizen_id, relationship: m.relationship || "other" }));
+        state.hasMembersToMove = state.membersToMove.length > 0;
+        state.removeFromHousehold2 = state.membersToMove.map(m => m.citizen_id);
+
+        state.noHouseholdUpdateNeeded =
+          (!state.spouse1HasHousehold && !state.spouse2HasHousehold) ||
+          (state.spouse1HasHousehold && state.spouse2HasHousehold && state.household1Id === state.household2Id);
+
+        return state;
+      });
+
+  Add-Spouse-2-to-Household-1:
+    name: Add spouse 2 to household 1
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      patch(
+        state => `https://simdpgidentity-production.up.railway.app/households/${state.household1Id}/members`,
+        state => ({
+          add: [{ citizen_id: state.application.spouse_2_citizen_id, relationship: "spouse" }],
+          remove: [],
+        })
+      );
+
+      fn(state => {
+        state.householdActions.push("added spouse_2 to household_1");
+        return state;
+      });
+
+  Add-Spouse-1-to-Household-2:
+    name: Add spouse 1 to household 2
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      patch(
+        state => `https://simdpgidentity-production.up.railway.app/households/${state.household2Id}/members`,
+        state => ({
+          add: [{ citizen_id: state.application.spouse_1_citizen_id, relationship: "spouse" }],
+          remove: [],
+        })
+      );
+
+      fn(state => {
+        state.householdActions.push("added spouse_1 to household_2");
+        return state;
+      });
+
+  Add-Household-2-Members-to-Household-1:
+    name: Merge household 2 into household 1 add
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      patch(
+        state => `https://simdpgidentity-production.up.railway.app/households/${state.household1Id}/members`,
+        state => ({
+          add: state.membersToMove,
+          remove: [],
+        })
+      );
+
+      fn(state => {
+        state.householdActions.push(`moved ${state.membersToMove.length} members to household_1`);
+        return state;
+      });
+
+  Remove-Household-2-Members:
+    name: Merge household 2 into household 1 remove
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      patch(
+        state => `https://simdpgidentity-production.up.railway.app/households/${state.household2Id}/members`,
+        state => ({
+          add: [],
+          remove: state.removeFromHousehold2,
+        })
+      );
+
+      fn(state => {
+        state.householdActions.push(`removed ${state.removeFromHousehold2.length} members from household_2`);
+        return state;
+      });
+
+  No-Household-Update-Needed:
+    name: No household update needed
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      fn(state => {
+        state.householdActions.push("no household update needed");
+        return state;
+      });
+
+  Get-Benefit-Programs:
+    name: Get benefit programs
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get("https://simdpgbenefits-production.up.railway.app/programs");
+
+      fn(state => {
+        state.programs = Array.isArray(state.data?.data) ? state.data.data : [];
+        state.spouse1EligibilityChecked = false;
+        state.spouse2EligibilityChecked = false;
+        return state;
+      });
+
+  Check-Eligibility-Spouse-1:
+    name: Check eligibility spouse 1
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      each(
+        "$.programs[*]",
+        post(
+          "https://simdpgbenefits-production.up.railway.app/eligibility/check",
+          state => ({
+            citizen_id: state.application.spouse_1_citizen_id,
+            program_id: state.data.id,
+          })
+        )
+      );
+
+      fn(state => {
+        state.spouse1EligibilityChecked = true;
+        return state;
+      });
+
+  Check-Eligibility-Spouse-2:
+    name: Check eligibility spouse 2
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      each(
+        "$.programs[*]",
+        post(
+          "https://simdpgbenefits-production.up.railway.app/eligibility/check",
+          state => ({
+            citizen_id: state.application.spouse_2_citizen_id,
+            program_id: state.data.id,
+          })
+        )
+      );
+
+      fn(state => {
+        state.spouse2EligibilityChecked = true;
+        return state;
+      });
+
+  Register-Marriage-In-Civil-Registry:
+    name: Register marriage in civil registry
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      post(
+        "https://simdpgcivil-registry-production.up.railway.app/marriages",
+        state => ({
+          spouse_1_citizen_id: state.application.spouse_1_citizen_id,
+          spouse_2_citizen_id: state.application.spouse_2_citizen_id,
+          date_of_marriage: state.application.date_of_marriage,
+          place_of_marriage: state.application.place_of_marriage,
+        })
+      );
+
+      fn(state => {
+        state.marriageRecord = state.data;
+        return state;
+      });
+
+  Present-Success-Response:
+    name: Present success response
+    adaptor: "@openfn/language-common@3.3.4"
+    body: |-
+      fn(state => {
+        const record = state.marriageRecord || {};
+        state.data = {
+          success: true,
+          marriage_id: record.id ?? null,
+          marriage_registration_number: record.id ?? null,
+          registration_date: record.registration_date ?? null,
+          status: record.status ?? null,
+          spouse_1_citizen_id: record.spouse_1_citizen_id ?? null,
+          spouse_2_citizen_id: record.spouse_2_citizen_id ?? null,
+          household_actions: state.householdActions,
+          spouse1_eligibility_checked: Boolean(state.spouse1EligibilityChecked),
+          spouse2_eligibility_checked: Boolean(state.spouse2EligibilityChecked),
+        };
+        return state.data;
+      });
+
+  Present-Validation-Error:
+    name: Present validation error
+    adaptor: "@openfn/language-common@3.3.4"
+    body: |-
+      fn(state => {
+        state.data = {
+          success: false,
+          error: state.validationError || "Marriage registration validation failed.",
+        };
+        return state.data;
+      });
+
+  Queue-For-Retry:
+    name: Queue for retry
+    adaptor: "@openfn/language-common@3.3.4"
+    body: |-
+      fn(state => {
+        const application = state.application ?? state.data;
+        state.data = {
+          success: false,
+          error: "Downstream service unavailable. Request queued for retry.",
+          retryQueue: {
+            status: "queued_for_retry",
+            queued_at: new Date().toISOString(),
+            application,
+          },
+        };
+        return state.data;
+      });
+
+triggers:
+  webhook:
+    type: webhook
+    enabled: true
+    webhook_reply: after_completion
+
+edges:
+  webhook->Initialize-Submission:
+    condition_type: always
+    enabled: true
+    source_trigger: webhook
+    target_job: Initialize-Submission
+
+  Initialize-Submission->Lookup-Spouse-1-By-National-ID:
+    condition_type: js_expression
+    enabled: true
+    source_job: Initialize-Submission
+    target_job: Lookup-Spouse-1-By-National-ID
+    condition_expression: state.valid
+  Initialize-Submission->Present-Validation-Error:
+    condition_type: js_expression
+    enabled: true
+    source_job: Initialize-Submission
+    target_job: Present-Validation-Error
+    condition_expression: "!state.valid"
+
+  Lookup-Spouse-1-By-National-ID->Lookup-Spouse-2-By-National-ID:
+    condition_type: js_expression
+    enabled: true
+    source_job: Lookup-Spouse-1-By-National-ID
+    target_job: Lookup-Spouse-2-By-National-ID
+    condition_expression: state.spouse1Found
+  Lookup-Spouse-1-By-National-ID->Present-Validation-Error:
+    condition_type: js_expression
+    enabled: true
+    source_job: Lookup-Spouse-1-By-National-ID
+    target_job: Present-Validation-Error
+    condition_expression: "!state.spouse1Found"
+  Lookup-Spouse-1-By-National-ID->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Lookup-Spouse-1-By-National-ID
+    target_job: Queue-For-Retry
+
+  Lookup-Spouse-2-By-National-ID->Check-Spouse-1-Household:
+    condition_type: js_expression
+    enabled: true
+    source_job: Lookup-Spouse-2-By-National-ID
+    target_job: Check-Spouse-1-Household
+    condition_expression: state.spouse2Found
+  Lookup-Spouse-2-By-National-ID->Present-Validation-Error:
+    condition_type: js_expression
+    enabled: true
+    source_job: Lookup-Spouse-2-By-National-ID
+    target_job: Present-Validation-Error
+    condition_expression: "!state.spouse2Found"
+  Lookup-Spouse-2-By-National-ID->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Lookup-Spouse-2-By-National-ID
+    target_job: Queue-For-Retry
+
+  Check-Spouse-1-Household->Check-Spouse-2-Household:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Check-Spouse-1-Household
+    target_job: Check-Spouse-2-Household
+  Check-Spouse-1-Household->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Check-Spouse-1-Household
+    target_job: Queue-For-Retry
+
+  Check-Spouse-2-Household->Add-Spouse-2-to-Household-1:
+    condition_type: js_expression
+    enabled: true
+    source_job: Check-Spouse-2-Household
+    target_job: Add-Spouse-2-to-Household-1
+    condition_expression: state.onlySpouse1HasHousehold
+  Check-Spouse-2-Household->Add-Spouse-1-to-Household-2:
+    condition_type: js_expression
+    enabled: true
+    source_job: Check-Spouse-2-Household
+    target_job: Add-Spouse-1-to-Household-2
+    condition_expression: state.onlySpouse2HasHousehold
+  Check-Spouse-2-Household->Add-Household-2-Members-to-Household-1:
+    condition_type: js_expression
+    enabled: true
+    source_job: Check-Spouse-2-Household
+    target_job: Add-Household-2-Members-to-Household-1
+    condition_expression: state.shouldMergeHouseholds && state.hasMembersToMove
+  Check-Spouse-2-Household->No-Household-Update-Needed:
+    condition_type: js_expression
+    enabled: true
+    source_job: Check-Spouse-2-Household
+    target_job: No-Household-Update-Needed
+    condition_expression: state.noHouseholdUpdateNeeded || (state.shouldMergeHouseholds && !state.hasMembersToMove)
+  Check-Spouse-2-Household->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Check-Spouse-2-Household
+    target_job: Queue-For-Retry
+
+  Add-Spouse-2-to-Household-1->Get-Benefit-Programs:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Add-Spouse-2-to-Household-1
+    target_job: Get-Benefit-Programs
+  Add-Spouse-2-to-Household-1->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Add-Spouse-2-to-Household-1
+    target_job: Queue-For-Retry
+
+  Add-Spouse-1-to-Household-2->Get-Benefit-Programs:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Add-Spouse-1-to-Household-2
+    target_job: Get-Benefit-Programs
+  Add-Spouse-1-to-Household-2->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Add-Spouse-1-to-Household-2
+    target_job: Queue-For-Retry
+
+  Add-Household-2-Members-to-Household-1->Remove-Household-2-Members:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Add-Household-2-Members-to-Household-1
+    target_job: Remove-Household-2-Members
+  Add-Household-2-Members-to-Household-1->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Add-Household-2-Members-to-Household-1
+    target_job: Queue-For-Retry
+
+  Remove-Household-2-Members->Get-Benefit-Programs:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Remove-Household-2-Members
+    target_job: Get-Benefit-Programs
+  Remove-Household-2-Members->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Remove-Household-2-Members
+    target_job: Queue-For-Retry
+
+  No-Household-Update-Needed->Get-Benefit-Programs:
+    condition_type: on_job_success
+    enabled: true
+    source_job: No-Household-Update-Needed
+    target_job: Get-Benefit-Programs
+  No-Household-Update-Needed->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: No-Household-Update-Needed
+    target_job: Queue-For-Retry
+
+  Get-Benefit-Programs->Check-Eligibility-Spouse-1:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Get-Benefit-Programs
+    target_job: Check-Eligibility-Spouse-1
+  Get-Benefit-Programs->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Get-Benefit-Programs
+    target_job: Queue-For-Retry
+
+  Check-Eligibility-Spouse-1->Check-Eligibility-Spouse-2:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Check-Eligibility-Spouse-1
+    target_job: Check-Eligibility-Spouse-2
+  Check-Eligibility-Spouse-1->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Check-Eligibility-Spouse-1
+    target_job: Queue-For-Retry
+
+  Check-Eligibility-Spouse-2->Register-Marriage-In-Civil-Registry:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Check-Eligibility-Spouse-2
+    target_job: Register-Marriage-In-Civil-Registry
+  Check-Eligibility-Spouse-2->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Check-Eligibility-Spouse-2
+    target_job: Queue-For-Retry
+
+  Register-Marriage-In-Civil-Registry->Present-Success-Response:
+    condition_type: on_job_success
+    enabled: true
+    source_job: Register-Marriage-In-Civil-Registry
+    target_job: Present-Success-Response
+  Register-Marriage-In-Civil-Registry->Queue-For-Retry:
+    condition_type: on_job_failure
+    enabled: true
+    source_job: Register-Marriage-In-Civil-Registry
+    target_job: Queue-For-Retry

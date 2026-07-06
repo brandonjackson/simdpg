@@ -1,5 +1,5 @@
 import { expect, test, describe } from "vitest";
-import { formHooksForService, getFormHook } from "./form-hooks";
+import { formHooksForService, getFormHook, isFormHookKey } from "./form-hooks";
 
 describe("form-hooks.ts for death-registration", () => {
   test("returns the 3 death-registration form hooks in step order", () => {
@@ -30,5 +30,57 @@ describe("form-hooks.ts for death-registration", () => {
     expect(getFormHook("death-registration-lookup")).toBeDefined();
     expect(getFormHook("death-registration-preview")).toBeDefined();
     expect(getFormHook("death-registration-confirm")).toBeDefined();
+  });
+});
+
+describe("form-hooks.ts for marriage-registration", () => {
+  test("returns single marriage-registration hook", () => {
+    const hooks = formHooksForService("marriage-registration");
+    expect(hooks.map((h) => h.key)).toEqual(["marriage-registration"]);
+  });
+
+  test("marriage-registration hook includes expected legacy env var", () => {
+    const hooks = formHooksForService("marriage-registration");
+    expect(hooks.map((h) => h.legacyEnvVar)).toEqual([
+      "OPENFN_MARRIAGE_REGISTRATION_WEBHOOK_URL",
+    ]);
+  });
+});
+
+describe("form-hooks.ts for benefits-eligibility", () => {
+  test("returns benefit-eligibility hooks in step order", () => {
+    const hooks = formHooksForService("benefits-eligibility");
+    expect(hooks.map((h) => h.key)).toEqual([
+      "benefit-eligibility-lookup",
+      "benefit-eligibility-check",
+      "benefit-eligibility-enrol",
+    ]);
+  });
+
+  test("benefit-eligibility hooks include expected legacy env vars", () => {
+    const hooks = formHooksForService("benefits-eligibility");
+    expect(hooks.map((h) => h.legacyEnvVar)).toEqual([
+      "OPENFN_BENEFIT_ELIGIBILITY_PART1_URL",
+      "OPENFN_BENEFIT_ELIGIBILITY_PART2_URL",
+      "OPENFN_BENEFIT_ELIGIBILITY_PART3_URL",
+    ]);
+  });
+});
+
+describe("form-hooks.ts key resolution", () => {
+  test("resolves known hook keys", () => {
+    expect(isFormHookKey("national-id")).toBe(true);
+    expect(isFormHookKey("marriage-registration")).toBe(true);
+    expect(isFormHookKey("death-registration-confirm")).toBe(true);
+  });
+
+  test("rejects unknown hook keys", () => {
+    expect(isFormHookKey("marriage")).toBe(false);
+    expect(isFormHookKey("unknown-key")).toBe(false);
+    expect(getFormHook("unknown-key")).toBeUndefined();
+  });
+
+  test("returns empty list for unknown service", () => {
+    expect(formHooksForService("not-a-real-service")).toEqual([]);
   });
 });
