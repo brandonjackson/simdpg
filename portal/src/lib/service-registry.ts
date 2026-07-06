@@ -239,7 +239,7 @@ All steps should execute even if one fails — the death record in Civil Registr
     dciAlignment: "CRVS — Marriage Registration",
     href: "/services/marriage-registration",
     showOnHomepage: true,
-    formBuilt: false,
+    formBuilt: true,
     openfnConnected: false,
     customerJourney: [
       "Couple or authorised registrar visits the portal and selects 'Register a marriage'.",
