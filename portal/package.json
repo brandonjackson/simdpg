@@ -14,7 +14,7 @@
   "dependencies": {
     "@simdpg/api-clients": "*",
     "better-sqlite3": "^11.0.0",
-    "drizzle-orm": "^0.36.0",
+    "drizzle-orm": "^0.36.4",
     "next": "^14.2.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
