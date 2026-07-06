@@ -367,6 +367,16 @@ export interface CreateWebhookSubscriptionInput {
   target_url: string;
 }
 
+/** Aggregate record counts from the identity system's `/admin/stats`. */
+export interface IdentityStats {
+  system: string;
+  /** Total citizens registered, including deceased. */
+  citizens: number;
+  alive: number;
+  deceased: number;
+  households: number;
+}
+
 /** DCI error envelope returned by every system. */
 export interface ErrorResponse {
   error: {

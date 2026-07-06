@@ -23,9 +23,9 @@ async function loadStats(): Promise<{
   const errors: string[] = [];
 
   const citizenPromise = identity
-    .searchCitizens({ name: "" })
+    .getStats()
     .then((data) => {
-      stats.totalCitizens = Array.isArray(data) ? data.length : 0;
+      stats.totalCitizens = data.citizens;
     })
     .catch(() => {
       errors.push("Identity system unavailable");
@@ -209,6 +209,17 @@ export default async function StaffDashboard() {
           <p className="govuk-card__description">
             View population stats, generate a configurable population, or wipe
             all data across systems.
+          </p>
+        </div>
+        <div className="govuk-card">
+          <h3 className="govuk-card__title">
+            <a href="/staff/simulations" className="govuk-link">
+              Simulation management
+            </a>
+          </h3>
+          <p className="govuk-card__description">
+            Create simulation runs, set clock speed and duration, then generate
+            and control each run from its details page.
           </p>
         </div>
       </div>

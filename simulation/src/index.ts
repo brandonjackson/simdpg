@@ -5,19 +5,25 @@
  *   generate  - Generate an initial population
  *   year      - Simulate one year of life events
  *   scale     - Run at scale with configurable parameters
+ *   apply     - Submit national ID applications through the OpenFn workflow
  *
  * Environment variables:
  *   POPULATION_SIZE    - Target population size (default: 100)
  *   CONCURRENCY        - Max concurrent requests for scale mode (default: 5)
  *   YEARS              - Number of years to simulate in scale mode (default: 1)
+ *   APPLICATIONS       - National ID applications to submit in apply mode (default: 10)
  *   IDENTITY_URL       - Identity system URL (default: http://localhost:3001)
  *   CIVIL_REGISTRY_URL - Civil registry system URL (default: http://localhost:3002)
  *   HEALTH_URL         - Health system URL (default: http://localhost:3003)
  *   BENEFITS_URL       - Benefits system URL (default: http://localhost:3004)
+ *   OPENFN_NATIONAL_ID_WEBHOOK_URL - OpenFn webhook for apply mode (else uses PORTAL_URL)
+ *   PORTAL_URL         - Portal base URL for apply mode (default: http://localhost:3000)
  */
 
 import { generate, configFromEnv } from "./generate.js";
 import { runYear, runScale, yearConfigFromEnv, scaleConfigFromEnv } from "./run.js";
+import { runApplications, applyConfigFromEnv } from "./events/application.js";
+import { runWorker } from "./engine/worker.js";
 import { log, logError } from "./utils.js";
 
 const command = process.argv[2];
@@ -43,6 +49,22 @@ async function main(): Promise<void> {
       await runScale(config);
       break;
     }
+    case "apply": {
+      log("Submitting national ID applications...");
+      const config = applyConfigFromEnv();
+      const report = await runApplications(config);
+      report.print();
+      break;
+    }
+    case "run": {
+      const id = process.argv[3];
+      if (!id) {
+        logError("Usage: tsx src/index.ts run <simulationId>", new Error("missing id"));
+        process.exit(1);
+      }
+      await runWorker(id);
+      break;
+    }
     default:
       log("Usage: tsx src/index.ts <command>");
       log("");
@@ -50,6 +72,7 @@ async function main(): Promise<void> {
       log("  generate  - Generate an initial population");
       log("  year      - Simulate one year of life events");
       log("  scale     - Run at scale with configurable parameters");
+      log("  apply     - Submit national ID applications through the OpenFn workflow");
       log("");
       log("Environment variables:");
       log("  POPULATION_SIZE    - Target population size (default: 100)");

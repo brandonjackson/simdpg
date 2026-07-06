@@ -5,6 +5,7 @@ import type {
   UpdateCitizenInput,
   HouseholdMember,
   HealthCheckResponse,
+  IdentityStats,
 } from "./types.js";
 
 export class IdentityClient extends BaseClient {
@@ -14,6 +15,15 @@ export class IdentityClient extends BaseClient {
 
   health(): Promise<HealthCheckResponse> {
     return this.get("/health");
+  }
+
+  /**
+   * Aggregate record counts (total citizens, alive, deceased, households).
+   * Use this for headline totals — unlike listing/searching citizens, it is
+   * not paginated, so it reflects the full population rather than one page.
+   */
+  getStats(): Promise<IdentityStats> {
+    return this.get("/admin/stats");
   }
 
   createCitizen(input: CreateCitizenInput): Promise<Citizen> {

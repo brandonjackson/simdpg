@@ -14,7 +14,11 @@ out/
 # Population management run log (portal)
 .population-runs.json
 
-# SQLite databases
+# Precomputed simulation events, written per run (portal/worker)
+.simulations/
+.simulations.json
+
+# SQLite databases (systems + portal)
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal

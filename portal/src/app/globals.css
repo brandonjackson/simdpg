@@ -14,11 +14,14 @@
   --govuk-yellow: #ffdd00;
   --govuk-focus: #ffdd00;
   --govuk-page-width: 960px;
-  --govuk-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif;
+  --govuk-font:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif;
 }
 
 /* ===== RESET ===== */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -922,7 +925,9 @@ a:focus {
 }
 
 @keyframes govuk-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ===== NOTIFICATION BANNER ===== */
@@ -944,6 +949,70 @@ a:focus {
 
 .govuk-notification-banner__content p {
   margin: 0;
+}
+
+/* ===== FORM CONFIRMATION (inline, auto-dismissing) ===== */
+.form-confirmation {
+  display: flex;
+  gap: 15px;
+  align-items: flex-start;
+  margin-top: 20px;
+  padding: 15px 20px;
+  border: 2px solid var(--govuk-blue);
+  border-left-width: 10px;
+  background: var(--govuk-white);
+  animation: form-confirmation-in 0.2s ease-out;
+}
+
+.form-confirmation--success {
+  border-color: var(--govuk-green);
+}
+
+.form-confirmation__icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--govuk-blue);
+  color: var(--govuk-white);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.form-confirmation--success .form-confirmation__icon {
+  background: var(--govuk-green);
+}
+
+.form-confirmation__text {
+  display: block;
+}
+
+.form-confirmation__heading {
+  display: block;
+  font-size: 19px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.form-confirmation__body {
+  display: block;
+  font-size: 19px;
+  color: #0b0c0c;
+}
+
+@keyframes form-confirmation-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ===== FOOTER ===== */

@@ -24,6 +24,7 @@ export interface ServiceDefinition {
     trigger: string;
     description: string;
     prompt: string;
+    envVar?: string;
   }[];
 }
 
@@ -37,8 +38,7 @@ export const CATEGORIES: ServiceCategory[] = [
   {
     id: "identity",
     name: "Identity",
-    description:
-      "Apply for identity documents and manage your citizen record.",
+    description: "Apply for identity documents and manage your citizen record.",
   },
   {
     id: "health",
@@ -70,15 +70,15 @@ export const SERVICES: ServiceDefinition[] = [
     dciAlignment: "CRVS — Birth Registration",
     href: "/services/birth-registration",
     showOnHomepage: true,
-    formBuilt: false,
-    openfnConnected: false,
+    formBuilt: true,
+    openfnConnected: true,
     customerJourney: [
       "Parent or authorised person visits the portal and selects 'Register a birth'.",
       "Enters the mother's national ID (looked up from Identity system).",
       "Optionally enters the father's national ID.",
       "Enters the child's details: given name, family name, date of birth, sex, place of birth.",
       "Reviews the details and submits the registration.",
-      "Receives a birth certificate reference number on a confirmation page.",
+      "Receives a submission reference number on a confirmation page.",
     ],
     systems: [
       {
@@ -93,7 +93,7 @@ export const SERVICES: ServiceDefinition[] = [
       },
       {
         name: "Health",
-        role: "Registers the newborn as a patient and creates the initial vaccination schedule.",
+        role: "Registers the newborn as a patient.",
         port: 3003,
       },
       {
@@ -101,78 +101,77 @@ export const SERVICES: ServiceDefinition[] = [
         role: "Checks child benefit eligibility and auto-enrols the child if eligible.",
         port: 3004,
       },
+      {
+        name: "Notifications",
+        role: "Emails the mother confirmations of the patient registration and any benefit enrolment.",
+        port: 3005,
+      },
     ],
     simulationNotes: [
       "The birth.ts simulation script directly orchestrates all systems: creates the citizen in Identity, registers them as a patient in Health, and registers the birth in Civil Registry. Rate: ~15 births per 1,000 population per year.",
     ],
     openfnWorkflows: [
       {
-        name: "Birth registered → Create citizen",
+        name: "Register a birth 1 — Create citizen & register birth",
+        trigger: "Webhook: portal form",
+        description:
+          "Receives the portal form submission, looks up the mother in Identity, creates a citizen record for the newborn in the mother's household, and registers the birth in Civil Registry.",
+        prompt: `Build an OpenFn workflow that processes birth registrations submitted from the SimDPG portal.
+
+Trigger: Webhook — the portal form POSTs: mother_national_id, father_national_id (optional), given_name, family_name, date_of_birth, sex, place_of_birth.
+
+Steps:
+1. Look up the mother in Identity (GET http://localhost:3001/citizens?national_id={mother_national_id}) and fetch her household (GET http://localhost:3001/citizens/{id}/household). Fail with a clear error if she is not found.
+2. Create a citizen record for the newborn in Identity (POST http://localhost:3001/citizens) with { given_name, family_name, date_of_birth, sex, household_id: mother's household, relationship: "child" }.
+3. If father_national_id was provided, look up the father's citizen ID in Identity.
+4. Register the birth in Civil Registry (POST http://localhost:3002/births) with { child_citizen_id, mother_citizen_id, father_citizen_id (or null), date_of_birth, place_of_birth }.
+
+The birth.registered event emitted by Civil Registry then fans out to the downstream workflows.`,
+      },
+      {
+        name: "Register a birth 2 — Register patient & notify mother",
+        trigger: "Webhook: birth.registered (child under 1)",
+        description:
+          "When a birth is registered in Civil Registry, register the newborn as a patient in the Health system and email the mother a confirmation. Skips children aged 1 or older.",
+        prompt: `Build an OpenFn workflow that registers a newborn as a Health patient when a birth is registered in SimDPG.
+
+Trigger: Webhook event \`birth.registered\` from Civil Registry (http://localhost:3002). The event envelope's \`data\` contains: child_citizen_id, mother_citizen_id, father_citizen_id (optional), date_of_birth, place_of_birth, registration_date, id.
+
+Steps:
+1. Validate the child is under 1 year old from date_of_birth; otherwise skip the rest of the workflow peacefully.
+2. Register the child as a patient in Health (POST http://localhost:3003/patients) with { citizen_id: child_citizen_id }.
+3. Look up the mother's email from Identity (GET http://localhost:3001/citizens/{mother_citizen_id}), logging rather than failing when it is missing.
+4. Send the mother a notification confirming the patient registration (POST http://localhost:3005/notifications) with channel "email".`,
+      },
+      {
+        name: "Register a birth 3 — Child Benefit auto-enrolment",
         trigger: "Webhook: birth.registered",
         description:
-          "When a birth is registered in Civil Registry, create a corresponding citizen record in the Identity system with the child's details.",
-        prompt: `Build an OpenFn workflow that creates an Identity citizen record when a birth is registered in SimDPG.
+          "When a birth is registered, check the child's eligibility for the Child Benefit programme (50/month for children under 5), auto-enrol if eligible, and email the mother an enrolment confirmation.",
+        prompt: `Build an OpenFn workflow that auto-enrols a newborn in Child Benefit when a birth is registered in SimDPG.
 
-Trigger: Webhook event \`birth.registered\` from the Civil Registry system (http://localhost:3002).
-
-The webhook payload contains: child_citizen_id, mother_citizen_id, father_citizen_id (optional), date_of_birth, place_of_birth, registration_date, id.
+Trigger: Webhook event \`birth.registered\` from Civil Registry (http://localhost:3002). The event envelope's \`data\` contains: child_citizen_id, mother_citizen_id, date_of_birth.
 
 Steps:
-1. Fetch the birth record from Civil Registry (GET http://localhost:3002/births/{id}) to obtain the child's given_name, family_name, and sex.
-2. Create a corresponding citizen record for the child in Identity (POST http://localhost:3001/citizens) with { given_name, family_name, date_of_birth, sex, mother_citizen_id, father_citizen_id }. The response includes the assigned national_id (SIM-XXXXXX format).
-3. Update household membership in Identity so the newborn is linked to the parents' household.
-
-The birth registration in Civil Registry is the source of truth. If Identity is unavailable, queue the event for retry.`,
-      },
-      {
-        name: "Citizen created (newborn) → Register patient & schedule vaccinations",
-        trigger: "Webhook: citizen.created (where age < 1)",
-        description:
-          "When a new citizen is created for a newborn, register them as a patient in the Health system and schedule age-appropriate vaccinations.",
-        prompt: `Build an OpenFn workflow that registers a newborn as a Health patient and schedules their vaccinations in SimDPG.
-
-Trigger: Webhook event \`citizen.created\` from Identity (http://localhost:3001), filtered to newborns (age < 1).
-
-Payload: citizen_id, given_name, family_name, date_of_birth, sex, mother_citizen_id.
-
-Steps:
-1. Register the child as a patient in Health (POST http://localhost:3003/patients) with citizen_id, given_name, family_name, date_of_birth, and sex.
-2. Schedule vaccinations in Health: BCG and OPV-0 at birth, DPT-1 and OPV-1 at 6 weeks, DPT-2 and OPV-2 at 10 weeks, DPT-3 and OPV-3 at 14 weeks, Measles at 9 months.
-3. Look up the mother's email from Identity, then send a notification confirming the patient registration (POST http://localhost:3005/notifications) with channel "email".
-
-If a downstream step fails, log the error and continue with the remaining steps.`,
-      },
-      {
-        name: "Citizen created (newborn) → Check child benefit eligibility",
-        trigger: "Webhook: citizen.created (where age < 1)",
-        description:
-          "When a newborn citizen is created, check eligibility for the Child Benefit programme (50/month for families with children under 5). Enrol automatically if eligible.",
-        prompt: `Build an OpenFn workflow that checks Child Benefit eligibility for a newborn in SimDPG.
-
-Trigger: Webhook event \`citizen.created\` from Identity (http://localhost:3001), filtered to newborns (age < 1).
-
-Payload: citizen_id, date_of_birth, mother_citizen_id.
-
-Steps:
-1. Check Child Benefit eligibility (POST http://localhost:3004/eligibility/check) — Child Benefit pays 50/month for children under 5.
+1. Check Child Benefit eligibility for the child (POST http://localhost:3004/eligibility/check) with { citizen_id: child_citizen_id, program_id: <Child Benefit programme id> } — Child Benefit pays 50/month for children under 5.
 2. If eligible, auto-enrol the child (POST http://localhost:3004/enrollments).
-3. Look up the mother's email from Identity, then send an enrolment confirmation notification (POST http://localhost:3005/notifications) with channel "email".
+3. Look up the mother's email from Identity (GET http://localhost:3001/citizens/{mother_citizen_id}), logging rather than failing when it is missing.
+4. Send the mother an enrolment confirmation notification (POST http://localhost:3005/notifications) with channel "email".
 
-If a downstream step fails, log the error and continue with the remaining steps.`,
+If a lookup or notification step fails, log the error and continue.`,
       },
     ],
   },
   {
     id: "death-registration",
     name: "Register a death",
-    description:
-      "Register a death and obtain a death certificate reference.",
+    description: "Register a death and obtain a death certificate reference.",
     categoryId: "civil-registration",
     dciAlignment: "CRVS — Death Registration",
     href: "/services/death-registration",
     showOnHomepage: true,
-    formBuilt: false,
-    openfnConnected: false,
+    formBuilt: true,
+    openfnConnected: true,
     customerJourney: [
       "Family member or authorised person visits the portal and selects 'Register a death'.",
       "Enters the deceased citizen's national ID to look up their record.",
@@ -208,6 +207,27 @@ If a downstream step fails, log the error and continue with the remaining steps.
     ],
     openfnWorkflows: [
       {
+        name: "Register a death 1 — Look up citizen",
+        trigger: "Webhook: portal form",
+        description:
+          "Receives the portal lookup submission and validates the deceased's national ID against Identity, returning their citizen record so the portal can confirm the identity.",
+        prompt: "",
+      },
+      {
+        name: "Register a death 2 — Preview closures",
+        trigger: "Webhook: portal form",
+        description:
+          "Takes the confirmed citizen and entered death details, checks Civil Registry for an existing death record, and gathers active Benefits enrolments and pending payments so the portal can preview what will be closed.",
+        prompt: "",
+      },
+      {
+        name: "Register a death 3 — Register death & cascade closure",
+        trigger: "Webhook: portal form",
+        description:
+          "Registers the death in Civil Registry, patches the citizen's Identity status to 'deceased', and terminates active enrolments and pending payments in Benefits.",
+        prompt: "",
+      },
+      {
         name: "Death registered → Close records across systems",
         trigger: "Webhook: death.registered",
         description:
@@ -233,8 +253,7 @@ All steps should execute even if one fails — the death record in Civil Registr
   {
     id: "marriage-registration",
     name: "Register a marriage",
-    description:
-      "Register a marriage between two citizens.",
+    description: "Register a marriage between two citizens.",
     categoryId: "civil-registration",
     dciAlignment: "CRVS — Marriage Registration",
     href: "/services/marriage-registration",
@@ -294,14 +313,13 @@ Steps:
   {
     id: "digital-identity",
     name: "Apply for a national ID",
-    description:
-      "Apply for a national ID card or digital identity credential.",
+    description: "Apply for a national ID card or digital identity credential.",
     categoryId: "identity",
     dciAlignment: "Foundational ID — Identity Issuance",
     href: "/services/digital-identity",
     showOnHomepage: true,
-    formBuilt: false,
-    openfnConnected: false,
+    formBuilt: true,
+    openfnConnected: true,
     customerJourney: [
       "Citizen visits the portal and selects 'Apply for a national ID'.",
       "Enters their personal details: given name, family name, date of birth, sex.",
@@ -352,8 +370,7 @@ Error handling: If Identity is unavailable, queue the application for retry. Dup
   {
     id: "vaccination",
     name: "Book a vaccination",
-    description:
-      "Record a vaccination for a registered patient.",
+    description: "Record a vaccination for a registered patient.",
     categoryId: "health",
     dciAlignment: "Health — Immunization Registry",
     href: "/services/vaccination",
@@ -540,8 +557,8 @@ Steps:
     dciAlignment: "Social Protection — Eligibility & Enrolment",
     href: "/services/benefits-eligibility",
     showOnHomepage: true,
-    formBuilt: false,
-    openfnConnected: false,
+    formBuilt: true,
+    openfnConnected: true,
     customerJourney: [
       "Citizen visits the portal and selects 'Check benefit eligibility'.",
       "Enters their national ID to look up their citizen record.",
@@ -568,6 +585,30 @@ Steps:
       "The benefit-claim.ts simulation script ensures three programmes exist (Child Benefit: 50/month for children under 5; Senior Pension: 200/month for citizens 65+; Maternity Grant: 500 one-time for mothers). Checks eligibility and enrols qualifying citizens.",
     ],
     openfnWorkflows: [
+      {
+        name: "Check benefit eligibility (Part 1)",
+        trigger: "Webhook: portal form",
+        description:
+          "Validates a citizen's national ID against Identity and returns the list of active benefit programmes.",
+        prompt: "",
+        envVar: "OPENFN_BENEFIT_ELIGIBILITY_PART1_URL",
+      },
+      {
+        name: "Check benefit eligibility (Part 2)",
+        trigger: "Webhook: portal form",
+        description:
+          "Fetches programme and citizen details, then evaluates eligibility rules to determine whether the citizen qualifies.",
+        prompt: "",
+        envVar: "OPENFN_BENEFIT_ELIGIBILITY_PART2_URL",
+      },
+      {
+        name: "Check benefit eligibility (Part 3)",
+        trigger: "Webhook: portal form",
+        description:
+          "Creates the enrolment in Benefits when a citizen confirms they want to join an eligible programme.",
+        prompt: "",
+        envVar: "OPENFN_BENEFIT_ELIGIBILITY_PART3_URL",
+      },
       {
         name: "Enrolment created → Schedule payments",
         trigger: "Webhook: enrollment.created",
@@ -751,8 +792,7 @@ Steps:
   {
     id: "check-my-record",
     name: "Check my record",
-    description:
-      "View your personal record across all government services.",
+    description: "View your personal record across all government services.",
     categoryId: "your-record",
     dciAlignment: "Cross-cutting — Citizen Record Aggregation",
     href: "/services/check-my-record",
@@ -821,8 +861,7 @@ Steps:
   {
     id: "notifications",
     name: "My notifications",
-    description:
-      "View messages sent to you by government services.",
+    description: "View messages sent to you by government services.",
     categoryId: "your-record",
     dciAlignment: "Cross-cutting — Citizen Notifications",
     href: "/services/notifications",
@@ -936,9 +975,7 @@ export function getServiceById(id: string): ServiceDefinition | undefined {
   return SERVICES.find((s) => s.id === id);
 }
 
-export function getServicesByCategory(
-  categoryId: string,
-): ServiceDefinition[] {
+export function getServicesByCategory(categoryId: string): ServiceDefinition[] {
   return SERVICES.filter((s) => s.categoryId === categoryId);
 }
 

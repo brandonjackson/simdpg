@@ -19,7 +19,10 @@ monorepo once. It runs **one** workspace per container, selected two ways:
 Systems are independent (they don't call each other — they only emit webhooks
 to an optional `WEBHOOK_URL`), so only the portal needs to reach the systems —
 and it derives those URLs automatically. Databases are SQLite files under each
-system's `data/` dir; that directory must be backed by a persistent volume.
+system's `data/` dir; that directory must be backed by a persistent volume. The
+**portal now has a database too** — `portal/data/simulations.sqlite`, holding
+simulation records, run-state, and the form-webhook registry — so it likewise
+needs a persistent volume (override the path with `PORTAL_DB_FILE`).
 
 ## Local (docker-compose)
 
@@ -33,6 +36,7 @@ docker compose up                 # start all 7 systems + portal (reuses the ima
 
 - Portal: http://localhost:3000  •  Systems: http://localhost:3001–3007 (`/health`, `/docs`)
 - Each system's database is seeded automatically the first time its volume is created.
+- The portal's own database lives on the `portal-data` volume (`/app/portal/data`).
 - `docker compose down` stops the stack (data preserved); `docker compose down -v` wipes all data.
 
 > **Don't use `docker compose up --build` unless you have the Buildx/BuildKit
@@ -80,6 +84,11 @@ For the **portal** service, also:
 
 - **Public domain:** add one and accept Railway's auto-detected port. Do **not**
   pin `PORT`.
+- **Volume:** mount at `/app/portal/data` so the portal's SQLite database
+  (simulation records, run-state, and the form-webhook registry) survives
+  redeploys. Without it, simulations and registered form webhooks are wiped on
+  every deploy. (Override the file location with `PORTAL_DB_FILE` if you mount
+  elsewhere.)
 
 Delete the non-server services Railway auto-creates (`@simdpg/system-kit`,
 `@simdpg/api-clients`, `@simdpg/simulation`) — they aren't web servers.
@@ -98,3 +107,24 @@ to every URL registered for its type, so it can fan out to several workflows.
 
 `WEBHOOK_URL`, if set on a system, is still honoured as an additional catch-all
 target that receives every event regardless of type (backwards compatible).
+
+#### Portal form submissions
+
+Portal service forms (e.g. "Apply for a national ID", "Check benefit
+eligibility") submit through a central point in the portal, which forwards each
+submission to the webhook URL registered for that form. Manage these in the same
+**Webhook registration** page under **Form submissions** — no redeploy needed.
+
+Forms previously wired with an `OPENFN_*` environment variable
+(`OPENFN_NATIONAL_ID_WEBHOOK_URL`, `OPENFN_BENEFIT_ELIGIBILITY_PART{1,2,3}_URL`)
+keep working: the env var is used as a fallback until a URL is registered in the
+staff area, which then takes precedence. New deployments should prefer the
+registry.
+
+Registered URLs are stored in the portal's SQLite database
+(`portal/data/simulations.sqlite`, in the `form_webhooks` table), alongside
+simulation records and run-state. Mount a persistent volume at `/app/portal/data`
+(see the portal service above) so registrations survive redeploys; override the
+database path with `PORTAL_DB_FILE` if you mount elsewhere. If a save can't be
+written, the staff UI reports the error instead of silently dropping it — keep
+the `OPENFN_*` env vars set as a durable baseline if you don't mount a volume.

@@ -106,6 +106,7 @@ services:
       PAYMENTS_URL: http://payments:3006
       SOCIAL_REGISTRY_URL: http://social-registry:3007
     ports: ["3000:3000"]
+    volumes: ["portal-data:/app/portal/data"]
     depends_on:
       identity:
         condition: service_healthy
@@ -130,3 +131,4 @@ volumes:
   notifications-data:
   payments-data:
   social-registry-data:
+  portal-data:
