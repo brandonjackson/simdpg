@@ -1,0 +1,555 @@
+name: Register a Marriage
+jobs:
+  Initialize-Payload:
+    name: Initialize payload
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      fn(state => {
+        const event = state.data || {};
+        const payload = event.data || event;
+
+        if (
+          !payload.spouse_1_citizen_id ||
+          !payload.spouse_2_citizen_id ||
+          !payload.date_of_marriage ||
+          !payload.place_of_marriage
+        ) {
+          throw new Error("Missing required payload fields for marriage workflow.");
+        }
+
+        state.application = payload;
+        state.householdActions = [];
+        return state;
+      });
+
+  Look-up-Spouse-1:
+    name: Look up spouse 1
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get(
+        state => `https://simdpgidentity-production.up.railway.app/citizens/${state.application.spouse_1_citizen_id}`
+      );
+
+      fn(state => {
+        state.spouse1 = state.data;
+        return state;
+      });
+
+  Look-up-Spouse-2:
+    name: Look up spouse 2
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get(
+        state => `https://simdpgidentity-production.up.railway.app/citizens/${state.application.spouse_2_citizen_id}`
+      );
+
+      fn(state => {
+        state.spouse2 = state.data;
+        return state;
+      });
+
+  Check-Spouse-1-Household:
+    name: Check spouse 1 household
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get(
+        state => `https://simdpgidentity-production.up.railway.app/citizens/${state.application.spouse_1_citizen_id}/household`,
+        state => ({ errors: { 404: false } })
+      );
+
+      fn(state => {
+        state.spouse1Household = state.response.statusCode === 404 ? null : state.data;
+        state.spouse1HasHousehold = Boolean(state.spouse1Household?.household_id);
+        state.household1Id = state.spouse1Household?.household_id ?? null;
+        return state;
+      });
+
+  Check-Spouse-2-Household:
+    name: Check spouse 2 household
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get(
+        state => `https://simdpgidentity-production.up.railway.app/citizens/${state.application.spouse_2_citizen_id}/household`,
+        state => ({ errors: { 404: false } })
+      );
+
+      fn(state => {
+        state.spouse2Household = state.response.statusCode === 404 ? null : state.data;
+        state.spouse2HasHousehold = Boolean(state.spouse2Household?.household_id);
+        state.household2Id = state.spouse2Household?.household_id ?? null;
+
+        state.onlySpouse1HasHousehold = state.spouse1HasHousehold && !state.spouse2HasHousehold;
+        state.onlySpouse2HasHousehold = !state.spouse1HasHousehold && state.spouse2HasHousehold;
+        state.shouldMergeHouseholds =
+          state.spouse1HasHousehold &&
+          state.spouse2HasHousehold &&
+          state.household1Id !== state.household2Id;
+
+        const h1Members = state.spouse1Household?.members ?? [];
+        const h2Members = state.spouse2Household?.members ?? [];
+
+        state.membersToMove = h2Members
+          .filter(m => !h1Members.some(x => x.citizen_id === m.citizen_id))
+          .map(m => ({ citizen_id: m.citizen_id, relationship: m.relationship || "other" }));
+        state.hasMembersToMove = state.membersToMove.length > 0;
+        state.removeFromHousehold2 = state.membersToMove.map(m => m.citizen_id);
+
+        state.noHouseholdUpdateNeeded =
+          (!state.spouse1HasHousehold && !state.spouse2HasHousehold) ||
+          (state.spouse1HasHousehold && state.spouse2HasHousehold && state.household1Id === state.household2Id);
+
+        return state;
+      });
+
+  Add-Spouse-2-to-Household-1:
+    name: Add spouse 2 to household 1
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      patch(
+        state => `https://simdpgidentity-production.up.railway.app/households/${state.household1Id}/members`,
+        state => ({
+          add: [{ citizen_id: state.application.spouse_2_citizen_id, relationship: "spouse" }],
+          remove: [],
+        })
+      );
+
+      fn(state => {
+        state.householdActions.push("added spouse_2 to household_1");
+        return state;
+      });
+
+  Add-Spouse-1-to-Household-2:
+    name: Add spouse 1 to household 2
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      patch(
+        state => `https://simdpgidentity-production.up.railway.app/households/${state.household2Id}/members`,
+        state => ({
+          add: [{ citizen_id: state.application.spouse_1_citizen_id, relationship: "spouse" }],
+          remove: [],
+        })
+      );
+
+      fn(state => {
+        state.householdActions.push("added spouse_1 to household_2");
+        return state;
+      });
+
+  Add-Household-2-Members-to-Household-1:
+    name: Merge household 2 into household 1 (add)
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      patch(
+        state => `https://simdpgidentity-production.up.railway.app/households/${state.household1Id}/members`,
+        state => ({
+          add: state.membersToMove,
+          remove: [],
+        })
+      );
+
+      fn(state => {
+        state.householdActions.push(`moved ${state.membersToMove.length} members to household_1`);
+        return state;
+      });
+
+  Remove-Household-2-Members:
+    name: Merge household 2 into household 1 (remove)
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      patch(
+        state => `https://simdpgidentity-production.up.railway.app/households/${state.household2Id}/members`,
+        state => ({
+          add: [],
+          remove: state.removeFromHousehold2,
+        })
+      );
+
+      fn(state => {
+        state.householdActions.push(`removed ${state.removeFromHousehold2.length} members from household_2`);
+        return state;
+      });
+
+  No-Household-Update-Needed:
+    name: No household update needed
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      fn(state => {
+        state.householdActions.push("no household update needed");
+        return state;
+      });
+
+  Get-Benefit-Programs:
+    name: Get benefit programs
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      get("https://simdpgbenefits-production.up.railway.app/programs");
+
+      fn(state => {
+        state.programs = Array.isArray(state.data?.data) ? state.data.data : [];
+        return state;
+      });
+
+  Check-Eligibility-Spouse-1:
+    name: Check eligibility for spouse 1
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      each(
+        "$.programs[*]",
+        post(
+          "https://simdpgbenefits-production.up.railway.app/eligibility/check",
+          state => ({
+            citizen_id: state.application.spouse_1_citizen_id,
+            program_id: state.data.id,
+          })
+        )
+      );
+
+      fn(state => {
+        state.spouse1EligibilityChecked = true;
+        return state;
+      });
+
+  Check-Eligibility-Spouse-2:
+    name: Check eligibility for spouse 2
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      each(
+        "$.programs[*]",
+        post(
+          "https://simdpgbenefits-production.up.railway.app/eligibility/check",
+          state => ({
+            citizen_id: state.application.spouse_2_citizen_id,
+            program_id: state.data.id,
+          })
+        )
+      );
+
+      fn(state => {
+        state.spouse2EligibilityChecked = true;
+        return state;
+      });
+
+  Prepare-Notification-Spouse-1:
+    name: Prepare notification spouse 1
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      fn(state => {
+        const c = state.spouse1 || {};
+        const channel = c.email ? "email" : c.phone_number ? "sms" : null;
+        const destination = c.email || c.phone_number || null;
+
+        if (!channel || !destination) {
+          state.notification1Skipped = true;
+          return state;
+        }
+
+        state.notification1Skipped = false;
+        state.notification1 = {
+          citizen_id: c.id || state.application.spouse_1_citizen_id,
+          channel,
+          destination,
+          subject: "Marriage registered",
+          body: `Your marriage was registered on ${state.application.date_of_marriage} at ${state.application.place_of_marriage}.`,
+          source_system: "openfn",
+          source_event: "marriage.registered",
+        };
+        return state;
+      });
+
+  Send-Notification-Spouse-1:
+    name: Send notification spouse 1
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      post(
+        "https://simdpgnotifications-production.up.railway.app/notifications",
+        state => state.notification1
+      );
+
+  Prepare-Notification-Spouse-2:
+    name: Prepare notification spouse 2
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      fn(state => {
+        const c = state.spouse2 || {};
+        const channel = c.email ? "email" : c.phone_number ? "sms" : null;
+        const destination = c.email || c.phone_number || null;
+
+        if (!channel || !destination) {
+          state.notification2Skipped = true;
+          return state;
+        }
+
+        state.notification2Skipped = false;
+        state.notification2 = {
+          citizen_id: c.id || state.application.spouse_2_citizen_id,
+          channel,
+          destination,
+          subject: "Marriage registered",
+          body: `Your marriage was registered on ${state.application.date_of_marriage} at ${state.application.place_of_marriage}.`,
+          source_system: "openfn",
+          source_event: "marriage.registered",
+        };
+        return state;
+      });
+
+  Send-Notification-Spouse-2:
+    name: Send notification spouse 2
+    adaptor: "@openfn/language-http@7.3.2"
+    body: |-
+      post(
+        "https://simdpgnotifications-production.up.railway.app/notifications",
+        state => state.notification2
+      );
+
+  Present-Marriage-Response:
+    name: Present marriage response
+    adaptor: "@openfn/language-common@3.3.4"
+    body: |-
+      fn(state => {
+        state.data = {
+          success: true,
+          marriage: state.application,
+          household_actions: state.householdActions,
+          spouse1_eligibility_checked: Boolean(state.spouse1EligibilityChecked),
+          spouse2_eligibility_checked: Boolean(state.spouse2EligibilityChecked),
+          notifications: {
+            spouse1: state.notification1Skipped ? "skipped" : "sent",
+            spouse2: state.notification2Skipped ? "skipped" : "sent",
+          },
+        };
+        return state.data;
+      });
+
+  Queue-for-retry:
+    name: Queue for retry
+    adaptor: "@openfn/language-common@3.3.4"
+    body: |-
+      fn(state => {
+        const application = state.application ?? state.data;
+        return {
+          success: false,
+          retryQueue: {
+            status: "queued_for_retry",
+            queued_at: new Date().toISOString(),
+            application,
+          },
+        };
+      });
+
+triggers:
+  webhook:
+    type: webhook
+    enabled: true
+    webhook_reply: after_completion
+
+edges:
+  webhook->Initialize-Payload:
+    condition_type: always
+    enabled: true
+    target_job: Initialize-Payload
+    source_trigger: webhook
+
+  Initialize-Payload->Look-up-Spouse-1:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Look-up-Spouse-1
+    source_job: Initialize-Payload
+  Initialize-Payload->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Initialize-Payload
+
+  Look-up-Spouse-1->Look-up-Spouse-2:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Look-up-Spouse-2
+    source_job: Look-up-Spouse-1
+  Look-up-Spouse-1->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Look-up-Spouse-1
+
+  Look-up-Spouse-2->Check-Spouse-1-Household:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Check-Spouse-1-Household
+    source_job: Look-up-Spouse-2
+  Look-up-Spouse-2->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Look-up-Spouse-2
+
+  Check-Spouse-1-Household->Check-Spouse-2-Household:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Check-Spouse-2-Household
+    source_job: Check-Spouse-1-Household
+  Check-Spouse-1-Household->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Check-Spouse-1-Household
+
+  Check-Spouse-2-Household->Add-Spouse-2-to-Household-1:
+    condition_type: js_expression
+    enabled: true
+    target_job: Add-Spouse-2-to-Household-1
+    source_job: Check-Spouse-2-Household
+    condition_expression: state.onlySpouse1HasHousehold
+  Check-Spouse-2-Household->Add-Spouse-1-to-Household-2:
+    condition_type: js_expression
+    enabled: true
+    target_job: Add-Spouse-1-to-Household-2
+    source_job: Check-Spouse-2-Household
+    condition_expression: state.onlySpouse2HasHousehold
+  Check-Spouse-2-Household->Add-Household-2-Members-to-Household-1:
+    condition_type: js_expression
+    enabled: true
+    target_job: Add-Household-2-Members-to-Household-1
+    source_job: Check-Spouse-2-Household
+    condition_expression: state.shouldMergeHouseholds && state.hasMembersToMove
+  Check-Spouse-2-Household->No-Household-Update-Needed:
+    condition_type: js_expression
+    enabled: true
+    target_job: No-Household-Update-Needed
+    source_job: Check-Spouse-2-Household
+    condition_expression: state.noHouseholdUpdateNeeded || (state.shouldMergeHouseholds && !state.hasMembersToMove)
+  Check-Spouse-2-Household->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Check-Spouse-2-Household
+
+  Add-Spouse-2-to-Household-1->Get-Benefit-Programs:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Get-Benefit-Programs
+    source_job: Add-Spouse-2-to-Household-1
+  Add-Spouse-2-to-Household-1->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Add-Spouse-2-to-Household-1
+
+  Add-Spouse-1-to-Household-2->Get-Benefit-Programs:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Get-Benefit-Programs
+    source_job: Add-Spouse-1-to-Household-2
+  Add-Spouse-1-to-Household-2->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Add-Spouse-1-to-Household-2
+
+  Add-Household-2-Members-to-Household-1->Remove-Household-2-Members:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Remove-Household-2-Members
+    source_job: Add-Household-2-Members-to-Household-1
+  Add-Household-2-Members-to-Household-1->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Add-Household-2-Members-to-Household-1
+
+  Remove-Household-2-Members->Get-Benefit-Programs:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Get-Benefit-Programs
+    source_job: Remove-Household-2-Members
+  Remove-Household-2-Members->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Remove-Household-2-Members
+
+  No-Household-Update-Needed->Get-Benefit-Programs:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Get-Benefit-Programs
+    source_job: No-Household-Update-Needed
+
+  Get-Benefit-Programs->Check-Eligibility-Spouse-1:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Check-Eligibility-Spouse-1
+    source_job: Get-Benefit-Programs
+  Get-Benefit-Programs->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Get-Benefit-Programs
+
+  Check-Eligibility-Spouse-1->Check-Eligibility-Spouse-2:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Check-Eligibility-Spouse-2
+    source_job: Check-Eligibility-Spouse-1
+  Check-Eligibility-Spouse-1->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Check-Eligibility-Spouse-1
+
+  Check-Eligibility-Spouse-2->Prepare-Notification-Spouse-1:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Prepare-Notification-Spouse-1
+    source_job: Check-Eligibility-Spouse-2
+  Check-Eligibility-Spouse-2->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Check-Eligibility-Spouse-2
+
+  Prepare-Notification-Spouse-1->Send-Notification-Spouse-1:
+    condition_type: js_expression
+    enabled: true
+    target_job: Send-Notification-Spouse-1
+    source_job: Prepare-Notification-Spouse-1
+    condition_expression: "!state.notification1Skipped"
+  Prepare-Notification-Spouse-1->Prepare-Notification-Spouse-2:
+    condition_type: js_expression
+    enabled: true
+    target_job: Prepare-Notification-Spouse-2
+    source_job: Prepare-Notification-Spouse-1
+    condition_expression: "state.notification1Skipped"
+
+  Send-Notification-Spouse-1->Prepare-Notification-Spouse-2:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Prepare-Notification-Spouse-2
+    source_job: Send-Notification-Spouse-1
+  Send-Notification-Spouse-1->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Send-Notification-Spouse-1
+
+  Prepare-Notification-Spouse-2->Send-Notification-Spouse-2:
+    condition_type: js_expression
+    enabled: true
+    target_job: Send-Notification-Spouse-2
+    source_job: Prepare-Notification-Spouse-2
+    condition_expression: "!state.notification2Skipped"
+  Prepare-Notification-Spouse-2->Present-Marriage-Response:
+    condition_type: js_expression
+    enabled: true
+    target_job: Present-Marriage-Response
+    source_job: Prepare-Notification-Spouse-2
+    condition_expression: "state.notification2Skipped"
+
+  Send-Notification-Spouse-2->Present-Marriage-Response:
+    condition_type: on_job_success
+    enabled: true
+    target_job: Present-Marriage-Response
+    source_job: Send-Notification-Spouse-2
+  Send-Notification-Spouse-2->Queue-for-retry:
+    condition_type: on_job_failure
+    enabled: true
+    target_job: Queue-for-retry
+    source_job: Send-Notification-Spouse-2

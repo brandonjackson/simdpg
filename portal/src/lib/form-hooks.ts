@@ -69,6 +69,14 @@ export const FORM_HOOKS: FormHook[] = [
     legacyEnvVar: "OPENFN_NATIONAL_ID_WEBHOOK_URL",
   },
   {
+    key: "marriage-registration",
+    serviceId: "marriage-registration",
+    name: "Marriage registration",
+    description:
+      "Submitted when a marriage is registered from the portal. Payload: spouse_1_citizen_id, spouse_2_citizen_id, date_of_marriage, place_of_marriage.",
+    legacyEnvVar: "OPENFN_MARRIAGE_WEBHOOK_URL",
+  },
+  {
     key: "benefit-eligibility-lookup",
     serviceId: "benefits-eligibility",
     name: "Benefit eligibility — citizen lookup (step 1)",

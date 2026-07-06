@@ -55,7 +55,7 @@ export default function MarriageRegistrationPage() {
         place_of_marriage: placeOfMarriage,
       };
 
-      const response = await fetch(`/api/services/marriage-registration`, {
+      const response = await fetch(`/api/forms/marriage-registration`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
