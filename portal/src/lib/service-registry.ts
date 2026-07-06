@@ -259,7 +259,7 @@ All steps should execute even if one fails — the death record in Civil Registr
     href: "/services/marriage-registration",
     showOnHomepage: true,
     formBuilt: true,
-    openfnConnected: false,
+    openfnConnected: true,
     customerJourney: [
       "Couple or authorised registrar visits the portal and selects 'Register a marriage'.",
       "Enters the first spouse's national ID and confirms their identity.",
