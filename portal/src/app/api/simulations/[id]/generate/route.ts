@@ -5,6 +5,7 @@ import {
   SimulationTransitionError,
 } from "@/lib/simulations/store";
 import { generateEvents } from "@/lib/simulations/generate-events";
+import { summarizeEvents } from "@/lib/simulations/event-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +33,13 @@ export async function POST(_request: Request, { params }: RouteContext) {
       );
     }
 
-    await generateEvents(params.id, simulation.parameters);
+    const events = await generateEvents(params.id, simulation.parameters);
     const updated = await generateSimulation(params.id);
 
-    return NextResponse.json({ simulation: updated });
+    return NextResponse.json({
+      simulation: updated,
+      eventSummary: summarizeEvents(events),
+    });
   } catch (err) {
     const status = err instanceof SimulationTransitionError ? 409 : 400;
     const message = err instanceof Error ? err.message : "Generation failed";

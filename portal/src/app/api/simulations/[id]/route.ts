@@ -3,6 +3,7 @@ import {
   deleteSimulation,
   getSimulation,
 } from "@/lib/simulations/store";
+import { getEventSummary } from "@/lib/simulations/event-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,11 @@ export async function GET(_request: Request, { params }: RouteContext) {
     );
   }
 
-  return NextResponse.json({ simulation });
+  // Derived from the persisted events file, so it's null until the simulation
+  // has been generated and stays available for the rest of its lifecycle.
+  const eventSummary = await getEventSummary(params.id);
+
+  return NextResponse.json({ simulation, eventSummary });
 }
 
 export async function DELETE(_request: Request, { params }: RouteContext) {

@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { SimulationRecord, SimulationStatus } from "@/lib/simulations/store";
+import type { EventSummary } from "@/lib/simulations/event-summary";
 
 interface SimulationResponse {
   simulation?: SimulationRecord;
+  eventSummary?: EventSummary | null;
   error?: string;
 }
 
@@ -106,6 +108,7 @@ function getSimulatedElapsedSeconds(
 
 export default function SimulationDetails({ params }: PageProps) {
   const [simulation, setSimulation] = useState<SimulationRecord | null>(null);
+  const [eventSummary, setEventSummary] = useState<EventSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +124,7 @@ export default function SimulationDetails({ params }: PageProps) {
         throw new Error(data.error || "Could not load simulation");
       }
       setSimulation(data.simulation);
+      setEventSummary(data.eventSummary ?? null);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load simulation");
@@ -170,6 +174,10 @@ export default function SimulationDetails({ params }: PageProps) {
         throw new Error(data.error || `Could not ${action} simulation`);
       }
       setSimulation(data.simulation);
+      // Only "generate" returns a summary; keep the existing one for start/stop.
+      if (data.eventSummary !== undefined) {
+        setEventSummary(data.eventSummary);
+      }
       setNowMs(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : `Could not ${action} simulation`);
@@ -282,6 +290,95 @@ export default function SimulationDetails({ params }: PageProps) {
               The simulation has finished running. Stats will appear here once
               event logging is connected.
             </div>
+          )}
+
+          {eventSummary && (
+            <>
+              <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
+              <h2 className="govuk-heading-l">Generated events</h2>
+              {eventSummary.total === 0 ? (
+                <p className="govuk-body">
+                  No events were generated for this population. Try a longer
+                  duration to give citizens more chances to act.
+                </p>
+              ) : (
+                <>
+                  <p className="govuk-body">
+                    Generated {plural(eventSummary.total, "event")} across{" "}
+                    {plural(eventSummary.byType.length, "event type")}. These
+                    are scheduled now and will be delivered to their webhooks
+                    once the simulation starts.
+                  </p>
+
+                  <table className="govuk-table">
+                    <thead>
+                      <tr>
+                        <th className="govuk-table__header">Event type</th>
+                        <th className="govuk-table__header">Count</th>
+                        <th className="govuk-table__header">Webhook</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {eventSummary.byType.map((type) => (
+                        <tr key={type.targetKey}>
+                          <td className="govuk-table__cell">{type.label}</td>
+                          <td className="govuk-table__cell">{type.count}</td>
+                          <td className="govuk-table__cell">
+                            {type.hasTarget ? (
+                              <span className="govuk-tag govuk-tag--green">
+                                Registered
+                              </span>
+                            ) : (
+                              <span className="govuk-tag govuk-tag--yellow">
+                                Not registered
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {eventSummary.unresolved > 0 && (
+                    <div className="govuk-inset-text">
+                      {plural(eventSummary.unresolved, "event")} target a form
+                      with no registered webhook and will be skipped when the
+                      simulation runs. Register a webhook in the{" "}
+                      <a className="govuk-link" href="/staff/webhooks">
+                        webhooks area
+                      </a>{" "}
+                      before starting.
+                    </div>
+                  )}
+
+                  {eventSummary.firstScheduledMicros !== null &&
+                    eventSummary.lastScheduledMicros !== null && (
+                      <div className="govuk-stat-grid">
+                        <div className="govuk-stat">
+                          <div className="govuk-stat__value">
+                            {formatDuration(
+                              eventSummary.firstScheduledMicros / 1_000_000,
+                            )}
+                          </div>
+                          <div className="govuk-stat__label">
+                            First event fires after start
+                          </div>
+                        </div>
+                        <div className="govuk-stat">
+                          <div className="govuk-stat__value">
+                            {formatDuration(
+                              eventSummary.lastScheduledMicros / 1_000_000,
+                            )}
+                          </div>
+                          <div className="govuk-stat__label">
+                            Last event fires after start
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                </>
+              )}
+            </>
           )}
 
           <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
