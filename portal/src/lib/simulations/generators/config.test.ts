@@ -29,4 +29,19 @@ describe("loadConfig", () => {
   it("exposes a loaded singleton parsed from the JSON asset", () => {
     expect(typeof GENERATOR_CONFIG.death.dailyRatePerPopulation).toBe("number");
   });
+
+  it("clamps a negative rate to 0", () => {
+    const c = loadConfig({ death: { dailyRatePerPopulation: -5 } });
+    expect(c.death.dailyRatePerPopulation).toBe(0);
+  });
+
+  it("clamps a toStep2 above 1 down to 1", () => {
+    const c = loadConfig({ benefits: { chainProbabilities: { toStep2: 1.5 } } });
+    expect(c.benefits.chainProbabilities.toStep2).toBe(1);
+  });
+
+  it("clamps a negative toStep3 up to 0", () => {
+    const c = loadConfig({ benefits: { chainProbabilities: { toStep3: -0.2 } } });
+    expect(c.benefits.chainProbabilities.toStep3).toBe(0);
+  });
 });

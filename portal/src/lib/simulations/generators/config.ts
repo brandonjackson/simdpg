@@ -28,6 +28,16 @@ function num(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/** Validate via `num()`, then clamp to `>= 0` (rates/delays can't be negative). */
+function nonNeg(value: unknown, fallback: number): number {
+  return Math.max(0, num(value, fallback));
+}
+
+/** Validate via `num()`, then clamp to `[0, 1]` (probabilities). */
+function prob(value: unknown, fallback: number): number {
+  return Math.min(1, Math.max(0, num(value, fallback)));
+}
+
 /**
  * Merge a config source over the built-in defaults so a missing or malformed
  * field never crashes generation. Defaults to the JSON asset.
@@ -36,25 +46,25 @@ export function loadConfig(source: unknown = raw): GeneratorConfig {
   const c = (source ?? {}) as Record<string, any>;
   return {
     nationalId: {
-      dailyProbPerCitizen: num(c.nationalId?.dailyProbPerCitizen, DEFAULTS.nationalId.dailyProbPerCitizen),
+      dailyProbPerCitizen: nonNeg(c.nationalId?.dailyProbPerCitizen, DEFAULTS.nationalId.dailyProbPerCitizen),
     },
     death: {
-      dailyRatePerPopulation: num(c.death?.dailyRatePerPopulation, DEFAULTS.death.dailyRatePerPopulation),
-      stepDelaySeconds: num(c.death?.stepDelaySeconds, DEFAULTS.death.stepDelaySeconds),
+      dailyRatePerPopulation: nonNeg(c.death?.dailyRatePerPopulation, DEFAULTS.death.dailyRatePerPopulation),
+      stepDelaySeconds: nonNeg(c.death?.stepDelaySeconds, DEFAULTS.death.stepDelaySeconds),
     },
     birth: {
-      dailyRatePerPopulation: num(c.birth?.dailyRatePerPopulation, DEFAULTS.birth.dailyRatePerPopulation),
+      dailyRatePerPopulation: nonNeg(c.birth?.dailyRatePerPopulation, DEFAULTS.birth.dailyRatePerPopulation),
     },
     marriage: {
-      dailyRatePerPopulation: num(c.marriage?.dailyRatePerPopulation, DEFAULTS.marriage.dailyRatePerPopulation),
+      dailyRatePerPopulation: nonNeg(c.marriage?.dailyRatePerPopulation, DEFAULTS.marriage.dailyRatePerPopulation),
     },
     benefits: {
-      dailyRatePerPopulation: num(c.benefits?.dailyRatePerPopulation, DEFAULTS.benefits.dailyRatePerPopulation),
+      dailyRatePerPopulation: nonNeg(c.benefits?.dailyRatePerPopulation, DEFAULTS.benefits.dailyRatePerPopulation),
       chainProbabilities: {
-        toStep2: num(c.benefits?.chainProbabilities?.toStep2, DEFAULTS.benefits.chainProbabilities.toStep2),
-        toStep3: num(c.benefits?.chainProbabilities?.toStep3, DEFAULTS.benefits.chainProbabilities.toStep3),
+        toStep2: prob(c.benefits?.chainProbabilities?.toStep2, DEFAULTS.benefits.chainProbabilities.toStep2),
+        toStep3: prob(c.benefits?.chainProbabilities?.toStep3, DEFAULTS.benefits.chainProbabilities.toStep3),
       },
-      stepDelaySeconds: num(c.benefits?.stepDelaySeconds, DEFAULTS.benefits.stepDelaySeconds),
+      stepDelaySeconds: nonNeg(c.benefits?.stepDelaySeconds, DEFAULTS.benefits.stepDelaySeconds),
     },
   };
 }

@@ -30,6 +30,7 @@ export const randomDeath: RandomEventGenerator = {
 
     for (let day = 0; day < numDays && remaining.length > 0; day++) {
       const count = drawCount(dailyRatePerPopulation * remaining.length, random);
+      if (count === 0) continue;
       const dying = sampleWithoutReplacement(remaining, count, random);
       if (dying.length === 0) continue;
       const dyingSet = new Set(dying);

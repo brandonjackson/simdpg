@@ -20,7 +20,6 @@ export const randomMarriage: RandomEventGenerator = {
       const count = drawCount(dailyRatePerPopulation * citizens.length, random);
       for (let m = 0; m < count; m++) {
         const [a, b] = sampleWithoutReplacement(adults, 2, random);
-        if (!a || !b) continue;
         const offset = Math.floor(random() * dtSeconds);
         events.push({
           scheduledSimSeconds: day * dtSeconds + offset,
