@@ -1,4 +1,4 @@
-import type { Citizen } from "@simdpg/api-clients";
+import type { Citizen, Program } from "@simdpg/api-clients";
 
 /** A pure, sim-time event emitted by a RandomEventGenerator. */
 export interface GeneratedEvent {
@@ -13,6 +13,8 @@ export interface GeneratedEvent {
 export interface GeneratorContext {
   /** Alive citizens the generator may act on. */
   citizens: Citizen[];
+  /** Active benefit programmes; empty for generators that don't need them. */
+  programs: Program[];
   /** Time-step in simulation seconds (86_400 = 1 day for v1). */
   dtSeconds: number;
   /** Simulation-time window in seconds. */

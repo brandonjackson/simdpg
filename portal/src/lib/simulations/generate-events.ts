@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { IdentityClient, SYSTEM_URLS, type Citizen } from "@simdpg/api-clients";
+import {
+  IdentityClient,
+  BenefitsClient,
+  SYSTEM_URLS,
+  type Citizen,
+  type Program,
+} from "@simdpg/api-clients";
 import { resolveFormWebhook } from "@/lib/form-webhooks";
 import { REGISTRY } from "./generators";
+import type { RandomEventGenerator } from "./generators";
 import { writeEvents, type SimulationEvent } from "./events";
 import type { SimulationParameters } from "./store";
 
@@ -11,10 +18,14 @@ export const DT_SECONDS = 86_400;
 export interface GenerateEventsDeps {
   /** Defaults to the Identity system's citizen list. */
   listCitizens?: () => Promise<Citizen[]>;
+  /** Defaults to the Benefits system's active programmes. */
+  listPrograms?: () => Promise<Program[]>;
   /** Defaults to the form-webhook registry. Returns `{ url }` or null. */
   resolveTarget?: (key: string) => Promise<{ url: string } | null>;
   /** Randomness source; defaults to Math.random. */
   random?: () => number;
+  /** Generators to run; defaults to the full REGISTRY. Injectable for tests. */
+  generators?: RandomEventGenerator[];
 }
 
 /**
@@ -31,12 +42,18 @@ export async function generateEvents(
     (() => new IdentityClient(SYSTEM_URLS.identity).listCitizens());
   const resolveTarget = deps.resolveTarget ?? resolveFormWebhook;
   const random = deps.random ?? Math.random;
+  const listPrograms =
+    deps.listPrograms ??
+    (() => new BenefitsClient(SYSTEM_URLS.benefits).getPrograms("active"));
+  const generators = deps.generators ?? REGISTRY;
 
   const citizens = (await listCitizens()).filter((c) => c.status === "alive");
+  const programs = await listPrograms();
 
-  const generated = REGISTRY.flatMap((gen) =>
+  const generated = generators.flatMap((gen) =>
     gen.generate({
       citizens,
+      programs,
       dtSeconds: DT_SECONDS,
       durationSeconds: parameters.durationSeconds,
       random,
