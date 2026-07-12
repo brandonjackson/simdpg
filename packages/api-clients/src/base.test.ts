@@ -30,6 +30,24 @@ function mockFetch(response: {
   return fn;
 }
 
+/** Serves a paginated list endpoint, one page per `?page=` value. */
+function mockPaginatedFetch(pages: Record<number, unknown[]>, total: number) {
+  const fn = vi.fn().mockImplementation(async (url: string) => {
+    const page = Number(new URL(url).searchParams.get("page") ?? "1");
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({
+        data: pages[page] ?? [],
+        meta: { page, per_page: 100, total },
+      }),
+    };
+  });
+  vi.stubGlobal("fetch", fn);
+  return fn;
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -130,5 +148,51 @@ describe("BaseClient.getList", () => {
     mockFetch({ json: () => ({ nope: true }) });
     const client = new TestClient("https://api.example");
     expect(await client.getListJson("/items")).toEqual([]);
+  });
+
+  it("follows pagination until the full collection is fetched", async () => {
+    const fetchMock = mockPaginatedFetch(
+      { 1: [1, 2, 3], 2: [4, 5, 6], 3: [7, 8] },
+      8,
+    );
+    const client = new TestClient("https://api.example");
+
+    expect(await client.getListJson<number>("/items")).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
+    const requestedPages = fetchMock.mock.calls.map(([u]) =>
+      new URL(u as string).searchParams.get("page"),
+    );
+    expect(requestedPages).toEqual(["1", "2", "3"]);
+  });
+
+  it("requests the maximum page size", async () => {
+    const fetchMock = mockFetch({ json: () => ({ data: [1], meta: { total: 1 } }) });
+    const client = new TestClient("https://api.example");
+
+    await client.getListJson("/items");
+
+    const url = new URL(fetchMock.mock.calls[0][0] as string);
+    expect(url.searchParams.get("per_page")).toBe("100");
+  });
+
+  it("appends pagination params after an existing query string", async () => {
+    const fetchMock = mockFetch({ json: () => ({ data: [], meta: { total: 0 } }) });
+    const client = new TestClient("https://api.example");
+
+    await client.getListJson("/items?q=x");
+
+    expect(fetchMock.mock.calls[0][0]).toContain(
+      "/items?q=x&page=1&per_page=100",
+    );
+  });
+
+  it("stops if a page returns no rows even when total is unmet", async () => {
+    // Guards against an infinite loop if the server's total is inconsistent.
+    const fetchMock = mockPaginatedFetch({ 1: [1, 2], 2: [] }, 99);
+    const client = new TestClient("https://api.example");
+
+    expect(await client.getListJson<number>("/items")).toEqual([1, 2]);
+    expect(fetchMock.mock.calls.length).toBe(2);
   });
 });
