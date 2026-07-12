@@ -44,3 +44,8 @@ coverage/
 
 # TypeScript
 *.tsbuildinfo
+
+# Project specific
+AGENTS.md
+HANDOFF.md
+portal/.form-webhooks.json
