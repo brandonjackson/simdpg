@@ -8,6 +8,7 @@ import { randomNationalIdReg } from "./generators/random-national-id-reg";
 import { eventsFilePath } from "./paths";
 import type { SimulationEvent } from "./events";
 import type { SimulationParameters } from "./store";
+import { GENERATOR_CONFIG } from "./generators/config";
 
 function citizen(over: Partial<Citizen> = {}): Citizen {
   return {
@@ -32,6 +33,7 @@ const params: SimulationParameters = {
   clockSpeed: 3600,
   durationSeconds: 10 * 86_400,
   usesExistingPopulation: true,
+  generatorConfig: GENERATOR_CONFIG,
 };
 
 let dir: string;
@@ -150,5 +152,24 @@ describe("generateEvents", () => {
       generators: [spyGen as any],
     });
     expect(seen[0]).toEqual([{ id: "p1" }]);
+  });
+
+  it("uses parameters.generatorConfig when running generators", async () => {
+    const zeroConfig = {
+      ...GENERATOR_CONFIG,
+      nationalId: { dailyProbPerCitizen: 0 },
+    };
+    const events = await generateEvents(
+      "s7",
+      { ...params, generatorConfig: zeroConfig },
+      {
+        listCitizens: async () => [citizen()],
+        resolveTarget: async () => ({ url: "http://hook" }),
+        random: () => 0,
+        generators: [randomNationalIdReg],
+        listPrograms: async () => [],
+      },
+    );
+    expect(events).toEqual([]);
   });
 });

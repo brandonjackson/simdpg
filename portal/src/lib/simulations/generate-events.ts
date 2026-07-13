@@ -11,6 +11,7 @@ import { REGISTRY } from "./generators";
 import type { RandomEventGenerator } from "./generators";
 import { writeEvents, type SimulationEvent } from "./events";
 import type { SimulationParameters } from "./store";
+import { GENERATOR_CONFIG } from "./generators/config";
 
 /** Time-step for generation: 1 day. Hardcoded for v1 (see #54 spec). */
 export const DT_SECONDS = 86_400;
@@ -46,6 +47,7 @@ export async function generateEvents(
     deps.listPrograms ??
     (() => new BenefitsClient(SYSTEM_URLS.benefits).getPrograms("active"));
   const generators = deps.generators ?? REGISTRY;
+  const config = parameters.generatorConfig ?? GENERATOR_CONFIG;
 
   const citizens = (await listCitizens()).filter((c) => c.status === "alive");
   const programs = await listPrograms();
@@ -57,6 +59,7 @@ export async function generateEvents(
       dtSeconds: DT_SECONDS,
       durationSeconds: parameters.durationSeconds,
       random,
+      config,
     }),
   );
 
