@@ -17,3 +17,18 @@ export async function writeEvents(id: string, events: SimulationEvent[]): Promis
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, JSON.stringify(events, null, 2), "utf8");
 }
+
+/**
+ * Read the persisted events for a simulation. Returns an empty array when no
+ * events file exists yet (e.g. the simulation has not been generated).
+ */
+export async function readEvents(id: string): Promise<SimulationEvent[]> {
+  const file = eventsFilePath(id);
+  try {
+    const contents = await fs.readFile(file, "utf8");
+    return JSON.parse(contents) as SimulationEvent[];
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
+  }
+}

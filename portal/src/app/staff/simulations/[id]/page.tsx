@@ -2,10 +2,43 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { SimulationRecord, SimulationStatus } from "@/lib/simulations/store";
+import type { SimulationEvent } from "@/lib/simulations/events";
 
 interface SimulationResponse {
   simulation?: SimulationRecord;
   error?: string;
+}
+
+interface EventsResponse {
+  events?: SimulationEvent[];
+  error?: string;
+}
+
+/** Statuses for which a generated event script exists and can be shown. */
+function hasGeneratedEvents(status: SimulationStatus): boolean {
+  return status !== "created";
+}
+
+/** "marriage-registration" -> "Marriage registration". */
+function formatEventType(targetKey: string): string {
+  const spaced = targetKey.replace(/-/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+interface EventTypeCount {
+  targetKey: string;
+  count: number;
+}
+
+/** Count events per targetKey, ordered by descending count then key. */
+function countEventTypes(events: SimulationEvent[]): EventTypeCount[] {
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    counts.set(event.targetKey, (counts.get(event.targetKey) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([targetKey, count]) => ({ targetKey, count }))
+    .sort((a, b) => b.count - a.count || a.targetKey.localeCompare(b.targetKey));
 }
 
 interface PageProps {
@@ -110,6 +143,21 @@ export default function SimulationDetails({ params }: PageProps) {
   const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [events, setEvents] = useState<SimulationEvent[] | null>(null);
+
+  const loadEvents = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/simulations/${params.id}/events`, {
+        cache: "no-store",
+      });
+      const data = (await res.json()) as EventsResponse;
+      if (res.ok && data.events) {
+        setEvents(data.events);
+      }
+    } catch {
+      // Non-fatal: the events section simply stays hidden.
+    }
+  }, [params.id]);
 
   const refresh = useCallback(async () => {
     try {
@@ -132,6 +180,12 @@ export default function SimulationDetails({ params }: PageProps) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (simulation && hasGeneratedEvents(simulation.status)) {
+      loadEvents();
+    }
+  }, [simulation?.status, loadEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (simulation?.status !== "running") return;
@@ -282,6 +336,79 @@ export default function SimulationDetails({ params }: PageProps) {
               The simulation has finished running. Stats will appear here once
               event logging is connected.
             </div>
+          )}
+
+          {hasGeneratedEvents(simulation.status) && events !== null && (
+            <>
+              <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
+              <h2 className="govuk-heading-l">Generated events</h2>
+
+              {events.length === 0 ? (
+                <p className="govuk-body">
+                  No events were generated for this simulation.
+                </p>
+              ) : (
+                <>
+                  <div className="govuk-stat-grid">
+                    <div className="govuk-stat">
+                      <div className="govuk-stat__value">{events.length}</div>
+                      <div className="govuk-stat__label">Total events</div>
+                    </div>
+                    {countEventTypes(events).map(({ targetKey, count }) => (
+                      <div className="govuk-stat" key={targetKey}>
+                        <div className="govuk-stat__value">{count}</div>
+                        <div className="govuk-stat__label">
+                          {formatEventType(targetKey)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <h3 className="govuk-heading-m">
+                    Event schedule ({events.length})
+                  </h3>
+                  <div
+                    style={{ maxHeight: "24rem", overflowY: "auto" }}
+                    tabIndex={0}
+                  >
+                    <table className="govuk-table">
+                      <thead className="govuk-table__head">
+                        <tr className="govuk-table__row">
+                          <th scope="col" className="govuk-table__header">
+                            #
+                          </th>
+                          <th scope="col" className="govuk-table__header">
+                            Event ID
+                          </th>
+                          <th scope="col" className="govuk-table__header">
+                            Scheduled at
+                          </th>
+                          <th scope="col" className="govuk-table__header">
+                            Event
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="govuk-table__body">
+                        {events.map((event, index) => (
+                          <tr className="govuk-table__row" key={event.id}>
+                            <td className="govuk-table__cell">{index + 1}</td>
+                            <td className="govuk-table__cell">
+                              <code>{shortId(event.id)}</code>
+                            </td>
+                            <td className="govuk-table__cell">
+                              {(event.scheduledMicros / 1_000_000).toFixed(3)}s
+                            </td>
+                            <td className="govuk-table__cell">
+                              {formatEventType(event.targetKey)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </>
           )}
 
           <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
