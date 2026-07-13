@@ -56,31 +56,38 @@ interface ConfigFieldDescriptor {
 }
 
 const GENERATOR_CONFIG_FIELDS: readonly ConfigFieldDescriptor[] = [
-  { path: ["nationalId", "dailyProbPerCitizen"],          kind: "rate",        editable: true,  default: 0.02,   label: "National ID – daily probability per citizen" },
-  { path: ["death", "dailyRatePerPopulation"],            kind: "rate",        editable: true,  default: 0.001,  label: "Death – daily rate per population" },
-  { path: ["death", "stepDelaySeconds"],                  kind: "rate",        editable: false, default: 300,    label: "Death – step delay (seconds)" },
-  { path: ["birth", "dailyRatePerPopulation"],            kind: "rate",        editable: true,  default: 0.05,   label: "Birth – daily rate per population" },
-  { path: ["marriage", "dailyRatePerPopulation"],         kind: "rate",        editable: true,  default: 0.0015, label: "Marriage – daily rate per population" },
-  { path: ["benefits", "dailyRatePerPopulation"],         kind: "rate",        editable: true,  default: 0.01,   label: "Benefits – daily rate per population" },
-  { path: ["benefits", "chainProbabilities", "toStep2"],  kind: "probability", editable: true,  default: 0.7,    label: "Benefits – chance to advance to step 2" },
-  { path: ["benefits", "chainProbabilities", "toStep3"],  kind: "probability", editable: true,  default: 0.5,    label: "Benefits – chance to advance to step 3" },
-  { path: ["benefits", "stepDelaySeconds"],               kind: "rate",        editable: false, default: 300,    label: "Benefits – step delay (seconds)" },
+  { path: ["nationalId", "dailyProbPerCitizen"],          kind: "rate",        editable: true,  default: 0.02,      label: "National ID – daily probability per citizen" },
+  { path: ["death", "dailyRatePerPopulation"],            kind: "rate",        editable: true,  default: 0.000001,  label: "Death – daily rate per population" },
+  { path: ["death", "stepDelaySeconds"],                  kind: "rate",        editable: false, default: 300,       label: "Death – step delay (seconds)" },
+  { path: ["birth", "dailyRatePerPopulation"],            kind: "rate",        editable: true,  default: 0.00005,   label: "Birth – daily rate per population" },
+  { path: ["marriage", "dailyRatePerPopulation"],         kind: "rate",        editable: true,  default: 0.0000015, label: "Marriage – daily rate per population" },
+  { path: ["benefits", "dailyRatePerPopulation"],         kind: "rate",        editable: true,  default: 0.00001,   label: "Benefits – daily rate per population" },
+  { path: ["benefits", "chainProbabilities", "toStep2"],  kind: "probability", editable: true,  default: 0.7,       label: "Benefits – chance to advance to step 2" },
+  { path: ["benefits", "chainProbabilities", "toStep3"],  kind: "probability", editable: true,  default: 0.5,       label: "Benefits – chance to advance to step 3" },
+  { path: ["benefits", "stepDelaySeconds"],               kind: "rate",        editable: false, default: 300,       label: "Benefits – step delay (seconds)" },
 ] as const;
 ```
 
-The `default` values above are the **current `config.json` values** (the ones in
-use today), not the smaller internal `DEFAULTS` — those differ, and the
-config.json values are authoritative.
+The `default` values above are the current **internal `DEFAULTS`** — the
+conservative fallbacks used when a field is missing or malformed. They are
+deliberately *not* the `config.json` values: those two differ today, and the
+existing `config.test.ts` asserts `loadConfig({})` returns these fallbacks. The
+registry just relocates the `DEFAULTS` constant into descriptor form.
+
+`config.json` is unchanged and stays as the **live-values override** the
+`GENERATOR_CONFIG` singleton loads — larger, tuned rates that override the
+fallbacks. The wizard therefore initializes its inputs from `GENERATOR_CONFIG`
+(the live config.json values), not the registry fallbacks.
 
 Everything derives from this one list via small get/set-by-path helpers:
 
 - **`loadConfig(source)`** builds the config by iterating the registry: for each
   field, read `source` at `path`, validate as a finite number, then clamp per
   `kind` (`rate` → `>= 0`, `probability` → `[0, 1]`), falling back to `default`
-  when missing/malformed. Replaces the hand-written per-field branches.
-- **Defaults** come from the registry `default`s. `config.json` becomes an
-  optional override rather than a required parallel copy; `GENERATOR_CONFIG`
-  remains the singleton loaded from it.
+  when missing/malformed. Replaces the hand-written per-field branches, and
+  preserves the existing `loadConfig({})` → fallbacks behaviour.
+- **Fallback defaults** come from the registry `default`s; **live values** stay
+  in `config.json`, which `GENERATOR_CONFIG = loadConfig()` loads as before.
 - **The wizard** renders one number input per `editable: true` entry, using
   `label` and deriving `min` / `max` / `step` from `kind` (`probability` →
   `min 0 max 1 step 0.01`; `rate` → `min 0 step 0.0001`).
