@@ -1,0 +1,11 @@
+{
+  "nationalId": { "dailyProbPerCitizen": 0.02 },
+  "death": { "dailyRatePerPopulation": 0.000001, "stepDelaySeconds": 300 },
+  "birth": { "dailyRatePerPopulation": 0.00005 },
+  "marriage": { "dailyRatePerPopulation": 0.0000015 },
+  "benefits": {
+    "dailyRatePerPopulation": 0.00001,
+    "chainProbabilities": { "toStep2": 0.7, "toStep3": 0.5 },
+    "stepDelaySeconds": 300
+  }
+}

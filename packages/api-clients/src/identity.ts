@@ -19,8 +19,8 @@ export class IdentityClient extends BaseClient {
 
   /**
    * Aggregate record counts (total citizens, alive, deceased, households).
-   * Use this for headline totals — unlike listing/searching citizens, it is
-   * not paginated, so it reflects the full population rather than one page.
+   * Use this for headline totals — it returns the counts directly instead of
+   * draining every page of the citizen list just to measure its size.
    */
   getStats(): Promise<IdentityStats> {
     return this.get("/admin/stats");

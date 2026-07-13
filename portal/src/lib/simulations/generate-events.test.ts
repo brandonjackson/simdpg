@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Citizen } from "@simdpg/api-clients";
 import { generateEvents } from "./generate-events";
+import { randomNationalIdReg } from "./generators/random-national-id-reg";
 import { eventsFilePath } from "./paths";
 import type { SimulationEvent } from "./events";
 import type { SimulationParameters } from "./store";
@@ -50,6 +51,8 @@ describe("generateEvents", () => {
       resolveTarget: async (key) =>
         key === "national-id" ? { url: "http://hook/national-id" } : null,
       random: () => 0, // day 0 hit, offset 0 -> simSeconds 0
+      generators: [randomNationalIdReg],
+      listPrograms: async () => [],
     });
 
     expect(events).toHaveLength(1);
@@ -74,6 +77,8 @@ describe("generateEvents", () => {
       listCitizens: async () => [citizen()],
       resolveTarget: async () => ({ url: "http://hook" }),
       random: () => (i < rolls.length ? rolls[i++] : 1),
+      generators: [randomNationalIdReg],
+      listPrograms: async () => [],
     });
     expect(events[0].scheduledMicros).toBe(Math.round((86_400 / 3600) * 1_000_000));
   });
@@ -83,6 +88,8 @@ describe("generateEvents", () => {
       listCitizens: async () => [citizen()],
       resolveTarget: async () => null,
       random: () => 0,
+      generators: [randomNationalIdReg],
+      listPrograms: async () => [],
     });
     expect(events[0].targetUrl).toBeNull();
   });
@@ -92,6 +99,8 @@ describe("generateEvents", () => {
       listCitizens: async () => [citizen({ status: "deceased" })],
       resolveTarget: async () => ({ url: "http://hook" }),
       random: () => 0,
+      generators: [randomNationalIdReg],
+      listPrograms: async () => [],
     });
     expect(events).toHaveLength(0);
   });
@@ -101,6 +110,8 @@ describe("generateEvents", () => {
       listCitizens: async () => [],
       resolveTarget: async () => ({ url: "http://hook" }),
       random: () => 0,
+      generators: [randomNationalIdReg],
+      listPrograms: async () => [],
     });
     expect(events).toEqual([]);
     const onDisk = JSON.parse(await fs.readFile(eventsFilePath("s5"), "utf8"));
@@ -115,8 +126,29 @@ describe("generateEvents", () => {
       listCitizens: async () => [citizen({ id: "c1" }), citizen({ id: "c2" })],
       resolveTarget: async () => ({ url: "http://hook" }),
       random: () => (i < rolls.length ? rolls[i++] : 1),
+      generators: [randomNationalIdReg],
+      listPrograms: async () => [],
     });
     expect(events).toHaveLength(2);
     expect(events[0].scheduledMicros).toBeLessThanOrEqual(events[1].scheduledMicros);
+  });
+
+  it("passes fetched programmes into generator contexts", async () => {
+    const seen: unknown[] = [];
+    const spyGen = {
+      key: "spy",
+      generate: (ctx: { programs: unknown[] }) => {
+        seen.push(ctx.programs);
+        return [];
+      },
+    };
+    await generateEvents("s3", params, {
+      listCitizens: async () => [citizen()],
+      listPrograms: async () => [{ id: "p1" } as any],
+      resolveTarget: async () => null,
+      random: () => 0,
+      generators: [spyGen as any],
+    });
+    expect(seen[0]).toEqual([{ id: "p1" }]);
   });
 });

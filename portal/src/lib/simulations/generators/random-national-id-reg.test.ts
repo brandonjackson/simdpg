@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { Citizen } from "@simdpg/api-clients";
 import type { GeneratorContext } from "./types";
-import {
-  randomNationalIdReg,
-  NATIONAL_ID_DAILY_PROB,
-} from "./random-national-id-reg";
+import { randomNationalIdReg } from "./random-national-id-reg";
+import { GENERATOR_CONFIG } from "./config";
+
+const NATIONAL_ID_DAILY_PROB = GENERATOR_CONFIG.nationalId.dailyProbPerCitizen;
 
 function citizen(over: Partial<Citizen> = {}): Citizen {
   return {
@@ -46,6 +46,7 @@ function seq(values: number[]): () => number {
 function ctx(over: Partial<GeneratorContext> = {}): GeneratorContext {
   return {
     citizens: [citizen()],
+    programs: [],
     dtSeconds: 86_400,
     durationSeconds: 10 * 86_400,
     random: seq([]),

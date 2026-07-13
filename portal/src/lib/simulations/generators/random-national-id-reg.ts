@@ -1,13 +1,6 @@
 import type { Citizen } from "@simdpg/api-clients";
-import type { GeneratedEvent, RandomEventGenerator } from "./types";
-
-/**
- * Daily probability that an alive citizen submits a national-ID registration.
- * Placeholder tuned for observability (a visible handful of events for a typical
- * population/duration), NOT demographic realism. A future ticket makes this and
- * `dt` configurable.
- */
-export const NATIONAL_ID_DAILY_PROB = 0.02;
+import type { GeneratedEvent, GeneratorContext, RandomEventGenerator } from "./types";
+import { GENERATOR_CONFIG } from "./config";
 
 function buildPayload(c: Citizen) {
   const addr = c.addresses?.[0];
@@ -24,15 +17,23 @@ function buildPayload(c: Citizen) {
   };
 }
 
+/**
+ * National-ID registration generator. One-time geometric per citizen: each
+ * alive citizen rolls a daily Bernoulli and registers once, on the first
+ * success. Arrivals are front-loaded ("everyone eventually registers, mostly
+ * early"), which is acceptable for ID uptake. The daily probability comes from
+ * the configurable weights asset (see config.ts).
+ */
 export const randomNationalIdReg: RandomEventGenerator = {
   key: "random-national-id-reg",
-  generate({ citizens, dtSeconds, durationSeconds, random }) {
+  generate({ citizens, dtSeconds, durationSeconds, random }: GeneratorContext): GeneratedEvent[] {
+    const dailyProb = GENERATOR_CONFIG.nationalId.dailyProbPerCitizen;
     const numDays = Math.floor(durationSeconds / dtSeconds);
     const events: GeneratedEvent[] = [];
 
     for (const citizen of citizens) {
       for (let day = 0; day < numDays; day++) {
-        if (random() < NATIONAL_ID_DAILY_PROB) {
+        if (random() < dailyProb) {
           const offset = Math.floor(random() * dtSeconds);
           events.push({
             scheduledSimSeconds: day * dtSeconds + offset,

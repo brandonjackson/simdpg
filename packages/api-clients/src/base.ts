@@ -4,6 +4,15 @@ import type {
   CreateWebhookSubscriptionInput,
 } from "./types.js";
 
+/** Server-side max page size (see system-kit pagination); fewest round-trips. */
+const PAGE_SIZE = 100;
+
+/** Append `page`/`per_page` params, respecting any existing query string. */
+function pageUrl(path: string, page: number): string {
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}page=${page}&per_page=${PAGE_SIZE}`;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -50,17 +59,32 @@ export class BaseClient {
   }
 
   /**
-   * GET a list endpoint, transparently unwrapping the DCI list envelope
-   * (`{ data, meta }`). Falls back to a bare array for endpoints that have
-   * not (yet) adopted pagination.
+   * GET a list endpoint and return the COMPLETE collection, transparently
+   * unwrapping the DCI list envelope (`{ data, meta }`) and following
+   * pagination across every page. Every caller of this helper wants the whole
+   * list (not a single page — the frontend paginates its own views directly),
+   * so we drain `meta.total` rather than silently returning only page 1.
+   * Falls back to a bare array for endpoints that never adopted the envelope.
    */
   protected async getList<T>(path: string): Promise<T[]> {
-    const body = await this.request<T[] | { data: T[] }>(path);
-    if (Array.isArray(body)) return body;
-    if (body && Array.isArray((body as { data?: T[] }).data)) {
-      return (body as { data: T[] }).data;
+    const first = await this.request<
+      T[] | { data: T[]; meta?: { total?: number } }
+    >(pageUrl(path, 1));
+    if (Array.isArray(first)) return first; // bare array: nothing to paginate
+    if (!first || !Array.isArray(first.data)) return [];
+
+    const rows = [...first.data];
+    const total = first.meta?.total;
+    if (typeof total !== "number") return rows;
+
+    for (let page = 2; rows.length < total; page++) {
+      const next = await this.request<{ data?: T[] }>(pageUrl(path, page));
+      const data = next?.data;
+      // Empty/short page: stop rather than loop forever on an inconsistent total.
+      if (!Array.isArray(data) || data.length === 0) break;
+      rows.push(...data);
     }
-    return [];
+    return rows;
   }
 
   protected post<T>(path: string, body: unknown): Promise<T> {
