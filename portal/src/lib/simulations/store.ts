@@ -6,6 +6,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { simulations, simulationRuns } from "../db/schema";
 import { eventsFilePath } from "./paths";
+import { loadConfig, GENERATOR_CONFIG, type GeneratorConfig } from "./generators/config";
 
 export const CLOCK_SPEED_OPTIONS = [1, 60, 3600, 86400] as const;
 
@@ -23,6 +24,7 @@ export interface SimulationParameters {
   clockSpeed: ClockSpeed;
   durationSeconds: number;
   usesExistingPopulation: true;
+  generatorConfig: GeneratorConfig;
 }
 
 export interface SimulationRecord {
@@ -69,6 +71,11 @@ export function parseSimulationParameters(input: unknown): SimulationParameters 
     );
   }
 
+  const generatorConfig =
+    raw.generatorConfig === undefined
+      ? GENERATOR_CONFIG
+      : loadConfig(raw.generatorConfig);
+
   return {
     clockSpeed,
     durationSeconds: parsePositiveInteger(
@@ -76,6 +83,7 @@ export function parseSimulationParameters(input: unknown): SimulationParameters 
       "durationSeconds",
     ),
     usesExistingPopulation: true,
+    generatorConfig,
   };
 }
 

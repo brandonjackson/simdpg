@@ -3,11 +3,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import type { SimulationParameters } from "./store";
+import { parseSimulationParameters } from "./store";
+import { GENERATOR_CONFIG } from "./generators/config";
 
 const PARAMS: SimulationParameters = {
   clockSpeed: 60,
   durationSeconds: 120,
   usesExistingPopulation: true,
+  generatorConfig: GENERATOR_CONFIG,
 };
 
 let tempDir: string;
@@ -172,5 +175,26 @@ describe("listRunningRuns (crash detection)", () => {
     expect(running).toHaveLength(1);
     expect(running[0].simulationId).toBe("r1");
     expect(running[0].pid).toBe(999999999);
+  });
+});
+
+describe("parseSimulationParameters generatorConfig", () => {
+  const base = { clockSpeed: 3600, durationSeconds: 86_400 };
+
+  it("defaults generatorConfig to the live config when omitted", () => {
+    const p = parseSimulationParameters(base);
+    expect(p.generatorConfig).toEqual(GENERATOR_CONFIG);
+  });
+
+  it("accepts and clamps a provided generatorConfig", () => {
+    const p = parseSimulationParameters({
+      ...base,
+      generatorConfig: {
+        marriage: { dailyRatePerPopulation: -1 },
+        benefits: { chainProbabilities: { toStep2: 1.5 } },
+      },
+    });
+    expect(p.generatorConfig.marriage.dailyRatePerPopulation).toBe(0);
+    expect(p.generatorConfig.benefits.chainProbabilities.toStep2).toBe(1);
   });
 });
