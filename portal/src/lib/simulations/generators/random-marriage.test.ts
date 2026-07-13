@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Citizen } from "@simdpg/api-clients";
 import type { GeneratorContext } from "./types";
 import { randomMarriage } from "./random-marriage";
+import { GENERATOR_CONFIG } from "./config";
 
 function citizen(over: Partial<Citizen> = {}): Citizen {
   return {
@@ -20,7 +21,7 @@ function seq(values: number[]): () => number {
 function ctx(over: Partial<GeneratorContext> = {}): GeneratorContext {
   return {
     citizens: [], programs: [], dtSeconds: 86_400,
-    durationSeconds: 3 * 86_400, random: seq([]), ...over,
+    durationSeconds: 3 * 86_400, random: seq([]), config: GENERATOR_CONFIG, ...over,
   };
 }
 
@@ -50,6 +51,14 @@ describe("randomMarriage", () => {
     const a = citizen({ id: "a", national_id: "A" });
     const b = citizen({ id: "b", national_id: "B" });
     const events = randomMarriage.generate(ctx({ citizens: [a, b], random: () => 1 }));
+    expect(events).toHaveLength(0);
+  });
+
+  it("emits nothing when the marriage rate in config is zero", () => {
+    const a = citizen({ id: "a", national_id: "A" });
+    const b = citizen({ id: "b", national_id: "B" });
+    const zero = { ...GENERATOR_CONFIG, marriage: { dailyRatePerPopulation: 0 } };
+    const events = randomMarriage.generate(ctx({ citizens: [a, b], random: () => 0, config: zero }));
     expect(events).toHaveLength(0);
   });
 });

@@ -1,5 +1,4 @@
 import type { GeneratedEvent, GeneratorContext, RandomEventGenerator } from "./types";
-import { GENERATOR_CONFIG } from "./config";
 import { cityNames, drawCount, isAdult, pick, sampleWithoutReplacement, simDayToDate } from "./pools";
 
 /**
@@ -9,8 +8,8 @@ import { cityNames, drawCount, isAdult, pick, sampleWithoutReplacement, simDayTo
  */
 export const randomMarriage: RandomEventGenerator = {
   key: "random-marriage",
-  generate({ citizens, dtSeconds, durationSeconds, random }: GeneratorContext): GeneratedEvent[] {
-    const { dailyRatePerPopulation } = GENERATOR_CONFIG.marriage;
+  generate({ citizens, dtSeconds, durationSeconds, random, config }: GeneratorContext): GeneratedEvent[] {
+    const { dailyRatePerPopulation } = config.marriage;
     const numDays = Math.floor(durationSeconds / dtSeconds);
     const adults = citizens.filter((c) => isAdult(c.date_of_birth));
     const events: GeneratedEvent[] = [];

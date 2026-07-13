@@ -1,5 +1,4 @@
 import type { GeneratedEvent, GeneratorContext, RandomEventGenerator } from "./types";
-import { GENERATOR_CONFIG } from "./config";
 import { drawCount, pick } from "./pools";
 
 /**
@@ -12,8 +11,8 @@ import { drawCount, pick } from "./pools";
  */
 export const randomBenefitEligibility: RandomEventGenerator = {
   key: "random-benefit-eligibility",
-  generate({ citizens, programs, dtSeconds, durationSeconds, random }: GeneratorContext): GeneratedEvent[] {
-    const { dailyRatePerPopulation, chainProbabilities, stepDelaySeconds } = GENERATOR_CONFIG.benefits;
+  generate({ citizens, programs, dtSeconds, durationSeconds, random, config }: GeneratorContext): GeneratedEvent[] {
+    const { dailyRatePerPopulation, chainProbabilities, stepDelaySeconds } = config.benefits;
     const numDays = Math.floor(durationSeconds / dtSeconds);
     const events: GeneratedEvent[] = [];
     if (citizens.length === 0) return events;
