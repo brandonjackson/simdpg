@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { loadConfig, GENERATOR_CONFIG } from "./config";
+import {
+  loadConfig,
+  GENERATOR_CONFIG,
+  GENERATOR_CONFIG_FIELDS,
+  getConfigValue,
+  setConfigValue,
+} from "./config";
 
 describe("loadConfig", () => {
   it("returns defaults when given an empty object", () => {
@@ -43,5 +49,44 @@ describe("loadConfig", () => {
   it("clamps a negative toStep3 up to 0", () => {
     const c = loadConfig({ benefits: { chainProbabilities: { toStep3: -0.2 } } });
     expect(c.benefits.chainProbabilities.toStep3).toBe(0);
+  });
+});
+
+describe("GENERATOR_CONFIG_FIELDS registry", () => {
+  it("covers every leaf field of GeneratorConfig", () => {
+    const paths = GENERATOR_CONFIG_FIELDS.map((f) => f.path.join("."));
+    expect(new Set(paths)).toEqual(
+      new Set([
+        "nationalId.dailyProbPerCitizen",
+        "death.dailyRatePerPopulation",
+        "death.stepDelaySeconds",
+        "birth.dailyRatePerPopulation",
+        "marriage.dailyRatePerPopulation",
+        "benefits.dailyRatePerPopulation",
+        "benefits.chainProbabilities.toStep2",
+        "benefits.chainProbabilities.toStep3",
+        "benefits.stepDelaySeconds",
+      ]),
+    );
+  });
+
+  it("marks the two stepDelaySeconds fields non-editable and the rest editable", () => {
+    for (const f of GENERATOR_CONFIG_FIELDS) {
+      const expected = !f.path.includes("stepDelaySeconds");
+      expect(f.editable).toBe(expected);
+    }
+  });
+
+  it("getConfigValue reads a nested field by path", () => {
+    const c = loadConfig({});
+    expect(getConfigValue(c, ["benefits", "chainProbabilities", "toStep2"])).toBe(0.7);
+  });
+
+  it("setConfigValue returns a new config with only that field changed", () => {
+    const c = loadConfig({});
+    const next = setConfigValue(c, ["benefits", "chainProbabilities", "toStep2"], 0.9);
+    expect(next.benefits.chainProbabilities.toStep2).toBe(0.9);
+    expect(c.benefits.chainProbabilities.toStep2).toBe(0.7); // original untouched
+    expect(next.death.dailyRatePerPopulation).toBe(c.death.dailyRatePerPopulation);
   });
 });
