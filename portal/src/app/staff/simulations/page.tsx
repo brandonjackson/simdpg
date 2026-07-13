@@ -104,10 +104,11 @@ function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
-function fieldInputProps(kind: FieldKind): { min: number; max?: number; step: number } {
+function fieldInputProps(kind: FieldKind): { min: number; max: number; step: number } {
+  // All chances are bounded to [0, 1]; probabilities and rates differ only in step.
   return kind === "probability"
     ? { min: 0, max: 1, step: 0.01 }
-    : { min: 0, step: 0.0001 };
+    : { min: 0, max: 1, step: 0.0001 };
 }
 
 const EDITABLE_CONFIG_FIELDS = GENERATOR_CONFIG_FIELDS.filter((f) => f.editable);
@@ -321,11 +322,18 @@ export default function SimulationManagement() {
                       max={max}
                       step={step}
                       value={getConfigValue(generatorConfig, field.path)}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        // Ignore empty/non-numeric input so clearing the field
+                        // keeps the last value rather than silently becoming 0.
+                        const parsed = Number(e.target.value);
+                        if (e.target.value === "" || Number.isNaN(parsed)) return;
+                        // Clamp to the field's valid range so out-of-range
+                        // entries can't be submitted.
+                        const clamped = Math.min(max, Math.max(min, parsed));
                         setGeneratorConfig((cfg) =>
-                          setConfigValue(cfg, field.path, Number(e.target.value)),
-                        )
-                      }
+                          setConfigValue(cfg, field.path, clamped),
+                        );
+                      }}
                     />
                   </div>
                 );
