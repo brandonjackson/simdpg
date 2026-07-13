@@ -6,6 +6,14 @@ import type {
   SimulationRecord,
   SimulationStatus,
 } from "@/lib/simulations/store";
+import {
+  GENERATOR_CONFIG,
+  GENERATOR_CONFIG_FIELDS,
+  getConfigValue,
+  setConfigValue,
+  type FieldKind,
+  type GeneratorConfig,
+} from "@/lib/simulations/generators/config";
 
 const CLOCK_SPEED_OPTIONS: { value: ClockSpeed; label: string }[] = [
   { value: 1, label: "1x - real time" },
@@ -96,12 +104,23 @@ function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
+function fieldInputProps(kind: FieldKind): { min: number; max: number; step: number } {
+  // All chances are bounded to [0, 1]; probabilities and rates differ only in step.
+  return kind === "probability"
+    ? { min: 0, max: 1, step: 0.01 }
+    : { min: 0, max: 1, step: 0.0001 };
+}
+
+const EDITABLE_CONFIG_FIELDS = GENERATOR_CONFIG_FIELDS.filter((f) => f.editable);
+
 export default function SimulationManagement() {
   const [simulations, setSimulations] = useState<SimulationRecord[]>([]);
   const [showWizard, setShowWizard] = useState(false);
   const [clockSpeed, setClockSpeed] = useState<ClockSpeed>(3600);
   const [durationAmount, setDurationAmount] = useState(1);
   const [durationUnit, setDurationUnit] = useState<DurationUnit>("days");
+  const [generatorConfig, setGeneratorConfig] =
+    useState<GeneratorConfig>(GENERATOR_CONFIG);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +159,7 @@ export default function SimulationManagement() {
           parameters: {
             clockSpeed,
             durationSeconds,
+            generatorConfig,
           },
         }),
       });
@@ -274,6 +294,52 @@ export default function SimulationManagement() {
               </select>
             </div>
           </div>
+
+          <details className="govuk-details">
+            <summary className="govuk-details__summary">
+              <span className="govuk-details__summary-text">
+                Advanced: event chances
+              </span>
+            </summary>
+            <div className="govuk-details__text">
+              <p className="govuk-body-s">
+                Tune how often each random event occurs. Rates are per day per
+                population; probabilities are between 0 and 1.
+              </p>
+              {EDITABLE_CONFIG_FIELDS.map((field) => {
+                const id = `gen-${field.path.join("-")}`;
+                const { min, max, step } = fieldInputProps(field.kind);
+                return (
+                  <div className="govuk-form-group" key={id}>
+                    <label className="govuk-label" htmlFor={id}>
+                      {field.label}
+                    </label>
+                    <input
+                      className="govuk-input govuk-input--width-10"
+                      id={id}
+                      type="number"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={getConfigValue(generatorConfig, field.path)}
+                      onChange={(e) => {
+                        // Ignore empty/non-numeric input so clearing the field
+                        // keeps the last value rather than silently becoming 0.
+                        const parsed = Number(e.target.value);
+                        if (e.target.value === "" || Number.isNaN(parsed)) return;
+                        // Clamp to the field's valid range so out-of-range
+                        // entries can't be submitted.
+                        const clamped = Math.min(max, Math.max(min, parsed));
+                        setGeneratorConfig((cfg) =>
+                          setConfigValue(cfg, field.path, clamped),
+                        );
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </details>
 
           <div className="govuk-inset-text">
             <p className="govuk-body">

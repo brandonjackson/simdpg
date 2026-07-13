@@ -27,7 +27,7 @@ function seq(values: number[]): () => number {
 function ctx(over: Partial<GeneratorContext> = {}): GeneratorContext {
   return {
     citizens: [citizen()], programs: [program], dtSeconds: 86_400,
-    durationSeconds: 3 * 86_400, random: seq([]), ...over,
+    durationSeconds: 3 * 86_400, random: seq([]), config: GENERATOR_CONFIG, ...over,
   };
 }
 

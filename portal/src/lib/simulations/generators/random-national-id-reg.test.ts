@@ -50,6 +50,7 @@ function ctx(over: Partial<GeneratorContext> = {}): GeneratorContext {
     dtSeconds: 86_400,
     durationSeconds: 10 * 86_400,
     random: seq([]),
+    config: GENERATOR_CONFIG,
     ...over,
   };
 }

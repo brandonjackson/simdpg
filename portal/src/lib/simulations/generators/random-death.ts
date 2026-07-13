@@ -1,5 +1,4 @@
 import type { GeneratedEvent, GeneratorContext, RandomEventGenerator } from "./types";
-import { GENERATOR_CONFIG } from "./config";
 import {
   CAUSES_OF_DEATH,
   cityNames,
@@ -22,8 +21,8 @@ import {
  */
 export const randomDeath: RandomEventGenerator = {
   key: "random-death",
-  generate({ citizens, dtSeconds, durationSeconds, random }: GeneratorContext): GeneratedEvent[] {
-    const { dailyRatePerPopulation, stepDelaySeconds } = GENERATOR_CONFIG.death;
+  generate({ citizens, dtSeconds, durationSeconds, random, config }: GeneratorContext): GeneratedEvent[] {
+    const { dailyRatePerPopulation, stepDelaySeconds } = config.death;
     const numDays = Math.floor(durationSeconds / dtSeconds);
     const events: GeneratedEvent[] = [];
     let remaining = citizens.slice(); // draining pool

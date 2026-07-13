@@ -1,4 +1,5 @@
 import type { Citizen, Program } from "@simdpg/api-clients";
+import type { GeneratorConfig } from "./config";
 
 /** A pure, sim-time event emitted by a RandomEventGenerator. */
 export interface GeneratedEvent {
@@ -21,6 +22,8 @@ export interface GeneratorContext {
   durationSeconds: number;
   /** Randomness source; injectable so generators are deterministically testable. */
   random: () => number;
+  /** Per-run generator config (rates/probabilities/delays). */
+  config: GeneratorConfig;
 }
 
 /**

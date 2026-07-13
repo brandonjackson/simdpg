@@ -12,62 +12,96 @@ export interface GeneratorConfig {
   };
 }
 
-const DEFAULTS: GeneratorConfig = {
-  nationalId: { dailyProbPerCitizen: 0.02 },
-  death: { dailyRatePerPopulation: 0.000001, stepDelaySeconds: 300 },
-  birth: { dailyRatePerPopulation: 0.00005 },
-  marriage: { dailyRatePerPopulation: 0.0000015 },
-  benefits: {
-    dailyRatePerPopulation: 0.00001,
-    chainProbabilities: { toStep2: 0.7, toStep3: 0.5 },
-    stepDelaySeconds: 300,
-  },
-};
+export type FieldKind = "rate" | "probability";
 
-function num(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+export interface ConfigFieldDescriptor {
+  /** Path into the nested GeneratorConfig. */
+  path: readonly string[];
+  /** "rate" clamps to >= 0; "probability" clamps to [0, 1]. */
+  kind: FieldKind;
+  /** Whether the create wizard exposes this field for editing. */
+  editable: boolean;
+  /** Conservative fallback used when the field is missing/malformed. */
+  default: number;
+  /** Human label for the wizard and detail page. */
+  label: string;
 }
 
-/** Validate via `num()`, then clamp to `>= 0` (rates/delays can't be negative). */
-function nonNeg(value: unknown, fallback: number): number {
-  return Math.max(0, num(value, fallback));
+/** Single source of truth for fallback defaults, validation, and UI metadata. */
+export const GENERATOR_CONFIG_FIELDS: readonly ConfigFieldDescriptor[] = [
+  { path: ["nationalId", "dailyProbPerCitizen"],         kind: "rate",        editable: true,  default: 0.02,      label: "National ID – daily probability per citizen" },
+  { path: ["death", "dailyRatePerPopulation"],           kind: "rate",        editable: true,  default: 0.000001,  label: "Death – daily rate per population" },
+  { path: ["death", "stepDelaySeconds"],                 kind: "rate",        editable: false, default: 300,       label: "Death – step delay (seconds)" },
+  { path: ["birth", "dailyRatePerPopulation"],           kind: "rate",        editable: true,  default: 0.00005,   label: "Birth – daily rate per population" },
+  { path: ["marriage", "dailyRatePerPopulation"],        kind: "rate",        editable: true,  default: 0.0000015, label: "Marriage – daily rate per population" },
+  { path: ["benefits", "dailyRatePerPopulation"],        kind: "rate",        editable: true,  default: 0.00001,   label: "Benefits – daily rate per population" },
+  { path: ["benefits", "chainProbabilities", "toStep2"], kind: "probability", editable: true,  default: 0.7,       label: "Benefits – chance to advance to step 2" },
+  { path: ["benefits", "chainProbabilities", "toStep3"], kind: "probability", editable: true,  default: 0.5,       label: "Benefits – chance to advance to step 3" },
+  { path: ["benefits", "stepDelaySeconds"],              kind: "rate",        editable: false, default: 300,       label: "Benefits – step delay (seconds)" },
+] as const;
+
+function readPath(source: unknown, path: readonly string[]): unknown {
+  let cur: unknown = source;
+  for (const key of path) {
+    if (cur == null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[key];
+  }
+  return cur;
 }
 
-/** Validate via `num()`, then clamp to `[0, 1]` (probabilities). */
-function prob(value: unknown, fallback: number): number {
-  return Math.min(1, Math.max(0, num(value, fallback)));
+/** Set a nested numeric field on a fresh deep clone; returns the clone. */
+export function setConfigValue(
+  config: GeneratorConfig,
+  path: readonly string[],
+  value: number,
+): GeneratorConfig {
+  const next = structuredClone(config);
+  let cur: Record<string, unknown> = next as unknown as Record<string, unknown>;
+  for (const key of path.slice(0, -1)) {
+    cur = cur[key] as Record<string, unknown>;
+  }
+  cur[path[path.length - 1]] = value;
+  return next;
+}
+
+/** Read a nested numeric field by path. */
+export function getConfigValue(config: GeneratorConfig, path: readonly string[]): number {
+  return readPath(config, path) as number;
+}
+
+function clamp(kind: FieldKind, value: number): number {
+  const nonNeg = Math.max(0, value);
+  return kind === "probability" ? Math.min(1, nonNeg) : nonNeg;
 }
 
 /**
- * Merge a config source over the built-in defaults so a missing or malformed
- * field never crashes generation. Defaults to the JSON asset.
+ * Merge a config source over the registry fallbacks so a missing or malformed
+ * field never crashes generation. Each field is validated as a finite number
+ * then clamped per its kind. Defaults to the JSON asset.
  */
 export function loadConfig(source: unknown = raw): GeneratorConfig {
-  const c = (source ?? {}) as Record<string, any>;
-  return {
-    nationalId: {
-      dailyProbPerCitizen: nonNeg(c.nationalId?.dailyProbPerCitizen, DEFAULTS.nationalId.dailyProbPerCitizen),
-    },
-    death: {
-      dailyRatePerPopulation: nonNeg(c.death?.dailyRatePerPopulation, DEFAULTS.death.dailyRatePerPopulation),
-      stepDelaySeconds: nonNeg(c.death?.stepDelaySeconds, DEFAULTS.death.stepDelaySeconds),
-    },
-    birth: {
-      dailyRatePerPopulation: nonNeg(c.birth?.dailyRatePerPopulation, DEFAULTS.birth.dailyRatePerPopulation),
-    },
-    marriage: {
-      dailyRatePerPopulation: nonNeg(c.marriage?.dailyRatePerPopulation, DEFAULTS.marriage.dailyRatePerPopulation),
-    },
+  // Seed with zeros, then set each descriptor's validated value by path.
+  let result: GeneratorConfig = {
+    nationalId: { dailyProbPerCitizen: 0 },
+    death: { dailyRatePerPopulation: 0, stepDelaySeconds: 0 },
+    birth: { dailyRatePerPopulation: 0 },
+    marriage: { dailyRatePerPopulation: 0 },
     benefits: {
-      dailyRatePerPopulation: nonNeg(c.benefits?.dailyRatePerPopulation, DEFAULTS.benefits.dailyRatePerPopulation),
-      chainProbabilities: {
-        toStep2: prob(c.benefits?.chainProbabilities?.toStep2, DEFAULTS.benefits.chainProbabilities.toStep2),
-        toStep3: prob(c.benefits?.chainProbabilities?.toStep3, DEFAULTS.benefits.chainProbabilities.toStep3),
-      },
-      stepDelaySeconds: nonNeg(c.benefits?.stepDelaySeconds, DEFAULTS.benefits.stepDelaySeconds),
+      dailyRatePerPopulation: 0,
+      chainProbabilities: { toStep2: 0, toStep3: 0 },
+      stepDelaySeconds: 0,
     },
   };
+  for (const field of GENERATOR_CONFIG_FIELDS) {
+    const rawValue = readPath(source, field.path);
+    const valid =
+      typeof rawValue === "number" && Number.isFinite(rawValue)
+        ? clamp(field.kind, rawValue)
+        : field.default;
+    result = setConfigValue(result, field.path, valid);
+  }
+  return result;
 }
 
-/** Singleton loaded from the JSON asset, imported by generators. */
+/** Singleton loaded from the JSON asset, imported as the default config. */
 export const GENERATOR_CONFIG: GeneratorConfig = loadConfig();

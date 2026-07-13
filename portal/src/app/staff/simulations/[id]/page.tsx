@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SimulationRecord, SimulationStatus } from "@/lib/simulations/store";
 import type { SimulationEvent } from "@/lib/simulations/events";
+import {
+  GENERATOR_CONFIG_FIELDS,
+  getConfigValue,
+} from "@/lib/simulations/generators/config";
 
 interface SimulationResponse {
   simulation?: SimulationRecord;
@@ -108,6 +112,8 @@ function statusLabel(status: SimulationStatus): string {
 function shortId(id: string): string {
   return id.slice(0, 8);
 }
+
+const EDITABLE_CONFIG_FIELDS = GENERATOR_CONFIG_FIELDS.filter((f) => f.editable);
 
 function getEndTime(simulation: SimulationRecord): string | undefined {
   return simulation.stoppedAt ?? simulation.completedAt;
@@ -461,6 +467,15 @@ export default function SimulationDetails({ params }: PageProps) {
                 Existing population
               </dd>
             </div>
+            {simulation.parameters.generatorConfig &&
+              EDITABLE_CONFIG_FIELDS.map((field) => (
+                <div className="govuk-summary-list__row" key={field.path.join(".")}>
+                  <dt className="govuk-summary-list__key">{field.label}</dt>
+                  <dd className="govuk-summary-list__value">
+                    {getConfigValue(simulation.parameters.generatorConfig, field.path)}
+                  </dd>
+                </div>
+              ))}
           </dl>
 
           <h2 className="govuk-heading-l">Timeline</h2>

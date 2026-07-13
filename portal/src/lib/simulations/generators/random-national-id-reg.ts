@@ -1,6 +1,5 @@
 import type { Citizen } from "@simdpg/api-clients";
 import type { GeneratedEvent, GeneratorContext, RandomEventGenerator } from "./types";
-import { GENERATOR_CONFIG } from "./config";
 
 function buildPayload(c: Citizen) {
   const addr = c.addresses?.[0];
@@ -26,8 +25,8 @@ function buildPayload(c: Citizen) {
  */
 export const randomNationalIdReg: RandomEventGenerator = {
   key: "random-national-id-reg",
-  generate({ citizens, dtSeconds, durationSeconds, random }: GeneratorContext): GeneratedEvent[] {
-    const dailyProb = GENERATOR_CONFIG.nationalId.dailyProbPerCitizen;
+  generate({ citizens, dtSeconds, durationSeconds, random, config }: GeneratorContext): GeneratedEvent[] {
+    const dailyProb = config.nationalId.dailyProbPerCitizen;
     const numDays = Math.floor(durationSeconds / dtSeconds);
     const events: GeneratedEvent[] = [];
 
