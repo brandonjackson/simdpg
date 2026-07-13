@@ -30,6 +30,10 @@ const createPatientSchema = z.object({
     }),
 });
 
+const updatePatientStatusSchema = z.object({
+  status: z.enum(["active", "deceased", "inactive"]),
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -146,6 +150,47 @@ router.get(
     }
 
     res.json(patient);
+  }),
+);
+
+/**
+ * PATCH /patients/by-citizen/:citizen_id — update patient status
+ */
+router.patch(
+  "/by-citizen/:citizen_id",
+  asyncHandler(async (req, res) => {
+    const citizenId = req.params.citizen_id as string;
+    const body = updatePatientStatusSchema.parse(req.body);
+
+    const patient = db
+      .select()
+      .from(patients)
+      .where(eq(patients.citizen_id, citizenId))
+      .get();
+
+    if (!patient) {
+      throw notFound("Patient not found");
+    }
+
+    const now = new Date().toISOString();
+
+    db.update(patients)
+      .set({
+        status: body.status,
+        updated_at: now,
+      })
+      .where(eq(patients.citizen_id, citizenId))
+      .run();
+
+    const updatedPatient = db
+      .select()
+      .from(patients)
+      .where(eq(patients.citizen_id, citizenId))
+      .get();
+
+    emitWebhook("patient.updated", updatedPatient as Record<string, unknown>);
+
+    res.json(updatedPatient);
   }),
 );
 

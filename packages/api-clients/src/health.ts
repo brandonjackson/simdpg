@@ -34,6 +34,12 @@ export class HealthClient extends BaseClient {
     );
   }
 
+  updatePatientStatus(citizenId: string, status: "active" | "deceased" | "inactive"): Promise<Patient> {
+    return this.patch(`/patients/by-citizen/${encodeURIComponent(citizenId)}`, {
+      status,
+    });
+  }
+
   createEncounter(input: {
     patient_id: string;
     type: "checkup" | "emergency" | "vaccination" | "consultation";

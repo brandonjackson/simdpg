@@ -86,6 +86,29 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Patient" }
         "400": { $ref: "#/components/responses/BadRequest" }
+  /patients/by-citizen/{citizen_id}:
+    parameters:
+      - name: citizen_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updatePatientStatus
+      tags: [Patients]
+      summary: Update a patient's status by their citizen ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePatient" }
+      responses:
+        "200":
+          description: The updated patient
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /patients/{id}:
     parameters:
       - $ref: "#/components/parameters/Id"
@@ -457,6 +480,11 @@ components:
         citizen_id: { type: string, format: uuid }
         vaccine_name: { type: string }
         next_dose_due: { type: string, format: date }
+    UpdatePatient:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [active, deceased, inactive] }
     CreatePatient:
       type: object
       required: [citizen_id]
