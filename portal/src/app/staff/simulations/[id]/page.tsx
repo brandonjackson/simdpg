@@ -7,6 +7,7 @@ import {
   GENERATOR_CONFIG_FIELDS,
   getConfigValue,
 } from "@/lib/simulations/generators/config";
+import { parseStats } from "@/lib/simulations/stats";
 
 interface SimulationResponse {
   simulation?: SimulationRecord;
@@ -203,19 +204,18 @@ export default function SimulationDetails({ params }: PageProps) {
     return () => window.clearInterval(interval);
   }, [simulation?.status]);
 
+  // While a run is in progress, poll the backend so the status transition to a
+  // terminal state (and its stats) shows up without a manual refresh. Polling
+  // stops as soon as the record is no longer running.
   useEffect(() => {
     if (simulation?.status !== "running") return;
 
-    const actualElapsedSeconds = getActualElapsedSeconds(simulation, nowMs);
-    const simulatedElapsedSeconds = getSimulatedElapsedSeconds(
-      simulation,
-      actualElapsedSeconds,
-    );
-
-    if (simulatedElapsedSeconds >= simulation.parameters.durationSeconds) {
+    const interval = window.setInterval(() => {
       refresh();
-    }
-  }, [nowMs, refresh, simulation]);
+    }, 1500);
+
+    return () => window.clearInterval(interval);
+  }, [simulation?.status, refresh]);
 
   async function runAction(action: "generate" | "start" | "stop") {
     setError(null);
@@ -247,6 +247,7 @@ export default function SimulationDetails({ params }: PageProps) {
   const estimatedActualSeconds = simulation
     ? simulation.parameters.durationSeconds / simulation.parameters.clockSpeed
     : 0;
+  const stats = simulation ? parseStats(simulation.stats) : null;
 
   return (
     <>
@@ -339,8 +340,7 @@ export default function SimulationDetails({ params }: PageProps) {
             simulation.status === "completed" ||
             simulation.status === "failed") && (
             <div className="govuk-inset-text">
-              The simulation has finished running. Stats will appear here once
-              event logging is connected.
+              The simulation has finished running. See the stats below.
             </div>
           )}
 
@@ -512,9 +512,42 @@ export default function SimulationDetails({ params }: PageProps) {
             <>
               <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
               <h2 className="govuk-heading-l">Stats</h2>
-              <p className="govuk-body">
-                No simulation stats have been recorded yet.
-              </p>
+
+              {simulation.status === "failed" && stats?.error && (
+                <div className="govuk-error-summary" role="alert">
+                  <h3 className="govuk-error-summary__title">
+                    The simulation failed
+                  </h3>
+                  <div className="govuk-error-summary__body">
+                    <p className="govuk-body">{stats.error}</p>
+                  </div>
+                </div>
+              )}
+
+              {stats ? (
+                <div className="govuk-stat-grid">
+                  <div className="govuk-stat">
+                    <div className="govuk-stat__value">{stats.delivered}</div>
+                    <div className="govuk-stat__label">Delivered</div>
+                  </div>
+                  <div className="govuk-stat">
+                    <div className="govuk-stat__value">{stats.skipped}</div>
+                    <div className="govuk-stat__label">Skipped</div>
+                  </div>
+                  <div className="govuk-stat">
+                    <div className="govuk-stat__value">{stats.failed}</div>
+                    <div className="govuk-stat__label">Failed</div>
+                  </div>
+                  <div className="govuk-stat">
+                    <div className="govuk-stat__value">{stats.total}</div>
+                    <div className="govuk-stat__label">Total</div>
+                  </div>
+                </div>
+              ) : (
+                <p className="govuk-body">
+                  No simulation stats have been recorded yet.
+                </p>
+              )}
             </>
           )}
         </>
