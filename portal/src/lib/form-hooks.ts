@@ -31,7 +31,7 @@ export interface FormHook {
   legacyEnvVar?: string;
 }
 
-export const FORM_HOOKS: FormHook[] = [
+export const FORM_HOOKS = [
   {
     key: "birth-registration",
     serviceId: "birth-registration",
@@ -100,9 +100,16 @@ export const FORM_HOOKS: FormHook[] = [
       "Creates the enrolment in Benefits when a citizen confirms an eligible programme. Payload: citizen_id, program_id.",
     legacyEnvVar: "OPENFN_BENEFIT_ELIGIBILITY_PART3_URL",
   },
-];
+] satisfies FormHook[];
 
-const FORM_HOOKS_BY_KEY = new Map(FORM_HOOKS.map((h) => [h.key, h]));
+/** The stable key of every registered form hook. */
+export type FormHookKey = (typeof FORM_HOOKS)[number]["key"];
+
+// Keyed by plain string so lookups accept any string (e.g. a route param)
+// without a cast; membership is what `isFormHookKey` reports.
+const FORM_HOOKS_BY_KEY = new Map<string, FormHook>(
+  FORM_HOOKS.map((h) => [h.key, h]),
+);
 
 export function getFormHook(key: string): FormHook | undefined {
   return FORM_HOOKS_BY_KEY.get(key);
