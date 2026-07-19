@@ -1,7 +1,13 @@
 import { readEvents, type SimulationEvent } from "./events.js";
 import { writeRunState, type SimulationRunState } from "./run-state.js";
-import { runEvents, type RunCounts } from "./scheduler.js";
+import { runEvents, DEFAULT_MAX_CONCURRENCY, type RunCounts } from "./scheduler.js";
 import { sleep, log, logError } from "../utils.js";
+
+/** Concurrent deliveries allowed; override with SIM_MAX_CONCURRENCY. */
+function maxConcurrencyFromEnv(): number {
+  const raw = Number.parseInt(process.env.SIM_MAX_CONCURRENCY ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MAX_CONCURRENCY;
+}
 
 /**
  * Execute a generated simulation: schedule every event's POST by real time,
@@ -41,10 +47,15 @@ export async function runWorker(id: string): Promise<void> {
     });
   };
 
+  const maxConcurrency = maxConcurrencyFromEnv();
+  const runStart = Date.now();
   try {
-    const { counts, stopped: wasStopped } = await runEvents(events, Date.now(), {
-      now: Date.now, sleep, fetch, shouldStop: () => stopped,
-    });
+    const { counts, stopped: wasStopped } = await runEvents(
+      events,
+      runStart,
+      { now: Date.now, sleep, fetch, shouldStop: () => stopped },
+      { maxConcurrency },
+    );
     await finalize(wasStopped ? "stopped" : "completed", counts);
     log(`Simulation ${id}: ${wasStopped ? "stopped" : "completed"}`);
   } catch (err) {
