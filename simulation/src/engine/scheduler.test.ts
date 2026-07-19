@@ -119,6 +119,25 @@ describe("runEvents", () => {
     expect(peakConcurrency).toBe(2);
   });
 
+  it("reports live progress snapshots as deliveries start and finish", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const fetch = vi.fn(async () => { await gate; return new Response(null, { status: 200 }); }) as unknown as typeof fetch;
+    const events = Array.from({ length: 4 }, (_, i) =>
+      ev({ id: String(i), scheduledMicros: 0, targetUrl: "http://h" }),
+    );
+    const snapshots: number[] = [];
+    const onProgress = (s: { inFlight: number }) => snapshots.push(s.inFlight);
+
+    const run = runEvents(events, 0, baseDeps({ fetch, onProgress }), { maxConcurrency: 2 });
+    // Saturated: a snapshot must have observed in-flight at the cap.
+    await vi.waitFor(() => expect(snapshots).toContain(2));
+    release();
+    const { counts } = await run;
+    expect(counts.delivered).toBe(4);
+    // A final snapshot must show the queue drained back to zero in flight.
+    expect(snapshots[snapshots.length - 1]).toBe(0);
+  });
 
   it("does not block the schedule on a slow delivery", async () => {
     // Two events scheduled at the same instant; the first delivery hangs until

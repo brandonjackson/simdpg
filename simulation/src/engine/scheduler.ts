@@ -16,12 +16,22 @@ export interface RunCounts {
   total: number;
 }
 
+/** Live view of a run, emitted whenever a delivery starts or finishes. */
+export interface ProgressSnapshot extends RunCounts {
+  /** Deliveries currently in flight. */
+  inFlight: number;
+  /** High-water mark of in-flight deliveries so far. */
+  peakConcurrency: number;
+}
+
 export interface DeliveryDeps {
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   fetch: typeof fetch;
   shouldStop: () => boolean;
   onOutcome?: (o: EventOutcome) => void;
+  /** Called on every delivery start/finish so callers can log live progress. */
+  onProgress?: (snapshot: ProgressSnapshot) => void;
   /** Per-POST abort timeout in ms. Defaults to DEFAULT_TIMEOUT_MS. */
   timeoutMs?: number;
 }
@@ -84,9 +94,14 @@ export async function runEvents(
   let peakConcurrency = 0;
   const pending = new Set<Promise<void>>();
 
+  const emitProgress = (): void => {
+    deps.onProgress?.({ ...counts, inFlight, peakConcurrency });
+  };
+
   const dispatch = (event: SimulationEvent): void => {
     inFlight += 1;
     peakConcurrency = Math.max(peakConcurrency, inFlight);
+    emitProgress();
     const p = deliver(event, deps)
       .then((outcome) => {
         counts[outcome] += 1;
@@ -94,6 +109,7 @@ export async function runEvents(
       })
       .finally(() => {
         inFlight -= 1;
+        emitProgress();
         pending.delete(p);
       });
     pending.add(p);
