@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getSamplePayloadJson } from "@/lib/form-sample-payloads";
 
 interface FormHookStatus {
   key: string;
@@ -13,6 +14,19 @@ interface FormHookStatus {
   resolved_url: string | null;
   source: "registry" | "env" | null;
   legacy_env_var: string | null;
+}
+
+/** Result of a "Test connection" attempt for a single form. */
+interface TestResult {
+  ok: boolean;
+  /** Webhook status code (present on a successful relay). */
+  status?: number;
+  /** Webhook response body, verbatim. */
+  body?: string;
+  /** The URL the test payload was actually sent to. */
+  url?: string;
+  /** Error message when the relay failed or the webhook was unreachable. */
+  error?: string;
 }
 
 /**
@@ -29,6 +43,13 @@ export function FormWebhookRegistry() {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   // Form key showing a transient "Saved" confirmation.
   const [savedKey, setSavedKey] = useState<string | null>(null);
+  // "Test connection" panel state, keyed by form.
+  const [testOpen, setTestOpen] = useState<Record<string, boolean>>({});
+  const [testPayloads, setTestPayloads] = useState<Record<string, string>>({});
+  const [testBusy, setTestBusy] = useState<Record<string, boolean>>({});
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>(
+    {},
+  );
 
   // Fetch the catalog + current registrations. `withSpinner` is true only on
   // initial mount; mutations refresh quietly so the section doesn't blank out.
@@ -111,6 +132,75 @@ export function FormWebhookRegistry() {
     }
   }
 
+  // Toggle the test panel, seeding the editable payload with the sample the
+  // first time it opens (so re-opening keeps any edits the user made).
+  function toggleTest(key: string) {
+    setTestPayloads((p) =>
+      p[key] === undefined ? { ...p, [key]: getSamplePayloadJson(key) } : p,
+    );
+    setTestOpen((o) => ({ ...o, [key]: !o[key] }));
+  }
+
+  function resetPayload(key: string) {
+    setTestPayloads((p) => ({ ...p, [key]: getSamplePayloadJson(key) }));
+  }
+
+  // POST the edited payload to the test endpoint, which relays it to the
+  // webhook (using the URL currently typed, or the resolved one) and returns
+  // the response. Nothing is saved.
+  async function sendTest(key: string) {
+    setTestBusy((b) => ({ ...b, [key]: true }));
+    setTestResults((r) => {
+      const next = { ...r };
+      delete next[key];
+      return next;
+    });
+    try {
+      const typedUrl = (drafts[key] ?? "").trim();
+      const res = await fetch("/api/form-webhooks/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key,
+          target_url: typedUrl || undefined,
+          payload: testPayloads[key] ?? getSamplePayloadJson(key),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as TestResult & {
+        error?: string;
+      };
+      if (!res.ok) {
+        setTestResults((r) => ({
+          ...r,
+          [key]: {
+            ok: false,
+            error: data?.error ?? `Test failed (${res.status})`,
+          },
+        }));
+      } else {
+        setTestResults((r) => ({
+          ...r,
+          [key]: {
+            ok: true,
+            status: data.status,
+            body: data.body,
+            url: data.url,
+          },
+        }));
+      }
+    } catch (err) {
+      setTestResults((r) => ({
+        ...r,
+        [key]: {
+          ok: false,
+          error: err instanceof Error ? err.message : "Test failed",
+        },
+      }));
+    } finally {
+      setTestBusy((b) => ({ ...b, [key]: false }));
+    }
+  }
+
   if (loading) {
     return <p className="govuk-body">Loading registered forms&hellip;</p>;
   }
@@ -188,6 +278,15 @@ export function FormWebhookRegistry() {
               >
                 {busy[form.key] ? "Saving…" : "Save URL"}
               </button>
+              <button
+                type="button"
+                className="govuk-button govuk-button--secondary"
+                style={{ marginBottom: 0, whiteSpace: "nowrap" }}
+                aria-expanded={Boolean(testOpen[form.key])}
+                onClick={() => toggleTest(form.key)}
+              >
+                {testOpen[form.key] ? "Hide test" : "Test connection"}
+              </button>
               {form.target_url && (
                 <button
                   type="button"
@@ -209,6 +308,113 @@ export function FormWebhookRegistry() {
               >
                 ✓ Saved.
               </p>
+            )}
+
+            {testOpen[form.key] && (
+              <div
+                style={{
+                  marginTop: "10px",
+                  padding: "15px",
+                  borderLeft: "4px solid #1d70b8",
+                  background: "#f3f2f1",
+                }}
+              >
+                <p className="govuk-body-s" style={{ marginTop: 0 }}>
+                  Sends this payload to{" "}
+                  <code>{(drafts[form.key] ?? "").trim() || form.resolved_url || "the registered URL"}</code>{" "}
+                  with the <code>X-SimDPG-Form: {form.key}</code> header. Nothing
+                  is saved — edit the payload freely.
+                </p>
+                <label
+                  className="govuk-label govuk-label--s"
+                  htmlFor={`test-payload-${form.key}`}
+                >
+                  Sample payload
+                </label>
+                <textarea
+                  id={`test-payload-${form.key}`}
+                  className="govuk-textarea"
+                  rows={10}
+                  spellCheck={false}
+                  style={{ fontFamily: "monospace", marginBottom: "10px" }}
+                  value={testPayloads[form.key] ?? ""}
+                  onChange={(e) =>
+                    setTestPayloads((p) => ({
+                      ...p,
+                      [form.key]: e.target.value,
+                    }))
+                  }
+                />
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    type="button"
+                    className="govuk-button"
+                    style={{ marginBottom: 0, whiteSpace: "nowrap" }}
+                    disabled={testBusy[form.key]}
+                    onClick={() => void sendTest(form.key)}
+                  >
+                    {testBusy[form.key] ? "Sending…" : "Send"}
+                  </button>
+                  <button
+                    type="button"
+                    className="govuk-button govuk-button--secondary"
+                    style={{ marginBottom: 0, whiteSpace: "nowrap" }}
+                    disabled={testBusy[form.key]}
+                    onClick={() => resetPayload(form.key)}
+                  >
+                    Reset payload
+                  </button>
+                </div>
+
+                {testResults[form.key] && (
+                  <div style={{ marginTop: "10px" }}>
+                    {testResults[form.key].ok ? (
+                      <>
+                        <p
+                          className="govuk-body-s"
+                          role="status"
+                          style={{ marginBottom: "5px" }}
+                        >
+                          Response{" "}
+                          <strong
+                            style={{
+                              color:
+                                (testResults[form.key].status ?? 0) < 400
+                                  ? "#00703c"
+                                  : "#d4351c",
+                            }}
+                          >
+                            {testResults[form.key].status}
+                          </strong>{" "}
+                          from <code>{testResults[form.key].url}</code>
+                        </p>
+                        <pre
+                          className="govuk-body-s"
+                          style={{
+                            background: "#ffffff",
+                            border: "1px solid #b1b4b6",
+                            padding: "10px",
+                            overflowX: "auto",
+                            marginBottom: 0,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {testResults[form.key].body || "(empty response body)"}
+                        </pre>
+                      </>
+                    ) : (
+                      <p
+                        className="govuk-body-s"
+                        role="alert"
+                        style={{ color: "#d4351c", marginBottom: 0 }}
+                      >
+                        {testResults[form.key].error}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         );

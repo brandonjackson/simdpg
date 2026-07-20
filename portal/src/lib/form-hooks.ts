@@ -102,13 +102,37 @@ export const FORM_HOOKS: FormHook[] = [
   },
 ];
 
+/**
+ * Every registered form-hook key as a literal tuple. Kept alongside
+ * `FORM_HOOKS` (a test asserts the two stay in sync) so we can expose a
+ * `FormHookKey` union without widening `FORM_HOOKS`' element type — which would
+ * make optional fields like `legacyEnvVar` unreadable on the union.
+ */
+export const FORM_HOOK_KEYS = [
+  "birth-registration",
+  "death-registration-lookup",
+  "death-registration-preview",
+  "death-registration-confirm",
+  "national-id",
+  "marriage-registration",
+  "benefit-eligibility-lookup",
+  "benefit-eligibility-check",
+  "benefit-eligibility-enrol",
+] as const;
+
+/**
+ * Union of every registered form-hook key. Used to exhaustively type maps keyed
+ * by hook (e.g. the sample-payload catalog in `lib/form-sample-payloads`).
+ */
+export type FormHookKey = (typeof FORM_HOOK_KEYS)[number];
+
 const FORM_HOOKS_BY_KEY = new Map(FORM_HOOKS.map((h) => [h.key, h]));
 
 export function getFormHook(key: string): FormHook | undefined {
   return FORM_HOOKS_BY_KEY.get(key);
 }
 
-export function isFormHookKey(key: string): boolean {
+export function isFormHookKey(key: string): key is FormHookKey {
   return FORM_HOOKS_BY_KEY.has(key);
 }
 
