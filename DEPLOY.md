@@ -15,6 +15,7 @@ monorepo once. It runs **one** workspace per container, selected two ways:
 | `SEED_CMD`   | (compose) seed the DB **once** on a fresh volume (systems only)  | `npm run db:seed -w @simdpg/identity`|
 | `PORT`       | Port to listen on (compose sets 3001–3007; Railway injects 8080) | `3001` … `3007`                      |
 | `*_URL`      | Override a system's URL; auto-derived otherwise                  | see below                            |
+| `REDIS_URL`  | Redis connection string (queue-based event delivery)             | `redis://redis:6379`                 |
 
 Systems are independent (they don't call each other — they only emit webhooks
 to an optional `WEBHOOK_URL`), so only the portal needs to reach the systems —
@@ -35,8 +36,10 @@ docker compose up                 # start all 7 systems + portal (reuses the ima
 ```
 
 - Portal: http://localhost:3000  •  Systems: http://localhost:3001–3007 (`/health`, `/docs`)
+- Redis: `redis://localhost:6379` (the `redis:7-alpine` service, published on 6379).
 - Each system's database is seeded automatically the first time its volume is created.
 - The portal's own database lives on the `portal-data` volume (`/app/portal/data`).
+- Redis data persists on the `redis-data` volume; `docker compose down -v` wipes it.
 - `docker compose down` stops the stack (data preserved); `docker compose down -v` wipes all data.
 
 > **Don't use `docker compose up --build` unless you have the Buildx/BuildKit
@@ -92,6 +95,12 @@ For the **portal** service, also:
 
 Delete the non-server services Railway auto-creates (`@simdpg/system-kit`,
 `@simdpg/api-clients`, `@simdpg/simulation`) — they aren't web servers.
+
+Add a **Redis** service (Railway's Redis template) for the queue-based event
+delivery. Set `REDIS_URL` on the **portal** service to the Redis instance's
+private connection string (Railway exposes it as a reference variable, e.g.
+`${{Redis.REDIS_URL}}`). Foundation only today — nothing consumes it yet — but
+wiring it now keeps the portal ready for the queue work.
 
 > **Escape hatches (rarely needed):** explicit `SERVICE_DIR` / `START_CMD` still
 > win, and an explicit `IDENTITY_URL` (etc.) on the portal overrides the derived

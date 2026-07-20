@@ -24,6 +24,19 @@ x-app: &app
     dockerfile: Dockerfile
 
 services:
+  # Redis backs the (upcoming) queue-based event delivery. Added as foundation
+  # only — no service consumes it yet. Data is persisted on a named volume so
+  # queued work survives a restart once the queue work lands.
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   identity:
     <<: *app
     environment:
@@ -105,9 +118,12 @@ services:
       NOTIFICATIONS_URL: http://notifications:3005
       PAYMENTS_URL: http://payments:3006
       SOCIAL_REGISTRY_URL: http://social-registry:3007
+      REDIS_URL: redis://redis:6379
     ports: ["3000:3000"]
     volumes: ["portal-data:/app/portal/data"]
     depends_on:
+      redis:
+        condition: service_healthy
       identity:
         condition: service_healthy
       civil-registry:
@@ -132,3 +148,4 @@ volumes:
   payments-data:
   social-registry-data:
   portal-data:
+  redis-data:
