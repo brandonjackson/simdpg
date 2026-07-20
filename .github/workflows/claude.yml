@@ -24,9 +24,59 @@ jobs:
       id-token: write
       actions: read
     steps:
+      # Issue-triggered runs work in the branch linked to the issue (created via
+      # "Create a branch" on the issue page), falling back to the parent issue's
+      # linked branch, then the default branch.
+      - name: Resolve target branch
+        id: target
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          IS_PR_COMMENT: ${{ github.event.issue.pull_request.url }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          # PR review events carry the head branch directly.
+          if [ -n "$PR_BRANCH" ]; then
+            echo "ref=$PR_BRANCH" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A comment on a PR arrives as issue_comment; use the PR head ref,
+          # which resolves for fork PRs too.
+          if [ -n "$IS_PR_COMMENT" ]; then
+            echo "ref=refs/pull/$ISSUE_NUMBER/head" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ref=""
+          if [ -n "$ISSUE_NUMBER" ]; then
+            ref=$(gh api graphql -f query='
+              query($owner:String!, $name:String!, $number:Int!) {
+                repository(owner:$owner, name:$name) {
+                  issue(number:$number) {
+                    linkedBranches(first:1) { nodes { ref { name } } }
+                    parent { linkedBranches(first:1) { nodes { ref { name } } } }
+                  }
+                }
+              }' \
+              -f owner="${REPO%/*}" -f name="${REPO#*/}" -F number="$ISSUE_NUMBER" \
+              --jq '.data.repository.issue
+                    | (.linkedBranches.nodes[0].ref.name
+                       // .parent.linkedBranches.nodes[0].ref.name
+                       // "")' 2>/dev/null || true)
+          fi
+
+          echo "Resolved ref: ${ref:-${DEFAULT_BRANCH:-main}}"
+          echo "ref=${ref:-${DEFAULT_BRANCH:-main}}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ steps.target.outputs.ref }}
           fetch-depth: 1
 
       - name: Run Claude Code
@@ -45,4 +95,3 @@ jobs:
                  }
                }
              }
-
