@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getSamplePayloadJson } from "@/lib/form-sample-payloads";
 
 interface FormHookStatus {
   key: string;
@@ -13,6 +14,18 @@ interface FormHookStatus {
   resolved_url: string | null;
   source: "registry" | "env" | null;
   legacy_env_var: string | null;
+}
+
+/** Response from POST /api/form-webhooks/test. */
+interface TestConnectionResult {
+  ok?: boolean;
+  status?: number;
+  status_text?: string;
+  content_type?: string;
+  body?: string;
+  duration_ms?: number;
+  target_url?: string;
+  error?: string;
 }
 
 /**
@@ -29,6 +42,82 @@ export function FormWebhookRegistry() {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   // Form key showing a transient "Saved" confirmation.
   const [savedKey, setSavedKey] = useState<string | null>(null);
+
+  // "Test connection" state, keyed by form.
+  // Which form's test panel is currently open.
+  const [testOpen, setTestOpen] = useState<Record<string, boolean>>({});
+  // Editable sample payload the staff member is about to send.
+  const [testPayload, setTestPayload] = useState<Record<string, string>>({});
+  // Which form is mid-send.
+  const [testing, setTesting] = useState<Record<string, boolean>>({});
+  // The most recent test result per form (success response or error).
+  const [testResult, setTestResult] = useState<
+    Record<string, TestConnectionResult>
+  >({});
+
+  // Open (or close) the test panel for a form, seeding the editable payload
+  // with the form's sample the first time it is opened.
+  function toggleTest(key: string) {
+    setTestOpen((o) => {
+      const next = { ...o, [key]: !o[key] };
+      return next;
+    });
+    setTestPayload((p) =>
+      p[key] === undefined ? { ...p, [key]: getSamplePayloadJson(key) } : p,
+    );
+  }
+
+  // Restore the sample payload, discarding staff edits.
+  function resetPayload(key: string) {
+    setTestPayload((p) => ({ ...p, [key]: getSamplePayloadJson(key) }));
+  }
+
+  // Send the (edited) payload to the webhook via the server relay and show the
+  // response inline. Uses the URL currently typed in the box so staff can test
+  // before saving; the server falls back to the resolved URL if it is blank.
+  async function sendTest(key: string) {
+    let payload = testPayload[key];
+    if (payload === undefined) payload = getSamplePayloadJson(key);
+    // Validate JSON client-side for a fast, clear error.
+    try {
+      JSON.parse(payload);
+    } catch {
+      setTestResult((r) => ({
+        ...r,
+        [key]: { ok: false, error: "Payload is not valid JSON." },
+      }));
+      return;
+    }
+    setTesting((t) => ({ ...t, [key]: true }));
+    setTestResult((r) => {
+      const next = { ...r };
+      delete next[key];
+      return next;
+    });
+    try {
+      const res = await fetch("/api/form-webhooks/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key,
+          payload,
+          target_url: (drafts[key] ?? "").trim() || undefined,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as TestConnectionResult;
+      setTestResult((r) => ({ ...r, [key]: data }));
+    } catch (err) {
+      setTestResult((r) => ({
+        ...r,
+        [key]: {
+          ok: false,
+          error: err instanceof Error ? err.message : "Request failed.",
+        },
+      }));
+    } finally {
+      setTesting((t) => ({ ...t, [key]: false }));
+    }
+  }
 
   // Fetch the catalog + current registrations. `withSpinner` is true only on
   // initial mount; mutations refresh quietly so the section doesn't blank out.
@@ -188,6 +277,15 @@ export function FormWebhookRegistry() {
               >
                 {busy[form.key] ? "Saving…" : "Save URL"}
               </button>
+              <button
+                type="button"
+                className="govuk-button govuk-button--secondary"
+                style={{ marginBottom: 0, whiteSpace: "nowrap" }}
+                aria-expanded={Boolean(testOpen[form.key])}
+                onClick={() => toggleTest(form.key)}
+              >
+                {testOpen[form.key] ? "Hide test" : "Test connection"}
+              </button>
               {form.target_url && (
                 <button
                   type="button"
@@ -210,9 +308,134 @@ export function FormWebhookRegistry() {
                 ✓ Saved.
               </p>
             )}
+
+            {testOpen[form.key] && (
+              <div
+                style={{
+                  marginTop: "10px",
+                  padding: "15px",
+                  borderLeft: "5px solid #1d70b8",
+                  background: "#f3f2f1",
+                }}
+              >
+                <p className="govuk-body-s" style={{ marginBottom: "5px" }}>
+                  Send a sample payload to{" "}
+                  <code>
+                    {(drafts[form.key] ?? "").trim() ||
+                      form.resolved_url ||
+                      "the registered URL"}
+                  </code>{" "}
+                  and see the response. Edit the payload below if you like &mdash;
+                  nothing is saved.
+                </p>
+                <label
+                  className="govuk-label govuk-label--s"
+                  htmlFor={`payload-${form.key}`}
+                  style={{ marginBottom: "3px" }}
+                >
+                  Sample payload (JSON)
+                </label>
+                <textarea
+                  id={`payload-${form.key}`}
+                  className="govuk-textarea"
+                  rows={10}
+                  spellCheck={false}
+                  style={{ fontFamily: "monospace", fontSize: "14px" }}
+                  value={testPayload[form.key] ?? ""}
+                  onChange={(e) =>
+                    setTestPayload((p) => ({
+                      ...p,
+                      [form.key]: e.target.value,
+                    }))
+                  }
+                />
+                <div
+                  style={{ display: "flex", gap: "10px", alignItems: "center" }}
+                >
+                  <button
+                    type="button"
+                    className="govuk-button"
+                    style={{ marginBottom: 0, whiteSpace: "nowrap" }}
+                    disabled={testing[form.key]}
+                    onClick={() => void sendTest(form.key)}
+                  >
+                    {testing[form.key] ? "Sending…" : "Send"}
+                  </button>
+                  <button
+                    type="button"
+                    className="govuk-button govuk-button--secondary"
+                    style={{ marginBottom: 0, whiteSpace: "nowrap" }}
+                    disabled={testing[form.key]}
+                    onClick={() => resetPayload(form.key)}
+                  >
+                    Reset payload
+                  </button>
+                </div>
+
+                {testResult[form.key] && (
+                  <TestResultView result={testResult[form.key]} />
+                )}
+              </div>
+            )}
           </div>
         );
       })}
     </>
+  );
+}
+
+/** Inline display of a "Test connection" result: status line + response body. */
+function TestResultView({ result }: { result: TestConnectionResult }) {
+  // A network-level failure (couldn't reach the webhook / bad request).
+  if (result.ok === false || (result.error && result.status === undefined)) {
+    return (
+      <div role="status" style={{ marginTop: "10px" }}>
+        <p
+          className="govuk-body-s"
+          style={{ color: "#d4351c", fontWeight: 700, marginBottom: "5px" }}
+        >
+          ✗ {result.error ?? "Request failed."}
+        </p>
+      </div>
+    );
+  }
+
+  const status = result.status ?? 0;
+  const success = status >= 200 && status < 300;
+  return (
+    <div role="status" style={{ marginTop: "10px" }}>
+      <p
+        className="govuk-body-s"
+        style={{
+          color: success ? "#00703c" : "#d4351c",
+          fontWeight: 700,
+          marginBottom: "5px",
+        }}
+      >
+        {success ? "✓" : "✗"} HTTP {status}
+        {result.status_text ? ` ${result.status_text}` : ""}
+        {typeof result.duration_ms === "number"
+          ? ` · ${result.duration_ms} ms`
+          : ""}
+      </p>
+      <p className="govuk-body-s" style={{ marginBottom: "3px" }}>
+        Response body:
+      </p>
+      <pre
+        style={{
+          background: "#0b0c0c",
+          color: "#f3f2f1",
+          padding: "10px",
+          overflowX: "auto",
+          fontSize: "13px",
+          margin: 0,
+          maxHeight: "240px",
+        }}
+      >
+        {result.body && result.body.length > 0
+          ? result.body
+          : "(empty response body)"}
+      </pre>
+    </div>
   );
 }
