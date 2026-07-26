@@ -23,3 +23,9 @@ export function simDbPath(): string {
 export function eventsFilePath(id: string): string {
   return path.join(simDataDir(), ".simulations", `${id}.events.json`);
 }
+
+/** Worker log for a simulation. The portal tees the spawned worker's stdout and
+ * stderr here so a run's progress is inspectable after the fact. */
+export function logFilePath(id: string): string {
+  return path.join(simDataDir(), ".simulations", `${id}.log`);
+}

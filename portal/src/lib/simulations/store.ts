@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { promises as fs, createWriteStream, mkdirSync } from "node:fs";
 import path from "node:path";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { simulations, simulationRuns } from "../db/schema";
-import { eventsFilePath } from "./paths";
+import { eventsFilePath, logFilePath } from "./paths";
 import { loadConfig, GENERATOR_CONFIG, type GeneratorConfig } from "./generators/config";
 
 export const CLOCK_SPEED_OPTIONS = [1, 60, 3600, 86400] as const;
@@ -214,12 +214,32 @@ function spawnWorker(id: string): void {
   const args =
     process.env.SIM_WORKER_CMD ? [entry, "run", id] : ["tsx", entry, "run", id];
 
+  // Tee the worker's output to both this terminal and a per-simulation log file
+  // so a run's live progress (delivery concurrency, counts) is visible while it
+  // runs and inspectable afterwards. Without this the worker's stdio was
+  // discarded, so its logs went nowhere.
+  const logPath = logFilePath(id);
+  mkdirSync(path.dirname(logPath), { recursive: true });
+  const logStream = createWriteStream(logPath, { flags: "a" });
+  logStream.on("error", () => {}); // never let a log-write failure crash the portal
+
   const child = spawn(command, args, {
     detached: true,
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
     cwd: process.cwd(),
     env: { ...process.env, SIM_DATA_DIR: process.env.SIM_DATA_DIR ?? process.cwd() },
   });
+
+  const tee = (chunk: Buffer, term: NodeJS.WriteStream): void => {
+    term.write(chunk);
+    logStream.write(chunk);
+  };
+  child.stdout?.on("data", (c: Buffer) => tee(c, process.stdout));
+  child.stderr?.on("data", (c: Buffer) => tee(c, process.stderr));
+  child.stdout?.on("error", () => {});
+  child.stderr?.on("error", () => {});
+  child.once("exit", () => logStream.end());
+
   child.unref();
 }
 
