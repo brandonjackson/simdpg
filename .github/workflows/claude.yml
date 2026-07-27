@@ -84,14 +84,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Prefix rules ("...:*") so real invocations match — e.g. "npm install redis",
+          # "npx tsc -p simulation". Exact strings like "npm install" only match that
+          # literal command. mcp_config is not a v1 input; the Playwright MCP server is
+          # declared inline via --mcp-config instead.
           claude_args: |
-            --allowedTools "Bash(npm ci),Bash(npm install),Bash(npm run build),Bash(npm run dev),Bash(npm run test:*),Bash(npm run lint:*),Bash(npx tsc --noEmit),mcp__playwright__*"
-          mcp_config: |
-            {
-              "mcpServers": {
-                "playwright": {
-                  "command": "npx",
-                  "args": ["@anthropic-ai/mcp-server-playwright"]
-                 }
-               }
-             }
+            --allowedTools "Bash(npm ci:*),Bash(npm install:*),Bash(npm run build:*),Bash(npm run dev:*),Bash(npm run test:*),Bash(npm run lint:*),Bash(npx tsc:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),mcp__playwright__*"
+            --mcp-config '{"mcpServers":{"playwright":{"command":"npx","args":["-y","@playwright/mcp@latest"]}}}'
