@@ -10,7 +10,7 @@ function baseDeps(over: Partial<RunDeps> = {}): RunDeps {
   return {
     now: () => 0,
     sleep: async () => {},
-    fetch: vi.fn(async () => new Response(null, { status: 200 })) as unknown as typeof fetch,
+    fetch: vi.fn(async () => new Response(null, { status: 200 })) as unknown as typeof globalThis.fetch,
     shouldStop: () => false,
     ...over,
   };
@@ -19,7 +19,7 @@ function baseDeps(over: Partial<RunDeps> = {}): RunDeps {
 describe("runEvents", () => {
   it("delivers events in scheduledMicros order and counts outcomes", async () => {
     const calls: string[] = [];
-    const fetch = vi.fn(async (url: string) => { calls.push(url); return new Response(null, { status: 200 }); }) as unknown as typeof fetch;
+    const fetch = vi.fn(async (url: string) => { calls.push(url); return new Response(null, { status: 200 }); }) as unknown as typeof globalThis.fetch;
     const events = [
       ev({ id: "b", scheduledMicros: 2000, targetUrl: "http://b" }),
       ev({ id: "a", scheduledMicros: 1000, targetUrl: "http://a" }),
@@ -33,7 +33,7 @@ describe("runEvents", () => {
 
   it("stops early without delivering remaining events", async () => {
     let stop = false;
-    const fetch = vi.fn(async () => { stop = true; return new Response(null, { status: 200 }); }) as unknown as typeof fetch;
+    const fetch = vi.fn(async () => { stop = true; return new Response(null, { status: 200 }); }) as unknown as typeof globalThis.fetch;
     const events = [ev({ id: "a", scheduledMicros: 0 }), ev({ id: "b", scheduledMicros: 1000 })];
     const { counts, stopped } = await runEvents(events, 0, baseDeps({ fetch, shouldStop: () => stop }));
     expect(counts.delivered).toBe(1);
@@ -49,7 +49,7 @@ describe("runEvents", () => {
       await gate;
       inFlight -= 1;
       return new Response(null, { status: 200 });
-    }) as unknown as typeof fetch;
+    }) as unknown as typeof globalThis.fetch;
     const events = Array.from({ length: 5 }, (_, i) =>
       ev({ id: String(i), scheduledMicros: 0, targetUrl: "http://h" }),
     );
@@ -68,7 +68,7 @@ describe("runEvents", () => {
   it("reports live progress snapshots as deliveries start and finish", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
-    const fetch = vi.fn(async () => { await gate; return new Response(null, { status: 200 }); }) as unknown as typeof fetch;
+    const fetch = vi.fn(async () => { await gate; return new Response(null, { status: 200 }); }) as unknown as typeof globalThis.fetch;
     const events = Array.from({ length: 4 }, (_, i) =>
       ev({ id: String(i), scheduledMicros: 0, targetUrl: "http://h" }),
     );
@@ -96,7 +96,7 @@ describe("runEvents", () => {
       if (url === "http://slow") { await firstGate; return new Response(null, { status: 200 }); }
       secondFired = true;
       return new Response(null, { status: 200 });
-    }) as unknown as typeof fetch;
+    }) as unknown as typeof globalThis.fetch;
     const events = [
       ev({ id: "slow", scheduledMicros: 0, targetUrl: "http://slow" }),
       ev({ id: "fast", scheduledMicros: 0, targetUrl: "http://fast" }),
