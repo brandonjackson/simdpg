@@ -24,6 +24,32 @@ x-app: &app
     dockerfile: Dockerfile
 
 services:
+  # Delivery queue + per-run counters for queued event delivery. In-memory only:
+  # a run is transient, so losing the queue on restart costs nothing worth a
+  # volume. See docs/specs/2026-07-19-queued-event-delivery-design.md.
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Consumer side of the delivery pool: pops sim:deliveries jobs and POSTs them.
+  # Jobs carry the full event, so these need no data volume — scale by replicas.
+  sim-worker:
+    <<: *app
+    environment:
+      SERVICE_DIR: simulation
+      START_CMD: node dist/index.js deliver
+      REDIS_URL: redis://redis:6379
+      SIM_WORKER_CONCURRENCY: 200
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 8
+
   identity:
     <<: *app
     environment:
@@ -105,9 +131,12 @@ services:
       NOTIFICATIONS_URL: http://notifications:3005
       PAYMENTS_URL: http://payments:3006
       SOCIAL_REGISTRY_URL: http://social-registry:3007
+      REDIS_URL: redis://redis:6379
     ports: ["3000:3000"]
     volumes: ["portal-data:/app/portal/data"]
     depends_on:
+      redis:
+        condition: service_healthy
       identity:
         condition: service_healthy
       civil-registry:

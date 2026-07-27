@@ -1,13 +1,13 @@
 import type { SimulationEvent } from "./events.js";
-import { log } from "../utils.js";
+import { deliver, type EventOutcome } from "./delivery.js";
 
-export type EventOutcome = "delivered" | "skipped" | "failed";
+// `deliver` and its timeout live in ./delivery.js so the queue-backed delivery
+// worker shares them; re-exported here for existing callers.
+export { deliver, DEFAULT_TIMEOUT_MS, type EventOutcome } from "./delivery.js";
 
 /** Default POSTs allowed in flight at once. See #59: serial delivery to slow
  * remote webhooks made runs take ~Σ(latency) instead of the scheduled span. */
 export const DEFAULT_MAX_CONCURRENCY = 20;
-/** Default per-POST timeout; a hung endpoint must not stall the whole run. */
-export const DEFAULT_TIMEOUT_MS = 15_000;
 
 export interface RunCounts {
   delivered: number;
@@ -46,33 +46,6 @@ export interface RunResult {
   stopped: boolean;
   /** High-water mark of concurrent deliveries — how much of the cap was used. */
   peakConcurrency: number;
-}
-
-/** Deliver one event: skip when unregistered, POST otherwise. Never throws. */
-export async function deliver(event: SimulationEvent, deps: DeliveryDeps): Promise<EventOutcome> {
-  if (event.targetUrl === null) {
-    log(`skip ${event.id} (${event.targetKey}): no webhook registered`);
-    return "skipped";
-  }
-  const controller = new AbortController();
-  const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await deps.fetch(event.targetUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(event.payload),
-      signal: controller.signal,
-    });
-    if (res.ok) return "delivered";
-    log(`fail ${event.id} (${event.targetKey}): HTTP ${res.status}`);
-    return "failed";
-  } catch (err) {
-    log(`fail ${event.id} (${event.targetKey}): ${err instanceof Error ? err.message : String(err)}`);
-    return "failed";
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /**
