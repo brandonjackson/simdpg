@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
-import { deliver, runEvents, type DeliveryDeps } from "./scheduler.js";
+import {
+  deliver,
+  runEvents,
+  type DeliveryDeps,
+  type DeliveryJob,
+  type PublishDeps,
+  type PublishSnapshot,
+} from "./scheduler.js";
 import type { SimulationEvent } from "./events.js";
 
 interface FetchOptions {
@@ -12,10 +19,7 @@ function ev(over: Partial<SimulationEvent>): SimulationEvent {
 
 function baseDeps(over: Partial<DeliveryDeps> = {}): DeliveryDeps {
   return {
-    now: () => 0,
-    sleep: async () => {},
     fetch: vi.fn(async () => new Response(null, { status: 200 })) as unknown as typeof fetch,
-    shouldStop: () => false,
     ...over,
   };
 }
@@ -70,96 +74,170 @@ describe("deliver", () => {
   });
 });
 
+/** A queue that records what it was handed, standing in for the real pool. */
+function fakeQueue(enqueue?: (job: DeliveryJob) => Promise<void>) {
+  const jobs: DeliveryJob[] = [];
+  return {
+    jobs,
+    enqueue: vi.fn(async (job: DeliveryJob) => {
+      jobs.push(job);
+      if (enqueue) await enqueue(job);
+    }),
+  };
+}
+
+/** A clock the test drives: sleeping advances it by exactly the requested ms. */
+function fakeClock(overshootMs = 0) {
+  let current = 0;
+  const waits: number[] = [];
+  return {
+    waits,
+    now: () => current,
+    sleep: async (ms: number) => {
+      waits.push(ms);
+      current += ms + overshootMs;
+    },
+  };
+}
+
+function publishDeps(over: Partial<PublishDeps> = {}): PublishDeps {
+  const clock = fakeClock();
+  return {
+    now: clock.now,
+    sleep: clock.sleep,
+    shouldStop: () => false,
+    simulationId: "sim-1",
+    queue: fakeQueue(),
+    ...over,
+  };
+}
+
 describe("runEvents", () => {
-  it("delivers events in scheduledMicros order and counts outcomes", async () => {
-    const calls: string[] = [];
-    const fetch = vi.fn(async (url: string) => { calls.push(url); return new Response(null, { status: 200 }); }) as unknown as typeof fetch;
+  it("publishes every event in scheduledMicros order", async () => {
+    const queue = fakeQueue();
     const events = [
-      ev({ id: "b", scheduledMicros: 2000, targetUrl: "http://b" }),
-      ev({ id: "a", scheduledMicros: 1000, targetUrl: "http://a" }),
-      ev({ id: "c", scheduledMicros: 3000, targetUrl: null }),
+      ev({ id: "b", scheduledMicros: 2000 }),
+      ev({ id: "a", scheduledMicros: 1000 }),
+      ev({ id: "c", scheduledMicros: 3000 }),
     ];
-    const { counts, stopped } = await runEvents(events, 0, baseDeps({ fetch }));
-    expect(calls).toEqual(["http://a", "http://b"]);
-    expect(counts).toEqual({ delivered: 2, skipped: 1, failed: 0, total: 3 });
-    expect(stopped).toBe(false);
+    const result = await runEvents(events, 0, publishDeps({ queue }));
+    expect(queue.jobs.map((j) => j.event.id)).toEqual(["a", "b", "c"]);
+    expect(result).toMatchObject({ enqueued: 3, failedToEnqueue: 0, total: 3, stopped: false });
   });
 
-  it("stops early without delivering remaining events", async () => {
+  it("queues unregistered targets too — skipping is the consumer's call", async () => {
+    const queue = fakeQueue();
+    const events = [ev({ id: "a", targetUrl: null }), ev({ id: "b", targetUrl: "http://hook" })];
+    await runEvents(events, 0, publishDeps({ queue }));
+    expect(queue.jobs.map((j) => j.event.id)).toEqual(["a", "b"]);
+  });
+
+  it("stamps the simulation id on every job so outcomes can be attributed", async () => {
+    const queue = fakeQueue();
+    await runEvents([ev({ id: "a" }), ev({ id: "b" })], 0, publishDeps({ queue, simulationId: "sim-42" }));
+    expect(queue.jobs.map((j) => j.simulationId)).toEqual(["sim-42", "sim-42"]);
+  });
+
+  it("publishes each event at its scheduled wall-clock moment", async () => {
+    const clock = fakeClock();
+    const events = [
+      ev({ id: "a", scheduledMicros: 1_000 }),
+      ev({ id: "b", scheduledMicros: 2_500 }),
+      ev({ id: "c", scheduledMicros: 4_000 }),
+    ];
+    await runEvents(events, 0, publishDeps({ now: clock.now, sleep: clock.sleep }));
+    // Targets 1ms, 2.5ms, 4ms from the run start — sleeps are the gaps between.
+    expect(clock.waits).toEqual([1, 1.5, 1.5]);
+  });
+
+  it("does not sleep for events whose moment has already passed", async () => {
+    const clock = fakeClock();
+    const events = [ev({ id: "a", scheduledMicros: 0 }), ev({ id: "b", scheduledMicros: 0 })];
+    await runEvents(events, 0, publishDeps({ now: clock.now, sleep: clock.sleep }));
+    expect(clock.waits).toEqual([]);
+  });
+
+  it("reports how far behind schedule the publishes ran", async () => {
+    const clock = fakeClock(5); // every sleep overshoots by 5ms
+    const events = [ev({ id: "a", scheduledMicros: 1000 }), ev({ id: "b", scheduledMicros: 2000 })];
+    const { maxLagMs } = await runEvents(events, 0, publishDeps({ now: clock.now, sleep: clock.sleep }));
+    expect(maxLagMs).toBe(5);
+  });
+
+  it("keeps publishing on schedule while consumers lag — no backpressure", async () => {
+    // Every enqueue hangs until released. With the old Promise.race cap the loop
+    // would block after `maxConcurrency` jobs; the publisher must not stall.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const queue = fakeQueue(() => gate);
+    const events = Array.from({ length: 50 }, (_, i) => ev({ id: String(i), scheduledMicros: i }));
+
+    const run = runEvents(events, 0, publishDeps({ queue }));
+    await vi.waitFor(() => expect(queue.enqueue).toHaveBeenCalledTimes(50));
+    release();
+
+    const { enqueued, peakPending } = await run;
+    expect(enqueued).toBe(50);
+    expect(peakPending).toBe(50); // all 50 published before any was acknowledged
+  });
+
+  it("waits for the queue to drain before reporting completion", async () => {
+    let drained = false;
+    let releaseDrain!: () => void;
+    const drain = new Promise<void>((r) => { releaseDrain = r; });
+    const queue = {
+      ...fakeQueue(),
+      waitForDrain: async () => { await drain; drained = true; },
+    };
+
+    const run = runEvents([ev({ id: "a" })], 0, publishDeps({ queue }));
+    let finished = false;
+    void run.then(() => { finished = true; });
+
+    await vi.waitFor(() => expect(queue.jobs).toHaveLength(1));
+    expect(finished).toBe(false); // published, but the queue is still draining
+
+    releaseDrain();
+    await run;
+    expect(drained).toBe(true);
+  });
+
+  it("stops publishing the remaining events when asked to stop", async () => {
     let stop = false;
-    const fetch = vi.fn(async () => { stop = true; return new Response(null, { status: 200 }); }) as unknown as typeof fetch;
+    const queue = fakeQueue(async () => { stop = true; });
     const events = [ev({ id: "a", scheduledMicros: 0 }), ev({ id: "b", scheduledMicros: 1000 })];
-    const { counts, stopped } = await runEvents(events, 0, baseDeps({ fetch, shouldStop: () => stop }));
-    expect(counts.delivered).toBe(1);
+    const { enqueued, stopped } = await runEvents(events, 0, publishDeps({ queue, shouldStop: () => stop }));
+    expect(enqueued).toBe(1);
+    expect(queue.jobs.map((j) => j.event.id)).toEqual(["a"]);
     expect(stopped).toBe(true);
   });
 
-  it("delivers concurrently, capped at maxConcurrency, and reports the peak", async () => {
-    let inFlight = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
-    const fetch = vi.fn(async () => {
-      inFlight += 1;
-      await gate;
-      inFlight -= 1;
-      return new Response(null, { status: 200 });
-    }) as unknown as typeof fetch;
-    const events = Array.from({ length: 5 }, (_, i) =>
-      ev({ id: String(i), scheduledMicros: 0, targetUrl: "http://h" }),
-    );
-
-    const run = runEvents(events, 0, baseDeps({ fetch }), { maxConcurrency: 2 });
-    // Loop saturates the cap, then blocks acquiring the next slot.
-    await vi.waitFor(() => expect(inFlight).toBe(2));
-    expect(inFlight).toBe(2); // never exceeds the cap
-    release();
-
-    const { counts, peakConcurrency } = await run;
-    expect(counts.delivered).toBe(5);
-    expect(peakConcurrency).toBe(2);
+  it("counts a rejected publish without aborting the run", async () => {
+    const queue = fakeQueue(async (job) => {
+      if (job.event.id === "b") throw new Error("redis down");
+    });
+    const events = ["a", "b", "c"].map((id, i) => ev({ id, scheduledMicros: i }));
+    const { enqueued, failedToEnqueue, total } = await runEvents(events, 0, publishDeps({ queue }));
+    expect(enqueued).toBe(2);
+    expect(failedToEnqueue).toBe(1);
+    expect(total).toBe(3);
   });
 
-  it("reports live progress snapshots as deliveries start and finish", async () => {
+  it("reports progress snapshots as jobs are published and acknowledged", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
-    const fetch = vi.fn(async () => { await gate; return new Response(null, { status: 200 }); }) as unknown as typeof fetch;
-    const events = Array.from({ length: 4 }, (_, i) =>
-      ev({ id: String(i), scheduledMicros: 0, targetUrl: "http://h" }),
-    );
-    const snapshots: number[] = [];
-    const onProgress = (s: { inFlight: number }) => snapshots.push(s.inFlight);
+    const queue = fakeQueue(() => gate);
+    const events = Array.from({ length: 4 }, (_, i) => ev({ id: String(i), scheduledMicros: i }));
+    const snapshots: PublishSnapshot[] = [];
 
-    const run = runEvents(events, 0, baseDeps({ fetch, onProgress }), { maxConcurrency: 2 });
-    // Saturated: a snapshot must have observed in-flight at the cap.
-    await vi.waitFor(() => expect(snapshots).toContain(2));
+    const run = runEvents(events, 0, publishDeps({ queue, onProgress: (s) => snapshots.push({ ...s }) }));
+    await vi.waitFor(() => expect(snapshots.some((s) => s.pending === 4)).toBe(true));
     release();
-    const { counts } = await run;
-    expect(counts.delivered).toBe(4);
-    // A final snapshot must show the queue drained back to zero in flight.
-    expect(snapshots[snapshots.length - 1]).toBe(0);
-  });
+    await run;
 
-  it("does not block the schedule on a slow delivery", async () => {
-    // Two events scheduled at the same instant; the first delivery hangs until
-    // released. A sequential runner would never dispatch the second, so the
-    // second fetch firing proves deliveries overlap.
-    let secondFired = false;
-    let releaseFirst!: () => void;
-    const firstGate = new Promise<void>((r) => { releaseFirst = r; });
-    const fetch = vi.fn(async (url: string) => {
-      if (url === "http://slow") { await firstGate; return new Response(null, { status: 200 }); }
-      secondFired = true;
-      return new Response(null, { status: 200 });
-    }) as unknown as typeof fetch;
-    const events = [
-      ev({ id: "slow", scheduledMicros: 0, targetUrl: "http://slow" }),
-      ev({ id: "fast", scheduledMicros: 0, targetUrl: "http://fast" }),
-    ];
-
-    const run = runEvents(events, 0, baseDeps({ fetch }));
-    await vi.waitFor(() => expect(secondFired).toBe(true));
-    releaseFirst();
-    const { counts } = await run;
-    expect(counts.delivered).toBe(2);
+    const last = snapshots[snapshots.length - 1];
+    expect(last.pending).toBe(0);
+    expect(last.enqueued).toBe(4);
+    expect(last.total).toBe(4);
   });
 });
