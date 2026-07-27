@@ -25,6 +25,7 @@ import { generate, configFromEnv } from "./generate.js";
 import { runYear, runScale, yearConfigFromEnv, scaleConfigFromEnv } from "./run.js";
 import { runApplications, applyConfigFromEnv } from "./events/application.js";
 import { runWorker } from "./engine/worker.js";
+import { runDeliveryWorker } from "./engine/delivery-worker.js";
 import { createRedis, redisUrl, redactRedisUrl } from "./engine/redis.js";
 import { log, logError } from "./utils.js";
 
@@ -67,6 +68,12 @@ async function main(): Promise<void> {
       await runWorker(id);
       break;
     }
+    case "delivery-worker": {
+      // Long-lived pool worker: pops delivery jobs and POSTs them. Runs until
+      // SIGTERM/SIGINT. See engine/delivery-worker.ts.
+      await runDeliveryWorker();
+      break;
+    }
     case "redis-ping": {
       // Nothing consumes Redis yet; this is how the connection module is
       // verified against a live server (`docker compose up redis`).
@@ -107,6 +114,7 @@ async function main(): Promise<void> {
       log("  scale     - Run at scale with configurable parameters");
       log("  apply     - Submit national ID applications through the OpenFn workflow");
       log("  redis-ping - Check the Redis connection");
+      log("  delivery-worker - Run a delivery pool worker (pops jobs, POSTs them)");
       log("");
       log("Environment variables:");
       log("  POPULATION_SIZE    - Target population size (default: 100)");
