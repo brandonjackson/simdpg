@@ -12,11 +12,13 @@
     "sim:scale": "tsx src/index.ts scale",
     "sim:apply": "tsx src/index.ts apply",
     "sim:run": "tsx src/index.ts run",
-    "sim:redis-ping": "tsx src/index.ts redis-ping"
+    "sim:redis-ping": "tsx src/index.ts redis-ping",
+    "sim:worker": "tsx src/index.ts delivery-worker"
   },
   "dependencies": {
     "@simdpg/api-clients": "*",
     "better-sqlite3": "^11.0.0",
+    "bullmq": "^5.34.0",
     "drizzle-orm": "^0.36.0",
     "ioredis": "^5.4.1"
   },
