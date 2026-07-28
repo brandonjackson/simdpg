@@ -11,12 +11,14 @@
     "sim:year": "tsx src/index.ts year",
     "sim:scale": "tsx src/index.ts scale",
     "sim:apply": "tsx src/index.ts apply",
-    "sim:run": "tsx src/index.ts run"
+    "sim:run": "tsx src/index.ts run",
+    "sim:redis-ping": "tsx src/index.ts redis-ping"
   },
   "dependencies": {
     "@simdpg/api-clients": "*",
     "better-sqlite3": "^11.0.0",
-    "drizzle-orm": "^0.36.0"
+    "drizzle-orm": "^0.36.0",
+    "ioredis": "^5.4.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
