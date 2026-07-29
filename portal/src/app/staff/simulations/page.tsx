@@ -35,6 +35,19 @@ interface SimulationsResponse {
   error?: string;
 }
 
+interface ProjectOption {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  webhookCount: number;
+}
+
+interface ProjectsResponse {
+  projects?: ProjectOption[];
+  default_project_id?: string | null;
+  error?: string;
+}
+
 interface SimulationResponse {
   simulation?: SimulationRecord;
   error?: string;
@@ -104,6 +117,16 @@ function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
+/**
+ * The project a run targeted. Uses the name snapshotted when the simulation was
+ * created, so a renamed or deleted project still reads correctly; simulations
+ * created before projects existed have neither field.
+ */
+function projectLabel(simulation: SimulationRecord): string {
+  const { projectName, projectId } = simulation.parameters;
+  return projectName || projectId || "—";
+}
+
 function fieldInputProps(kind: FieldKind): { min: number; max: number; step: number } {
   // All chances are bounded to [0, 1]; probabilities and rates differ only in step.
   return kind === "probability"
@@ -115,6 +138,9 @@ const EDITABLE_CONFIG_FIELDS = GENERATOR_CONFIG_FIELDS.filter((f) => f.editable)
 
 export default function SimulationManagement() {
   const [simulations, setSimulations] = useState<SimulationRecord[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  // Project the run delivers to; null until the project list has loaded.
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [clockSpeed, setClockSpeed] = useState<ClockSpeed>(3600);
   const [durationAmount, setDurationAmount] = useState(1);
@@ -136,16 +162,40 @@ export default function SimulationManagement() {
     }
   }, []);
 
+  // The projects a run can be pointed at. Preselect the default project, which
+  // is the one live portal forms use, so the common case needs no choice.
+  const loadProjects = useCallback(async () => {
+    try {
+      const res = await fetch("/api/projects", { cache: "no-store" });
+      const data = (await res.json()) as ProjectsResponse;
+      if (!res.ok) throw new Error(data.error || "Could not load projects");
+      const list = data.projects ?? [];
+      setProjects(list);
+      setProjectId(
+        (current) =>
+          current ??
+          data.default_project_id ??
+          list.find((p) => p.isDefault)?.id ??
+          list[0]?.id ??
+          null,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load projects");
+    }
+  }, []);
+
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    void loadProjects();
+  }, [refresh, loadProjects]);
 
   const durationSeconds = Math.max(
     0,
     Math.round(durationAmount * getUnitSeconds(durationUnit)),
   );
   const realDurationSeconds = durationSeconds / clockSpeed;
-  const canCreate = durationSeconds > 0 && !creating;
+  const selectedProject = projects.find((p) => p.id === projectId);
+  const canCreate = durationSeconds > 0 && !creating && !!projectId;
 
   async function handleCreate() {
     setError(null);
@@ -160,6 +210,7 @@ export default function SimulationManagement() {
             clockSpeed,
             durationSeconds,
             generatorConfig,
+            projectId,
           },
         }),
       });
@@ -243,6 +294,53 @@ export default function SimulationManagement() {
           <div className="govuk-inset-text">
             This simulation uses the existing population. Generate or reset the
             population from Population management before creating a simulation.
+          </div>
+
+          <div className="govuk-form-group">
+            <label className="govuk-label" htmlFor="simulation-project">
+              Project
+            </label>
+            <div className="govuk-hint">
+              Which set of webhook URLs this run delivers to &mdash; normally one
+              OpenFn project. The run&rsquo;s results land in whichever project
+              you pick here.
+            </div>
+            {projects.length === 0 ? (
+              <p className="govuk-body">
+                No projects are registered yet.{" "}
+                <a className="govuk-link" href="/staff/projects">
+                  Add one
+                </a>{" "}
+                before starting a simulation.
+              </p>
+            ) : (
+              <select
+                className="govuk-select"
+                id="simulation-project"
+                value={projectId ?? ""}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                    {project.isDefault ? " (default)" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+            {selectedProject && selectedProject.webhookCount === 0 && (
+              <p className="govuk-body-s" style={{ marginTop: 10 }}>
+                <strong>{selectedProject.name}</strong> has no form webhooks
+                registered, so this run&rsquo;s events would have nowhere to go.{" "}
+                <a
+                  className="govuk-link"
+                  href={`/staff/webhooks?project=${encodeURIComponent(selectedProject.id)}`}
+                >
+                  Register its URLs
+                </a>{" "}
+                first.
+              </p>
+            )}
           </div>
 
           <div className="govuk-form-group">
@@ -383,6 +481,7 @@ export default function SimulationManagement() {
             <tr>
               <th className="govuk-table__header">Created</th>
               <th className="govuk-table__header">Status</th>
+              <th className="govuk-table__header">Project</th>
               <th className="govuk-table__header">Clock speed</th>
               <th className="govuk-table__header">Duration</th>
               <th className="govuk-table__header">Estimated actual time</th>
@@ -408,6 +507,9 @@ export default function SimulationManagement() {
                   <span className={statusTagClass(simulation.status)}>
                     {statusLabel(simulation.status)}
                   </span>
+                </td>
+                <td className="govuk-table__cell">
+                  {projectLabel(simulation)}
                 </td>
                 <td className="govuk-table__cell">
                   {simulation.parameters.clockSpeed}x

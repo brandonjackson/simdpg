@@ -103,9 +103,15 @@ export class BaseClient {
 
   // -- Webhook subscriptions (shared admin endpoints on every system) --------
 
-  /** List every per-event webhook subscription registered on this system. */
-  listWebhookSubscriptions(): Promise<WebhookSubscription[]> {
-    return this.getList<WebhookSubscription>("/admin/webhook-subscriptions");
+  /**
+   * List per-event webhook subscriptions registered on this system. Pass a
+   * project id to list only that project's registrations.
+   */
+  listWebhookSubscriptions(projectId?: string): Promise<WebhookSubscription[]> {
+    const path = projectId
+      ? `/admin/webhook-subscriptions?project_id=${encodeURIComponent(projectId)}`
+      : "/admin/webhook-subscriptions";
+    return this.getList<WebhookSubscription>(path);
   }
 
   /** Register a new webhook target for an event type. */

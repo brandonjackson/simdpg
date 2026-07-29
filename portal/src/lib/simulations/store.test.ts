@@ -11,6 +11,8 @@ const PARAMS: SimulationParameters = {
   durationSeconds: 120,
   usesExistingPopulation: true,
   generatorConfig: GENERATOR_CONFIG,
+  projectId: "default",
+  projectName: "Default project",
 };
 
 let tempDir: string;
@@ -179,7 +181,12 @@ describe("listRunningRuns (crash detection)", () => {
 });
 
 describe("parseSimulationParameters generatorConfig", () => {
-  const base = { clockSpeed: 3600, durationSeconds: 86_400 };
+  const base = {
+    clockSpeed: 3600,
+    durationSeconds: 86_400,
+    projectId: "default",
+    projectName: "Default project",
+  };
 
   it("defaults generatorConfig to the live config when omitted", () => {
     const p = parseSimulationParameters(base);
@@ -196,5 +203,34 @@ describe("parseSimulationParameters generatorConfig", () => {
     });
     expect(p.generatorConfig.marriage.dailyRatePerPopulation).toBe(0);
     expect(p.generatorConfig.benefits.chainProbabilities.toStep2).toBe(1);
+  });
+});
+
+describe("parseSimulationParameters project", () => {
+  const base = { clockSpeed: 3600, durationSeconds: 86_400 };
+
+  it("keeps the project the caller resolved", () => {
+    const p = parseSimulationParameters({
+      ...base,
+      projectId: "proj-2",
+      projectName: "Training run 3",
+    });
+    expect(p.projectId).toBe("proj-2");
+    expect(p.projectName).toBe("Training run 3");
+  });
+
+  // A run with no project would generate events with nowhere to deliver them,
+  // so this is rejected rather than silently defaulted here — the API route
+  // resolves the project (and 400s on an unknown one) before parsing.
+  it("rejects parameters with no project", () => {
+    expect(() => parseSimulationParameters(base)).toThrow("projectId is required");
+    expect(() => parseSimulationParameters({ ...base, projectId: "  " })).toThrow(
+      "projectId is required",
+    );
+  });
+
+  it("falls back to the id when no project name is supplied", () => {
+    const p = parseSimulationParameters({ ...base, projectId: "proj-3" });
+    expect(p.projectName).toBe("proj-3");
   });
 });

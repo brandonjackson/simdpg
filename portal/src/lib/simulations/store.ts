@@ -25,6 +25,18 @@ export interface SimulationParameters {
   durationSeconds: number;
   usesExistingPopulation: true;
   generatorConfig: GeneratorConfig;
+  /**
+   * Project whose webhook registrations this run delivers to — i.e. which OpenFn
+   * project sees the run's results. Resolved once at generation time, so a later
+   * URL change doesn't rewrite an already-generated event script.
+   */
+  projectId: string;
+  /**
+   * The project's name when the simulation was created. Kept alongside the id so
+   * a finished run still says what it targeted after the project is renamed or
+   * deleted. Records created before projects existed have neither field.
+   */
+  projectName: string;
 }
 
 export interface SimulationRecord {
@@ -61,6 +73,12 @@ function parsePositiveInteger(value: unknown, field: string): number {
   return Math.round(numberValue);
 }
 
+/**
+ * Validate a simulation's parameters. `projectId`/`projectName` must already be
+ * resolved by the caller (the API route looks the project up so an unknown id is
+ * rejected before a simulation exists), which keeps this function synchronous and
+ * free of database access.
+ */
 export function parseSimulationParameters(input: unknown): SimulationParameters {
   const raw = (input ?? {}) as Partial<SimulationParameters>;
   const clockSpeed = Number(raw.clockSpeed);
@@ -76,6 +94,9 @@ export function parseSimulationParameters(input: unknown): SimulationParameters 
       ? GENERATOR_CONFIG
       : loadConfig(raw.generatorConfig);
 
+  const projectId = typeof raw.projectId === "string" ? raw.projectId.trim() : "";
+  if (!projectId) throw new Error("projectId is required");
+
   return {
     clockSpeed,
     durationSeconds: parsePositiveInteger(
@@ -84,6 +105,11 @@ export function parseSimulationParameters(input: unknown): SimulationParameters 
     ),
     usesExistingPopulation: true,
     generatorConfig,
+    projectId,
+    projectName:
+      typeof raw.projectName === "string" && raw.projectName.trim()
+        ? raw.projectName.trim()
+        : projectId,
   };
 }
 

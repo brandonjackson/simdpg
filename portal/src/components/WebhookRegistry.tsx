@@ -7,7 +7,7 @@ interface CatalogEvent {
   description: string;
 }
 
-interface CatalogSystem {
+export interface CatalogSystem {
   id: string;
   name: string;
   events: CatalogEvent[];
@@ -19,9 +19,21 @@ interface Subscription {
   event_type: string;
   target_url: string;
   created_at: string;
+  project_id?: string | null;
 }
 
-export function WebhookRegistry({ catalog }: { catalog: CatalogSystem[] }) {
+/**
+ * Per-event delivery targets for one project. Every read and write carries the
+ * project id, so switching project in the picker above swaps the whole list
+ * rather than mixing another project's registrations in.
+ */
+export function WebhookRegistry({
+  catalog,
+  projectId,
+}: {
+  catalog: CatalogSystem[];
+  projectId: string;
+}) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [unavailable, setUnavailable] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +47,9 @@ export function WebhookRegistry({ catalog }: { catalog: CatalogSystem[] }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/webhooks");
+      const res = await fetch(
+        `/api/webhooks?project_id=${encodeURIComponent(projectId)}`,
+      );
       if (!res.ok) throw new Error(`Failed to load subscriptions (${res.status})`);
       const data = (await res.json()) as {
         subscriptions: Subscription[];
@@ -48,7 +62,7 @@ export function WebhookRegistry({ catalog }: { catalog: CatalogSystem[] }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     void load();
@@ -67,7 +81,12 @@ export function WebhookRegistry({ catalog }: { catalog: CatalogSystem[] }) {
       const res = await fetch("/api/webhooks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ system, event_type: event, target_url }),
+        body: JSON.stringify({
+          system,
+          event_type: event,
+          target_url,
+          project_id: projectId,
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

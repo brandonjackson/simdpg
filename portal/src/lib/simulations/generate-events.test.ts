@@ -34,6 +34,8 @@ const params: SimulationParameters = {
   durationSeconds: 10 * 86_400,
   usesExistingPopulation: true,
   generatorConfig: GENERATOR_CONFIG,
+  projectId: "proj-1",
+  projectName: "Project one",
 };
 
 let dir: string;
@@ -83,6 +85,29 @@ describe("generateEvents", () => {
       listPrograms: async () => [],
     });
     expect(events[0].scheduledMicros).toBe(Math.round((86_400 / 3600) * 1_000_000));
+  });
+
+  // A run must only ever reach the OpenFn project it was started against, so
+  // every URL lookup has to carry the simulation's project — not the default.
+  it("resolves target URLs against the simulation's project", async () => {
+    const asked: { key: string; projectId?: string }[] = [];
+    const events = await generateEvents(
+      "s-project",
+      { ...params, projectId: "proj-7", projectName: "Project seven" },
+      {
+        listCitizens: async () => [citizen()],
+        resolveTarget: async (key, projectId) => {
+          asked.push({ key, projectId });
+          return { url: `http://${projectId}/${key}` };
+        },
+        random: () => 0,
+        generators: [randomNationalIdReg],
+        listPrograms: async () => [],
+      },
+    );
+
+    expect(asked).toEqual([{ key: "national-id", projectId: "proj-7" }]);
+    expect(events[0].targetUrl).toBe("http://proj-7/national-id");
   });
 
   it("stores null targetUrl when nothing is registered", async () => {

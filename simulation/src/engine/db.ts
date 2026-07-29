@@ -63,7 +63,10 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 
   // Create the shared tables if absent. IF NOT EXISTS keeps this safe when the
   // portal already created them; the DDL mirrors the portal's ensureTables so a
-  // worker that boots first produces an identical schema.
+  // worker that boots first produces an identical schema. The worker reads
+  // neither `projects` nor `form_webhooks` (a run's target URLs are baked into
+  // its event file at generation time), so the portal remains the only place
+  // that seeds the default project and migrates pre-projects registrations.
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS simulations (
       id           TEXT PRIMARY KEY,
@@ -92,14 +95,26 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
       updated_at    TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS projects (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      description TEXT,
+      is_default  INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS form_webhooks (
-      key        TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      key        TEXT NOT NULL,
       target_url TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (project_id, key)
     );
 
     CREATE INDEX IF NOT EXISTS idx_simulations_status ON simulations(status);
     CREATE INDEX IF NOT EXISTS idx_simulation_runs_status ON simulation_runs(status);
+    CREATE INDEX IF NOT EXISTS idx_form_webhooks_project ON form_webhooks(project_id);
   `);
 
   cached = drizzle(sqlite, { schema });

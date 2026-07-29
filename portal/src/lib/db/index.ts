@@ -7,7 +7,58 @@ import { simDbPath } from "../simulations/paths";
 
 type Db = BetterSQLite3Database<typeof schema>;
 
+/**
+ * Id of the project that always exists. Webhook registrations made before
+ * projects were introduced are migrated onto it, live portal form submissions
+ * fall back to it, and it can't be deleted while it is the only project — so
+ * there is always somewhere for a registration to live. The id is a fixed
+ * string (not a UUID) so the portal and the worker can both bootstrap it
+ * idempotently without coordinating.
+ */
+export const DEFAULT_PROJECT_ID = "default";
+
+/** Name given to {@link DEFAULT_PROJECT_ID} when it is first created. */
+export const DEFAULT_PROJECT_NAME = "Default project";
+
 let cached: Db | null = null;
+
+/** Column names of an existing table (empty when the table doesn't exist). */
+function columnsOf(sqlite: Database.Database, table: string): string[] {
+  const rows = sqlite.prepare(`PRAGMA table_info(${table})`).all() as {
+    name: string;
+  }[];
+  return rows.map((r) => r.name);
+}
+
+/**
+ * Move a pre-projects `form_webhooks` table (one row per form key) onto the
+ * project-scoped shape (one row per project *and* form key), assigning every
+ * existing registration to the default project. SQLite can't add a column to a
+ * primary key, so the table is rebuilt and copied. A no-op once migrated, and on
+ * a fresh database where the table is created in its current shape.
+ */
+function migrateFormWebhooksToProjects(sqlite: Database.Database): void {
+  const columns = columnsOf(sqlite, "form_webhooks");
+  if (columns.length === 0 || columns.includes("project_id")) return;
+
+  sqlite.exec(`
+    ALTER TABLE form_webhooks RENAME TO form_webhooks_pre_projects;
+
+    CREATE TABLE form_webhooks (
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      key        TEXT NOT NULL,
+      target_url TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (project_id, key)
+    );
+
+    INSERT INTO form_webhooks (project_id, key, target_url, updated_at)
+      SELECT '${DEFAULT_PROJECT_ID}', key, target_url, updated_at
+      FROM form_webhooks_pre_projects;
+
+    DROP TABLE form_webhooks_pre_projects;
+  `);
+}
 
 /**
  * Open (once) the portal's SQLite database, set pragmas, and ensure its tables
@@ -37,10 +88,40 @@ export function getDb(): Db {
   // SQLITE_BUSY under the brief contention this demo produces.
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("busy_timeout = 5000");
+  // form_webhooks rows are owned by a project; enforcement makes deleting a
+  // project drop its registrations with it.
+  sqlite.pragma("foreign_keys = ON");
 
   // Create the portal's tables if they don't already exist. Uses IF NOT EXISTS so
   // it's safe to run on every startup (and matches the worker's own bootstrap in
   // simulation/src/engine/db.ts — keep the two DDLs in step).
+  //
+  // `projects` and its default row come first: the form_webhooks migration below
+  // assigns pre-projects registrations to the default project, and the current
+  // form_webhooks shape has a foreign key to it.
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      description TEXT,
+      is_default  INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT NOT NULL
+    );
+
+    INSERT OR IGNORE INTO projects (id, name, description, is_default, created_at, updated_at)
+      VALUES (
+        '${DEFAULT_PROJECT_ID}',
+        '${DEFAULT_PROJECT_NAME}',
+        'The OpenFn project live portal form submissions are sent to.',
+        1,
+        strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+        strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      );
+  `);
+
+  migrateFormWebhooksToProjects(sqlite);
+
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS simulations (
       id           TEXT PRIMARY KEY,
@@ -70,13 +151,16 @@ export function getDb(): Db {
     );
 
     CREATE TABLE IF NOT EXISTS form_webhooks (
-      key        TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      key        TEXT NOT NULL,
       target_url TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (project_id, key)
     );
 
     CREATE INDEX IF NOT EXISTS idx_simulations_status ON simulations(status);
     CREATE INDEX IF NOT EXISTS idx_simulation_runs_status ON simulation_runs(status);
+    CREATE INDEX IF NOT EXISTS idx_form_webhooks_project ON form_webhooks(project_id);
   `);
 
   cached = drizzle(sqlite, { schema });

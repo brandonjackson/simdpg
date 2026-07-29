@@ -228,6 +228,31 @@ forwards the payload to the webhook URL registered for that form. The same
 form at a workflow without redeploying. Forms still fall back to their legacy
 `OPENFN_*` env var until a URL is registered, which then takes precedence.
 
+### Projects
+
+Registrations are grouped into **projects** — one project per set of webhook
+URLs, normally one OpenFn project. Clone an OpenFn project five times and every
+workflow in each clone gets its own Webhook trigger URL; register five projects
+in the staff area (`/staff/projects`) and each holds its own complete set of
+URLs. You can add a project, duplicate one (copying its form-submission URLs, so
+a clone starts from the original and you only edit what changed), rename it, and
+delete it along with its registrations.
+
+- **Form submissions and simulations are project-scoped.** A simulation names the
+  project it runs against when it's created (`/staff/simulations`), and every
+  event it generates is delivered to that project's URLs — so five simulations
+  can send their results to five different OpenFn projects. The URLs are resolved
+  once at generation time, so changing a registration doesn't rewrite an
+  already-generated run.
+- **One project is the default.** Live citizen-facing form submissions go to it,
+  because a citizen filling in a form has no project to choose. The default is
+  also the only project that falls back to the legacy `OPENFN_*` env vars.
+- **System events are not confined to a project.** A registration records which
+  project it belongs to (so it can be listed and removed per project), but a
+  system emits an event when its own records change and can't tell which
+  project's workflow caused the change — so every URL registered for that event
+  type is called, across all projects.
+
 Validate all specs with `npm run lint` (runs `redocly lint`). Confirm the specs
 still match the code with `npm run check:routes`, which boots each app and
 diffs its registered routes against the documented paths.
@@ -251,6 +276,9 @@ A Next.js app with gov.uk-inspired design (green header, breadcrumbs, one-questi
   distribution, geographic spread, household size, ethnicity mix, pre-existing
   conditions rate, benefit eligibility rate), export/import that config as
   JSON, wipe all data, and review a log of recent runs
+- Projects (`/staff/projects`) — add, duplicate, rename and delete the projects
+  that webhook registrations belong to, and choose which one live portal form
+  submissions use (see [Projects](#projects))
 
 Each system also exposes admin endpoints used by the population page:
 `GET /admin/stats` (record counts) and `POST /admin/reset` (wipe that

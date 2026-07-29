@@ -290,9 +290,17 @@ paths:
       operationId: listWebhookSubscriptions
       tags: [Admin]
       summary: List per-event webhook subscriptions
+      description: >
+        Registrations for every event type. Pass `project_id` to list only the
+        registrations belonging to one portal project.
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PerPage"
+        - name: project_id
+          in: query
+          required: false
+          description: Only return registrations belonging to this portal project.
+          schema: { type: string }
       responses:
         "200":
           description: A page of webhook subscriptions
@@ -319,6 +327,12 @@ paths:
               properties:
                 event_type: { type: string }
                 target_url: { type: string, format: uri }
+                project_id:
+                  type: string
+                  description: >
+                    Portal project (OpenFn project) this URL belongs to. Groups
+                    the registration for management; delivery still fans out to
+                    every registration matching the event type.
       responses:
         "201":
           description: Subscription created
@@ -545,4 +559,10 @@ components:
         id: { type: string, format: uuid }
         event_type: { type: string }
         target_url: { type: string, format: uri }
+        project_id:
+          type: string
+          nullable: true
+          description: >
+            Portal project this registration belongs to; null for registrations
+            made before projects existed.
         created_at: { type: string, format: date-time }

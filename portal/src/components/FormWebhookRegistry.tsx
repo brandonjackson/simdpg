@@ -16,11 +16,13 @@ interface FormHookStatus {
 }
 
 /**
- * Staff control for pointing each portal form at a webhook URL. Unlike system
- * events (which fan out to many URLs), a form submits to exactly one webhook —
- * so each form has a single editable URL that can be set, replaced, or cleared.
+ * Staff control for pointing each portal form at a webhook URL within one
+ * project. Unlike system events (which fan out to many URLs), a form submits to
+ * exactly one webhook per project — so each form has a single editable URL that
+ * can be set, replaced, or cleared. These are also the URLs a simulation delivers
+ * its generated events to, for the project it was started against.
  */
-export function FormWebhookRegistry() {
+export function FormWebhookRegistry({ projectId }: { projectId: string }) {
   const [forms, setForms] = useState<FormHookStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,30 +32,43 @@ export function FormWebhookRegistry() {
   // Form key showing a transient "Saved" confirmation.
   const [savedKey, setSavedKey] = useState<string | null>(null);
 
-  // Fetch the catalog + current registrations. `withSpinner` is true only on
-  // initial mount; mutations refresh quietly so the section doesn't blank out.
-  const refresh = useCallback(async (withSpinner: boolean) => {
-    if (withSpinner) setLoading(true);
-    try {
-      const res = await fetch("/api/form-webhooks");
-      if (!res.ok) throw new Error(`Failed to load form hooks (${res.status})`);
-      const data = (await res.json()) as { forms: FormHookStatus[] };
-      setForms(data.forms);
-      setDrafts((prev) =>
-        Object.fromEntries(
-          // Keep whatever the user has typed; only seed empty drafts.
-          data.forms.map((f) => [f.key, prev[f.key] ?? f.target_url ?? ""]),
-        ),
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    } finally {
-      if (withSpinner) setLoading(false);
-    }
-  }, []);
+  // Fetch the catalog + current registrations for the project. `withSpinner` is
+  // true on mount and on a project switch; mutations refresh quietly so the
+  // section doesn't blank out. `seedDrafts` discards typed-but-unsaved input,
+  // which is what a project switch needs — the drafts belonged to the old
+  // project's URLs.
+  const refresh = useCallback(
+    async (withSpinner: boolean, seedDrafts = false) => {
+      if (withSpinner) setLoading(true);
+      try {
+        const res = await fetch(
+          `/api/form-webhooks?project_id=${encodeURIComponent(projectId)}`,
+        );
+        if (!res.ok) throw new Error(`Failed to load form hooks (${res.status})`);
+        const data = (await res.json()) as { forms: FormHookStatus[] };
+        setForms(data.forms);
+        setDrafts((prev) =>
+          Object.fromEntries(
+            data.forms.map((f) => [
+              f.key,
+              // Keep whatever the user has typed; only seed empty drafts.
+              seedDrafts ? (f.target_url ?? "") : (prev[f.key] ?? f.target_url ?? ""),
+            ]),
+          ),
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load");
+      } finally {
+        if (withSpinner) setLoading(false);
+      }
+    },
+    [projectId],
+  );
 
   useEffect(() => {
-    void refresh(true);
+    setError(null);
+    setSavedKey(null);
+    void refresh(true, true);
   }, [refresh]);
 
   async function save(key: string) {
@@ -69,7 +84,7 @@ export function FormWebhookRegistry() {
       const res = await fetch("/api/form-webhooks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, target_url }),
+        body: JSON.stringify({ key, target_url, project_id: projectId }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -90,7 +105,7 @@ export function FormWebhookRegistry() {
     setSavedKey(null);
     try {
       const res = await fetch(
-        `/api/form-webhooks?key=${encodeURIComponent(key)}`,
+        `/api/form-webhooks?key=${encodeURIComponent(key)}&project_id=${encodeURIComponent(projectId)}`,
         { method: "DELETE" },
       );
       const body = await res.json().catch(() => ({}));

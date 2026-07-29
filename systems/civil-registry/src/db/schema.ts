@@ -75,11 +75,19 @@ export const webhookEvents = sqliteTable("webhook_events", {
 /**
  * Per-event webhook subscriptions. Each emitted event is delivered to every
  * row whose `event_type` matches; multiple rows per event are allowed.
+ *
+ * `project_id` records which portal project (i.e. which OpenFn project) a URL
+ * was registered for, so several projects' registrations can sit side by side
+ * and be listed and removed separately. It groups rows only: delivery still
+ * fans out to every row matching the event type, because a system emits an
+ * event without knowing which project's workflow caused the change. Null on
+ * rows registered before projects existed.
  */
 export const webhookSubscriptions = sqliteTable("webhook_subscriptions", {
   id: text("id").primaryKey(),
   event_type: text("event_type").notNull(),
   target_url: text("target_url").notNull(),
+  project_id: text("project_id"),
   created_at: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { ensureColumn } from "@simdpg/system-kit";
 import * as schema from "./schema.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -79,6 +80,7 @@ export function ensureTables(): void {
       id          TEXT PRIMARY KEY,
       event_type  TEXT NOT NULL,
       target_url  TEXT NOT NULL,
+      project_id  TEXT,
       created_at  TEXT NOT NULL
     );
 
@@ -90,4 +92,9 @@ export function ensureTables(): void {
     CREATE INDEX IF NOT EXISTS idx_webhook_events_type ON webhook_events(type);
     CREATE INDEX IF NOT EXISTS idx_webhook_subscriptions_event_type ON webhook_subscriptions(event_type);
   `);
+
+  // Databases created before webhook registrations were grouped into projects
+  // already have a webhook_subscriptions table, so the CREATE above is a no-op
+  // for them and the new column has to be added explicitly.
+  ensureColumn(sqlite, "webhook_subscriptions", "project_id", "TEXT");
 }
