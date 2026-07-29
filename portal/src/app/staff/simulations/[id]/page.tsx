@@ -443,6 +443,30 @@ export default function SimulationDetails({ params }: PageProps) {
               <dt className="govuk-summary-list__key">Simulation ID</dt>
               <dd className="govuk-summary-list__value">{simulation.id}</dd>
             </div>
+            {/* The project's name is snapshotted at creation, so a renamed or
+                deleted project still reads correctly here. Runs created before
+                projects existed have neither field. */}
+            {(simulation.parameters.projectName ||
+              simulation.parameters.projectId) && (
+              <div className="govuk-summary-list__row">
+                <dt className="govuk-summary-list__key">Project</dt>
+                <dd className="govuk-summary-list__value">
+                  {simulation.parameters.projectName ||
+                    simulation.parameters.projectId}
+                  {simulation.parameters.projectId && (
+                    <>
+                      <br />
+                      <a
+                        className="govuk-link govuk-body-s"
+                        href={`/staff/webhooks?project=${encodeURIComponent(simulation.parameters.projectId)}`}
+                      >
+                        View its webhook registrations
+                      </a>
+                    </>
+                  )}
+                </dd>
+              </div>
+            )}
             <div className="govuk-summary-list__row">
               <dt className="govuk-summary-list__key">Clock speed</dt>
               <dd className="govuk-summary-list__value">

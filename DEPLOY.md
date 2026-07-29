@@ -108,23 +108,39 @@ to every URL registered for its type, so it can fan out to several workflows.
 `WEBHOOK_URL`, if set on a system, is still honoured as an additional catch-all
 target that receives every event regardless of type (backwards compatible).
 
+#### Projects
+
+Webhook registrations are grouped into projects — one project per set of URLs,
+normally one OpenFn project. Manage them in the staff area under **Projects**
+(`/staff/projects`): add, duplicate, rename, delete. A simulation picks the
+project it delivers to when it's created, so several cloned OpenFn projects can
+be driven from one portal.
+
+A fresh (or upgraded) database always contains a project called "Default
+project", flagged as the default: live citizen-facing form submissions go to it,
+and any registration that predates projects is migrated onto it on first start.
+No manual migration step is needed.
+
 #### Portal form submissions
 
 Portal service forms (e.g. "Apply for a national ID", "Check benefit
 eligibility") submit through a central point in the portal, which forwards each
-submission to the webhook URL registered for that form. Manage these in the same
-**Webhook registration** page under **Form submissions** — no redeploy needed.
+submission to the webhook URL registered for that form *in the default project*.
+Manage these in the same **Webhook registration** page under **Form
+submissions**, after choosing the project at the top — no redeploy needed.
 
 Forms previously wired with an `OPENFN_*` environment variable
 (`OPENFN_NATIONAL_ID_WEBHOOK_URL`, `OPENFN_BENEFIT_ELIGIBILITY_PART{1,2,3}_URL`)
 keep working: the env var is used as a fallback until a URL is registered in the
 staff area, which then takes precedence. New deployments should prefer the
-registry.
+registry. The fallback applies to the default project only — other projects exist
+to name their own endpoints, so they never borrow the legacy URL.
 
 Registered URLs are stored in the portal's SQLite database
-(`portal/data/simulations.sqlite`, in the `form_webhooks` table), alongside
-simulation records and run-state. Mount a persistent volume at `/app/portal/data`
-(see the portal service above) so registrations survive redeploys; override the
-database path with `PORTAL_DB_FILE` if you mount elsewhere. If a save can't be
-written, the staff UI reports the error instead of silently dropping it — keep
-the `OPENFN_*` env vars set as a durable baseline if you don't mount a volume.
+(`portal/data/simulations.sqlite`, in the `form_webhooks` table, keyed by project
+and form), alongside the `projects` table, simulation records and run-state.
+Mount a persistent volume at `/app/portal/data` (see the portal service above) so
+projects and registrations survive redeploys; override the database path with
+`PORTAL_DB_FILE` if you mount elsewhere. If a save can't be written, the staff UI
+reports the error instead of silently dropping it — keep the `OPENFN_*` env vars
+set as a durable baseline if you don't mount a volume.

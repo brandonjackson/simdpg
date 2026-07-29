@@ -264,8 +264,9 @@ export default async function StaffDashboard() {
       <h2 className="govuk-heading-l">Webhook registration</h2>
       <p className="govuk-body">
         Register the OpenFn endpoints that should fire when each system emits an
-        event. Add one or more target URLs per event &mdash; every registered
-        URL receives the event, so a single event can trigger several workflows.
+        event, and where each portal form is submitted. Add one or more target
+        URLs per event &mdash; every registered URL receives the event, so a
+        single event can trigger several workflows.
       </p>
       <a
         href="/staff/webhooks"
@@ -273,6 +274,23 @@ export default async function StaffDashboard() {
         role="button"
       >
         Register webhooks
+      </a>
+
+      <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
+
+      <h2 className="govuk-heading-l">Projects</h2>
+      <p className="govuk-body">
+        Webhook registrations are grouped into projects &mdash; one set of URLs
+        per OpenFn project. Register a project for each OpenFn project you have
+        cloned, then choose which one a simulation delivers its results to. You
+        can add, duplicate, rename and delete projects here.
+      </p>
+      <a
+        href="/staff/projects"
+        className="govuk-button govuk-button--secondary"
+        role="button"
+      >
+        Manage projects
       </a>
 
       <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />

@@ -83,17 +83,30 @@ router.post("/reset", (_req, res, next) => {
 const createSubscriptionSchema = z.object({
   event_type: z.string().min(1),
   target_url: z.string().url(),
+  /** Portal project this URL belongs to; omitted by pre-projects callers. */
+  project_id: z.string().min(1).optional(),
 });
 
+// `?project_id=` narrows the list to one portal project's registrations; without
+// it every registration is returned, whatever project it belongs to.
 router.get("/webhook-subscriptions", (req, res, next) => {
   try {
     const { offset, limit, page, per_page } = getPagination(req);
+    const projectId =
+      typeof req.query.project_id === "string" ? req.query.project_id : null;
+    const scope = projectId
+      ? eq(webhookSubscriptions.project_id, projectId)
+      : undefined;
     const total =
-      db.select({ c: sql<number>`count(*)` }).from(webhookSubscriptions).get()
-        ?.c ?? 0;
+      db
+        .select({ c: sql<number>`count(*)` })
+        .from(webhookSubscriptions)
+        .where(scope)
+        .get()?.c ?? 0;
     const rows = db
       .select()
       .from(webhookSubscriptions)
+      .where(scope)
       .orderBy(desc(webhookSubscriptions.created_at))
       .limit(limit)
       .offset(offset)
@@ -111,6 +124,7 @@ router.post("/webhook-subscriptions", (req, res, next) => {
       id: uuidv4(),
       event_type: body.event_type,
       target_url: body.target_url,
+      project_id: body.project_id ?? null,
       created_at: new Date().toISOString(),
     };
     db.insert(webhookSubscriptions).values(row).run();

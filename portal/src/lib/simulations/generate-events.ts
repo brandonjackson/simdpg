@@ -21,8 +21,14 @@ export interface GenerateEventsDeps {
   listCitizens?: () => Promise<Citizen[]>;
   /** Defaults to the Benefits system's active programmes. */
   listPrograms?: () => Promise<Program[]>;
-  /** Defaults to the form-webhook registry. Returns `{ url }` or null. */
-  resolveTarget?: (key: string) => Promise<{ url: string } | null>;
+  /**
+   * Defaults to the form-webhook registry, scoped to the simulation's project.
+   * Returns `{ url }` or null.
+   */
+  resolveTarget?: (
+    key: string,
+    projectId?: string,
+  ) => Promise<{ url: string } | null>;
   /** Randomness source; defaults to Math.random. */
   random?: () => number;
   /** Generators to run; defaults to the full REGISTRY. Injectable for tests. */
@@ -63,10 +69,12 @@ export async function generateEvents(
     }),
   );
 
+  // Every URL is resolved from the simulation's project, so a run only ever
+  // reaches the OpenFn project it was started against.
   const urlCache = new Map<string, string | null>();
   async function urlFor(key: string): Promise<string | null> {
     if (!urlCache.has(key)) {
-      const resolved = await resolveTarget(key);
+      const resolved = await resolveTarget(key, parameters.projectId);
       urlCache.set(key, resolved?.url ?? null);
     }
     return urlCache.get(key) ?? null;

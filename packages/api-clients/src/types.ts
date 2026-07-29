@@ -354,17 +354,25 @@ export interface RequestDisbursementInput {
  * A registered webhook target for a single event type. Systems deliver an
  * emitted event to every subscription whose `event_type` matches; multiple
  * subscriptions may exist for the same event (fan-out to several consumers).
+ *
+ * `project_id` records which portal project (OpenFn project) the URL belongs to,
+ * so several projects' registrations can live side by side and be managed
+ * separately. It groups registrations only — delivery still fans out to every
+ * matching subscription, because a system emits an event without knowing which
+ * project caused the change. Null on rows registered before projects existed.
  */
 export interface WebhookSubscription {
   id: string;
   event_type: string;
   target_url: string;
   created_at: string;
+  project_id?: string | null;
 }
 
 export interface CreateWebhookSubscriptionInput {
   event_type: string;
   target_url: string;
+  project_id?: string | null;
 }
 
 /** Aggregate record counts from the identity system's `/admin/stats`. */

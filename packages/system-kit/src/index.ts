@@ -28,4 +28,7 @@ export type {
   DeliveryResult,
 } from "./webhooks.js";
 
+export { ensureColumn, tableColumns } from "./migrations.js";
+export type { SqliteLike } from "./migrations.js";
+
 export { docsHtml } from "./docs.js";
