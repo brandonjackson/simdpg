@@ -253,6 +253,60 @@ delete it along with its registrations.
   project's workflow caused the change — so every URL registered for that event
   type is called, across all projects.
 
+### Stochastic behaviour (latency, failures, rate limiting)
+
+Every system can be made to behave like a real one having a bad day — slow,
+intermittently failing, or throttling — so workflows get their retry, backoff and
+429 handling exercised before they meet a real registry. The config uses the same
+keys as [openfn-mocker](https://github.com/brandonjackson/openfn-mocker#simulating-stochastic-behavior):
+
+```jsonc
+{
+  "latency": {
+    "mean_ms": 200,     // average delay added before the request is handled
+    "stddev_ms": 60,    // spread; 0 makes every response take exactly mean_ms
+    "min_ms": 20,       // lower clamp
+    "max_ms": 1500      // upper clamp; null (the default) means no cap
+  },
+  "error_rate": 0.02,   // share of requests answered with a synthetic failure
+  "error_status": 503,
+  "rate_limit": { "max": 20, "window_ms": 1000, "status": 429 }  // max 0 = off
+}
+```
+
+Each request sleeps for a delay drawn from N(`mean_ms`, `stddev_ms`) clamped to
+[`min_ms`, `max_ms`]; then, with probability `error_rate`, it is answered with
+`error_status` instead of reaching the handler. Separately, up to `rate_limit.max`
+requests per `window_ms` are served and the rest get `rate_limit.status` with a
+`Retry-After`. Injected responses use the normal error envelope, marked with
+`details.injected: true` and an `X-Simdpg-Injected` header; delayed ones carry
+`X-Simdpg-Behavior-Delay-Ms`.
+
+**This is off by default**, and `/health`, `/docs` and `/admin` are never
+affected — so health checks keep working and a 100%-failure config can always be
+switched off again.
+
+Read, set, and clear it per system:
+
+```bash
+curl localhost:3001/admin/behavior                      # what is it doing now?
+curl -X PUT localhost:3001/admin/behavior \
+  -H 'content-type: application/json' \
+  -d '{"preset":"flaky"}'                               # or a full config
+curl -X DELETE localhost:3001/admin/behavior            # back to default
+```
+
+`PUT` accepts a named preset (`realistic`, `slow`, `flaky`, `rate-limited`,
+`overloaded`), any subset of the fields above, an optional `source` note, and an
+`expires_at` timestamp after which the system clears the config itself. A system
+that restarts comes back with behaviour off.
+
+Normally you don't call these by hand: **a simulation defines one behaviour for
+the whole run and it is applied to all seven systems** (see
+[Simulation Engine](#simulation-engine)). To degrade a deployed system
+independently of any run, start it with `SIMDPG_BEHAVIOR_PRESET=flaky` or
+`SIMDPG_BEHAVIOR='{"error_rate":0.1}'`.
+
 Validate all specs with `npm run lint` (runs `redocly lint`). Confirm the specs
 still match the code with `npm run check:routes`, which boots each app and
 diffs its registered routes against the documented paths.
@@ -280,6 +334,11 @@ A Next.js app with gov.uk-inspired design (green header, breadcrumbs, one-questi
   that webhook registrations belong to, and choose which one live portal form
   submissions use (see [Projects](#projects))
 
+- Simulations (`/staff/simulations`) — create a run against the current
+  population, choosing its clock speed, duration, target project, per-event
+  chances, and how the systems themselves behave while it runs (see
+  [system behaviour](#simulating-degraded-systems) below)
+
 Each system also exposes admin endpoints used by the population page:
 `GET /admin/stats` (record counts) and `POST /admin/reset` (wipe that
 system's data — the Benefits system preserves its reference programmes).
@@ -297,6 +356,35 @@ YEARS=5 CONCURRENCY=10 npm run sim:scale -w @simdpg/simulation  # Multi-year at 
 ```
 
 Event types: births, deaths, marriages, clinic visits, vaccinations, benefit claims — each at demographically realistic rates.
+
+### Simulating degraded systems
+
+A simulation also decides how the systems behave while it runs. Pick one profile
+on the **Start new simulation** screen and it applies to all seven systems for the
+length of the run:
+
+| Preset | What it rehearses |
+|---|---|
+| **Off** (default) | Systems respond normally — a run changes nothing about them. |
+| **Realistic** | 200 ms ± 60 ms latency, 0.5% 503s — healthy production on a good day. |
+| **Slow** | 1200 ms ± 400 ms, 1% 503s — congested or legacy systems. |
+| **Flaky** | 400 ms ± 250 ms, 10% 503s — retry and error-handling paths. |
+| **Rate limited** | 150 ms ± 50 ms, 20 requests/second then 429s. Deterministic, so this is the one to use for load tests. |
+| **Overloaded** | 2000 ms ± 800 ms, 5% 503s, 10 requests/second then 429s. |
+| **Custom** | Every field from [stochastic behaviour](#stochastic-behaviour-latency-failures-rate-limiting), starting from whichever preset was selected. |
+
+The worker applies the config just before the first event is delivered and clears
+it when the run ends — completed, stopped, or crashed. Three things guarantee the
+systems come back:
+
+1. the worker clears them as it shuts down;
+2. stopping a run from the portal clears them too, in case the worker is gone;
+3. each system expires the config on its own five minutes past the run's
+   scheduled end, so even `kill -9` can't leave a system degraded.
+
+While a run is in progress its detail page shows what each system is doing and how
+many requests were delayed, failed, or throttled, with a **Reset all systems to
+default** button for the rare case where a run ended without clearing up.
 
 ## Scripts
 

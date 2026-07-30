@@ -1,3 +1,4 @@
+import { beginBehavior } from "./behavior.js";
 import { readEvents, type SimulationEvent } from "./events.js";
 import { writeRunState, type SimulationRunState } from "./run-state.js";
 import {
@@ -61,6 +62,13 @@ export async function runWorker(id: string): Promise<void> {
     });
   };
 
+  // Degrade the systems for the length of this run, if the simulation asked for
+  // it, and get back the undo. Applied before the first delivery so the very
+  // first workflow call already sees the configured latency and failures.
+  const lastEventMs =
+    events.reduce((max, event) => Math.max(max, event.scheduledMicros), 0) / 1000;
+  const endBehavior = await beginBehavior(id, lastEventMs);
+
   const maxConcurrency = maxConcurrencyFromEnv();
   const runStart = Date.now();
   let lastProgressLog = 0;
@@ -97,5 +105,9 @@ export async function runWorker(id: string): Promise<void> {
       delivered: 0, skipped: 0, failed: 0, total: events.length,
     });
     logError(`Simulation ${id} crashed`, err);
+  } finally {
+    // However the run ended — completed, stopped, or crashed — the systems go
+    // back to behaving normally.
+    await endBehavior();
   }
 }

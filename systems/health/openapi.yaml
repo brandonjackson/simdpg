@@ -371,6 +371,56 @@ paths:
                 properties:
                   system: { type: string }
                   reset: { type: boolean }
+  /admin/behavior:
+    get:
+      operationId: getBehavior
+      tags: [Admin]
+      summary: Read this system's stochastic behaviour
+      description: >
+        The latency, injected-failure and rate-limit settings in force, plus
+        counters for what has been injected so far. Off by default; a simulation
+        applies a config for the length of its run and clears it afterwards.
+      responses:
+        "200":
+          description: Current behaviour
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BehaviorState" }
+    put:
+      operationId: setBehavior
+      tags: [Admin]
+      summary: Apply stochastic behaviour
+      description: >
+        Replace the behaviour config, using the same keys as openfn-mocker
+        (latency, error_rate, error_status, rate_limit). Omitted keys fall back
+        to off, or to the named preset when one is given. Behaviour applies to
+        every route except /health, /docs and /admin, so the control plane keeps
+        working however faulty the system is made.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BehaviorRequest" }
+      responses:
+        "200":
+          description: Behaviour applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BehaviorState" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    delete:
+      operationId: resetBehavior
+      tags: [Admin]
+      summary: Clear stochastic behaviour
+      description: >
+        Return the system to its default behaviour — no added latency, no
+        injected failures, no throttling.
+      responses:
+        "200":
+          description: Behaviour cleared
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BehaviorState" }
 components:
   parameters:
     Id:
@@ -402,6 +452,103 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   schemas:
+    BehaviorConfig:
+      type: object
+      description: >
+        Stochastic behaviour, using the same field names as openfn-mocker. Every
+        field is optional; anything omitted keeps its default, which is off.
+      properties:
+        latency:
+          type: object
+          description: >
+            Each request sleeps for a delay drawn from N(mean_ms, stddev_ms),
+            clamped to [min_ms, max_ms], before the handler runs.
+          properties:
+            mean_ms: { type: integer, minimum: 0, default: 0 }
+            stddev_ms:
+              type: integer
+              minimum: 0
+              default: 0
+              description: 0 makes every response take exactly mean_ms.
+            min_ms: { type: integer, minimum: 0, default: 0 }
+            max_ms:
+              type: integer
+              minimum: 0
+              nullable: true
+              default: null
+              description: Upper clamp; null means no cap.
+        error_rate:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0
+          description: Share of requests answered with a synthetic failure.
+        error_status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          default: 500
+          description: Status used for injected failures.
+        rate_limit:
+          type: object
+          description: >
+            Fixed-window throttling: max requests per window_ms are served, and
+            every request beyond that in the same window gets status.
+          properties:
+            max:
+              type: integer
+              minimum: 0
+              default: 0
+              description: 0 disables the limiter.
+            window_ms: { type: integer, minimum: 1, default: 1000 }
+            status: { type: integer, minimum: 400, maximum: 599, default: 429 }
+    BehaviorRequest:
+      allOf:
+        - $ref: "#/components/schemas/BehaviorConfig"
+        - type: object
+          properties:
+            preset:
+              type: string
+              enum: ["off", "realistic", "slow", "flaky", "rate-limited", "overloaded"]
+              description: >
+                Ready-made profile to start from. Any sibling field overrides the
+                preset's value for that field.
+            source:
+              type: string
+              description: Note about who applied this, e.g. "simulation 1a2b3c4d".
+            expires_at:
+              type: string
+              format: date-time
+              nullable: true
+              description: >
+                When the config clears itself. A simulation sets this just past
+                the end of its run, so a worker that dies mid-run cannot leave
+                the system permanently faulty.
+    BehaviorState:
+      type: object
+      required: [system, enabled, config]
+      properties:
+        system: { type: string }
+        enabled:
+          type: boolean
+          description: False when the current config changes nothing.
+        config: { $ref: "#/components/schemas/BehaviorConfig" }
+        preset:
+          type: string
+          nullable: true
+          description: Matching preset id, or null when the config was hand-edited.
+        source: { type: string, nullable: true }
+        applied_at: { type: string, format: date-time, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+        counters:
+          type: object
+          description: Injection tallies since the config was applied.
+          properties:
+            requests: { type: integer }
+            delayed: { type: integer }
+            delay_ms_total: { type: integer }
+            injected_errors: { type: integer }
+            rate_limited: { type: integer }
     ErrorEnvelope:
       type: object
       required: [error]

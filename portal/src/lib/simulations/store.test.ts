@@ -5,12 +5,18 @@ import os from "node:os";
 import type { SimulationParameters } from "./store";
 import { parseSimulationParameters } from "./store";
 import { GENERATOR_CONFIG } from "./generators/config";
+import {
+  BEHAVIOR_OFF,
+  behaviorPreset,
+  isBehaviorOff,
+} from "@simdpg/system-kit/behavior";
 
 const PARAMS: SimulationParameters = {
   clockSpeed: 60,
   durationSeconds: 120,
   usesExistingPopulation: true,
   generatorConfig: GENERATOR_CONFIG,
+  behavior: BEHAVIOR_OFF,
   projectId: "default",
   projectName: "Default project",
 };
@@ -203,6 +209,44 @@ describe("parseSimulationParameters generatorConfig", () => {
     });
     expect(p.generatorConfig.marriage.dailyRatePerPopulation).toBe(0);
     expect(p.generatorConfig.benefits.chainProbabilities.toStep2).toBe(1);
+  });
+});
+
+describe("parseSimulationParameters behavior", () => {
+  const base = {
+    clockSpeed: 3600,
+    durationSeconds: 86_400,
+    projectId: "default",
+    projectName: "Default project",
+  };
+
+  it("defaults to off, so a run leaves the systems alone", () => {
+    const p = parseSimulationParameters(base);
+    expect(p.behavior).toEqual(BEHAVIOR_OFF);
+    expect(isBehaviorOff(p.behavior)).toBe(true);
+  });
+
+  it("keeps a preset's config verbatim", () => {
+    const p = parseSimulationParameters({
+      ...base,
+      behavior: behaviorPreset("flaky")!.config,
+    });
+    expect(p.behavior).toEqual(behaviorPreset("flaky")!.config);
+  });
+
+  it("clamps a hand-edited config instead of rejecting it", () => {
+    const p = parseSimulationParameters({
+      ...base,
+      behavior: { error_rate: 5, latency: { mean_ms: -20, stddev_ms: 100 } },
+    });
+    expect(p.behavior.error_rate).toBe(1);
+    expect(p.behavior.latency.mean_ms).toBe(0);
+    expect(p.behavior.latency.stddev_ms).toBe(100);
+  });
+
+  it("falls back to off for a malformed block", () => {
+    const p = parseSimulationParameters({ ...base, behavior: "flaky" });
+    expect(p.behavior).toEqual(BEHAVIOR_OFF);
   });
 });
 

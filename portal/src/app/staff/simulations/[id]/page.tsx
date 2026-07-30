@@ -8,6 +8,14 @@ import {
   getConfigValue,
 } from "@/lib/simulations/generators/config";
 import { parseStats } from "@/lib/simulations/stats";
+import {
+  BEHAVIOR_OFF,
+  behaviorPresetLabel,
+  describeBehavior,
+  isBehaviorOff,
+  type BehaviorConfig,
+} from "@simdpg/system-kit/behavior";
+import type { SystemBehaviorResult } from "@/lib/system-behavior";
 
 interface SimulationResponse {
   simulation?: SimulationRecord;
@@ -17,6 +25,20 @@ interface SimulationResponse {
 interface EventsResponse {
   events?: SimulationEvent[];
   error?: string;
+}
+
+interface SystemBehaviorResponse {
+  systems?: SystemBehaviorResult[];
+  enabled?: boolean;
+  error?: string;
+}
+
+/**
+ * A run's behaviour config. Runs created before system behaviour existed have no
+ * block; those left the systems alone, so they read as off.
+ */
+function behaviorOf(simulation: SimulationRecord): BehaviorConfig {
+  return simulation.parameters.behavior ?? BEHAVIOR_OFF;
 }
 
 /** Statuses for which a generated event script exists and can be shown. */
@@ -151,6 +173,14 @@ export default function SimulationDetails({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [events, setEvents] = useState<SimulationEvent[] | null>(null);
+  const [systemBehavior, setSystemBehavior] = useState<SystemBehaviorResult[] | null>(
+    null,
+  );
+  const [resettingBehavior, setResettingBehavior] = useState(false);
+
+  // Derived early because the polling effect below keys off it.
+  const behaviorConfig = simulation ? behaviorOf(simulation) : BEHAVIOR_OFF;
+  const behaviorEnabled = !isBehaviorOff(behaviorConfig);
 
   const loadEvents = useCallback(async () => {
     try {
@@ -165,6 +195,17 @@ export default function SimulationDetails({ params }: PageProps) {
       // Non-fatal: the events section simply stays hidden.
     }
   }, [params.id]);
+
+  /** What the systems are actually doing right now, across all seven. */
+  const loadSystemBehavior = useCallback(async () => {
+    try {
+      const res = await fetch("/api/systems/behavior", { cache: "no-store" });
+      const data = (await res.json()) as SystemBehaviorResponse;
+      if (res.ok && data.systems) setSystemBehavior(data.systems);
+    } catch {
+      // Non-fatal: the live section simply stays hidden.
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -217,6 +258,21 @@ export default function SimulationDetails({ params }: PageProps) {
     return () => window.clearInterval(interval);
   }, [simulation?.status, refresh]);
 
+  // Show what the systems are doing whenever this run configured behaviour: live
+  // while it runs, and once more when it ends to confirm they went back to normal.
+  useEffect(() => {
+    if (!behaviorEnabled) return;
+
+    void loadSystemBehavior();
+    if (simulation?.status !== "running") return;
+
+    const interval = window.setInterval(() => {
+      void loadSystemBehavior();
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [behaviorEnabled, simulation?.status, loadSystemBehavior]);
+
   async function runAction(action: "generate" | "start" | "stop") {
     setError(null);
     setActing(action);
@@ -238,6 +294,35 @@ export default function SimulationDetails({ params }: PageProps) {
     }
   }
 
+  /**
+   * Put the systems back to their defaults by hand. The worker does this itself
+   * when a run ends, and each system expires its config anyway — this is for the
+   * case where a worker was killed before it could.
+   */
+  async function resetSystemBehavior() {
+    setError(null);
+    setResettingBehavior(true);
+
+    try {
+      const res = await fetch("/api/systems/behavior", { method: "DELETE" });
+      const data = (await res.json()) as SystemBehaviorResponse & { failed?: string[] };
+      if (!res.ok) throw new Error(data.error || "Could not reset system behaviour");
+      if (data.systems) setSystemBehavior(data.systems);
+      if (data.failed?.length) {
+        throw new Error(
+          `Could not reach ${data.failed.join(", ")} — those systems keep their behaviour until it expires`,
+        );
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not reset system behaviour",
+      );
+    } finally {
+      setResettingBehavior(false);
+    }
+  }
+
+  const liveBehaviorSystems = systemBehavior?.filter((s) => s.state?.enabled) ?? [];
   const actualElapsedSeconds = simulation
     ? getActualElapsedSeconds(simulation, nowMs)
     : 0;
@@ -342,6 +427,112 @@ export default function SimulationDetails({ params }: PageProps) {
             <div className="govuk-inset-text">
               The simulation has finished running. See the stats below.
             </div>
+          )}
+
+          {behaviorEnabled && (
+            <>
+              <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
+              <h2 className="govuk-heading-l">System behaviour</h2>
+              <p className="govuk-body">
+                This run makes all seven systems behave as{" "}
+                <strong>{behaviorPresetLabel(behaviorConfig)}</strong>:{" "}
+                {describeBehavior(behaviorConfig)}. The worker applies it when the
+                run starts and clears it when the run ends.
+              </p>
+
+              {systemBehavior === null ? (
+                <p className="govuk-body-s">Checking what the systems are doing…</p>
+              ) : (
+                <>
+                  <table className="govuk-table">
+                    <thead className="govuk-table__head">
+                      <tr className="govuk-table__row">
+                        <th scope="col" className="govuk-table__header">
+                          System
+                        </th>
+                        <th scope="col" className="govuk-table__header">
+                          Behaviour
+                        </th>
+                        <th scope="col" className="govuk-table__header">
+                          Requests
+                        </th>
+                        <th scope="col" className="govuk-table__header">
+                          Delayed
+                        </th>
+                        <th scope="col" className="govuk-table__header">
+                          Failures injected
+                        </th>
+                        <th scope="col" className="govuk-table__header">
+                          Rate limited
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="govuk-table__body">
+                      {systemBehavior.map((system) => (
+                        <tr className="govuk-table__row" key={system.id}>
+                          <td className="govuk-table__cell">{system.label}</td>
+                          <td className="govuk-table__cell">
+                            {!system.ok ? (
+                              <span className="govuk-tag govuk-tag--grey">
+                                Unreachable
+                              </span>
+                            ) : system.state?.enabled ? (
+                              // The full description is in the paragraph above;
+                              // per row, the preset name (or "Custom") is enough
+                              // to spot a system that got something different.
+                              <span
+                                className="govuk-tag govuk-tag--yellow"
+                                title={describeBehavior(system.state.config)}
+                              >
+                                {behaviorPresetLabel(system.state.config)}
+                              </span>
+                            ) : (
+                              <span className="govuk-tag govuk-tag--green">Default</span>
+                            )}
+                          </td>
+                          <td className="govuk-table__cell">
+                            {system.state?.counters.requests ?? "—"}
+                          </td>
+                          <td className="govuk-table__cell">
+                            {system.state?.counters.delayed ?? "—"}
+                          </td>
+                          <td className="govuk-table__cell">
+                            {system.state?.counters.injected_errors ?? "—"}
+                          </td>
+                          <td className="govuk-table__cell">
+                            {system.state?.counters.rate_limited ?? "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {liveBehaviorSystems.length > 0 ? (
+                    <>
+                      <p className="govuk-body-s">
+                        {simulation.status === "running"
+                          ? "Counters update every few seconds while the run is in progress."
+                          : "The run has finished but these systems are still degraded — clear them here."}
+                      </p>
+                      <button
+                        type="button"
+                        className="govuk-button govuk-button--secondary"
+                        onClick={resetSystemBehavior}
+                        disabled={resettingBehavior}
+                      >
+                        {resettingBehavior
+                          ? "Resetting..."
+                          : "Reset all systems to default"}
+                      </button>
+                    </>
+                  ) : (
+                    <p className="govuk-body-s">
+                      All systems are back to their default behaviour.
+                    </p>
+                  )}
+                </>
+              )}
+            </>
           )}
 
           {hasGeneratedEvents(simulation.status) && events !== null && (
@@ -489,6 +680,16 @@ export default function SimulationDetails({ params }: PageProps) {
               <dt className="govuk-summary-list__key">Population</dt>
               <dd className="govuk-summary-list__value">
                 Existing population
+              </dd>
+            </div>
+            <div className="govuk-summary-list__row">
+              <dt className="govuk-summary-list__key">System behaviour</dt>
+              <dd className="govuk-summary-list__value">
+                {behaviorPresetLabel(behaviorConfig)}
+                <br />
+                <span className="govuk-body-s">
+                  {describeBehavior(behaviorConfig)}
+                </span>
               </dd>
             </div>
             {simulation.parameters.generatorConfig &&
