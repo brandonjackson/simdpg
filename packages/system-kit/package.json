@@ -5,6 +5,17 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "//exports": "./behavior is the dependency-free config half of the stochastic-behaviour feature (no express), so the portal's browser bundle can import the presets and field registry for the simulation config screen.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./behavior": {
+      "types": "./dist/behavior.d.ts",
+      "default": "./dist/behavior.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run --passWithNoTests"

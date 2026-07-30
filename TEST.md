@@ -183,6 +183,72 @@ npm run dev          # systems + portal on http://localhost:3000
 - **Staff → Systems catalog**: the new "API conventions" section lists the
   `/docs`, `/openapi.yaml`, and `/admin/webhooks` links for each system.
 
+## 13. Stochastic behaviour (latency, failures, rate limiting)
+
+Off by default:
+
+```bash
+curl -s localhost:3001/admin/behavior; echo    # "enabled": false, preset "off"
+```
+
+Make Identity flaky for one minute, then watch it:
+
+```bash
+curl -s -X PUT localhost:3001/admin/behavior \
+  -H 'content-type: application/json' \
+  -d "{\"preset\":\"flaky\",\"source\":\"smoke test\",\"expires_at\":\"$(date -u -d '+60 seconds' +%Y-%m-%dT%H:%M:%SZ)\"}"; echo
+
+for i in $(seq 1 12); do
+  curl -s -o /dev/null -w "%{http_code} %{time_total}s %header{x-simdpg-injected}\n" \
+    "localhost:3001/citizens?per_page=1"
+done
+```
+
+Expected: responses take a few hundred ms and vary; roughly 1 in 10 is a `503`
+tagged `failure`, whose body is the normal error envelope with
+`"injected": true`.
+
+Health and admin are never affected — both should return in a millisecond:
+
+```bash
+curl -s -o /dev/null -w "health %{http_code} %{time_total}s\n" localhost:3001/health
+curl -s -o /dev/null -w "admin  %{http_code} %{time_total}s\n" localhost:3001/admin/stats
+```
+
+Throttling is deterministic:
+
+```bash
+curl -s -X PUT localhost:3001/admin/behavior -H 'content-type: application/json' \
+  -d '{"rate_limit":{"max":3,"window_ms":2000}}' -o /dev/null
+for i in $(seq 1 5); do
+  curl -s -o /dev/null -w "%{http_code} retry-after=%header{retry-after}\n" \
+    "localhost:3001/citizens?per_page=1"
+done
+curl -s localhost:3001/admin/behavior; echo   # counters: requests / rate_limited
+curl -s -X DELETE localhost:3001/admin/behavior; echo   # back to default
+```
+
+Expected: three `200`s then `429`s with a `Retry-After`, and after the `DELETE`,
+`"enabled": false`.
+
+### Applied for the length of a simulation (needs the portal)
+
+```bash
+npm run dev      # systems + portal
+```
+
+On **Staff → Simulations → Start new simulation**, pick a **System behaviour**
+preset (e.g. Flaky), create the run, then generate and start it. While it runs:
+
+```bash
+curl -s localhost:3000/api/systems/behavior; echo    # all seven report enabled
+```
+
+Expected: every system carries the same config with `source: "simulation <id>"`
+and an `expires_at`; the run's detail page shows a **System behaviour** table with
+counters climbing. Stop the run, then check again — all seven report
+`"enabled": false`, and calls to the systems are fast again.
+
 ## Teardown
 
 ```bash

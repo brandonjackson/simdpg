@@ -537,6 +537,34 @@ a:focus {
   cursor: pointer;
 }
 
+/* Screen-reader-only text, e.g. the "Warning" prefix on a warning. Used by
+   several pages already; without it the prefix rendered visibly. */
+.govuk-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Explanatory line under a radio's label (e.g. what a preset does). */
+.govuk-radios__hint {
+  font-size: 16px;
+  margin-bottom: 0;
+}
+
+/* Inputs revealed by the radio above them, e.g. a "Custom" option's fields. */
+.govuk-radios__conditional {
+  margin-left: 20px;
+  padding-left: 30px;
+  border-left: 4px solid var(--govuk-mid-grey);
+}
+
 /* ===== CHECKBOXES ===== */
 .govuk-checkboxes {
   margin-bottom: 20px;

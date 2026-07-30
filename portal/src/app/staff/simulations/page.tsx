@@ -14,6 +14,19 @@ import {
   type FieldKind,
   type GeneratorConfig,
 } from "@/lib/simulations/generators/config";
+import {
+  BEHAVIOR_FIELDS,
+  BEHAVIOR_OFF,
+  BEHAVIOR_PRESETS,
+  behaviorPreset,
+  behaviorPresetLabel,
+  describeBehavior,
+  getBehaviorValue,
+  isBehaviorOff,
+  setBehaviorValue,
+  type BehaviorConfig,
+  type BehaviorFieldKind,
+} from "@simdpg/system-kit/behavior";
 
 const CLOCK_SPEED_OPTIONS: { value: ClockSpeed; label: string }[] = [
   { value: 1, label: "1x - real time" },
@@ -136,6 +149,32 @@ function fieldInputProps(kind: FieldKind): { min: number; max: number; step: num
 
 const EDITABLE_CONFIG_FIELDS = GENERATOR_CONFIG_FIELDS.filter((f) => f.editable);
 
+/** Input bounds per behaviour field kind; see BEHAVIOR_FIELDS in system-kit. */
+function behaviorInputProps(kind: BehaviorFieldKind): {
+  min: number;
+  max?: number;
+  step: number;
+} {
+  switch (kind) {
+    case "probability":
+      return { min: 0, max: 1, step: 0.005 };
+    case "status":
+      return { min: 400, max: 599, step: 1 };
+    case "count":
+      return { min: 0, step: 1 };
+    case "window_ms":
+      return { min: 1, step: 100 };
+    case "ms":
+    case "optional_ms":
+      return { min: 0, step: 50 };
+  }
+}
+
+/** The radio a behaviour selection maps to: a preset id, or "custom". */
+type BehaviorMode = string;
+
+const CUSTOM_BEHAVIOR_MODE = "custom";
+
 export default function SimulationManagement() {
   const [simulations, setSimulations] = useState<SimulationRecord[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -147,6 +186,10 @@ export default function SimulationManagement() {
   const [durationUnit, setDurationUnit] = useState<DurationUnit>("days");
   const [generatorConfig, setGeneratorConfig] =
     useState<GeneratorConfig>(GENERATOR_CONFIG);
+  // How the systems themselves behave during the run. Off by default: a run
+  // changes nothing about the systems unless it is asked to.
+  const [behaviorMode, setBehaviorMode] = useState<BehaviorMode>("off");
+  const [behavior, setBehavior] = useState<BehaviorConfig>(BEHAVIOR_OFF);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -197,6 +240,16 @@ export default function SimulationManagement() {
   const selectedProject = projects.find((p) => p.id === projectId);
   const canCreate = durationSeconds > 0 && !creating && !!projectId;
 
+  /**
+   * Picking a preset replaces the whole config; picking Custom keeps the values
+   * on screen, so a preset is a starting point you can then tune.
+   */
+  function selectBehaviorMode(mode: BehaviorMode) {
+    setBehaviorMode(mode);
+    const preset = behaviorPreset(mode);
+    if (preset) setBehavior(preset.config);
+  }
+
   async function handleCreate() {
     setError(null);
     setCreating(true);
@@ -210,6 +263,7 @@ export default function SimulationManagement() {
             clockSpeed,
             durationSeconds,
             generatorConfig,
+            behavior,
             projectId,
           },
         }),
@@ -393,6 +447,140 @@ export default function SimulationManagement() {
             </div>
           </div>
 
+          <div className="govuk-form-group">
+            <fieldset className="govuk-fieldset">
+              <legend className="govuk-fieldset__legend">
+                System behaviour
+              </legend>
+              <div className="govuk-hint">
+                How the seven systems respond while this run is in progress —
+                added latency, failed requests, and rate limiting. One choice
+                applies to all of them, and they go back to normal as soon as the
+                run ends.
+              </div>
+
+              <div className="govuk-radios">
+                {BEHAVIOR_PRESETS.map((preset) => {
+                  const id = `behavior-${preset.id}`;
+                  return (
+                    <div className="govuk-radios__item" key={preset.id}>
+                      <input
+                        className="govuk-radios__input"
+                        id={id}
+                        type="radio"
+                        name="behavior-mode"
+                        value={preset.id}
+                        checked={behaviorMode === preset.id}
+                        onChange={() => selectBehaviorMode(preset.id)}
+                      />
+                      <div>
+                        <label className="govuk-label govuk-radios__label" htmlFor={id}>
+                          {preset.name}
+                        </label>
+                        <div className="govuk-hint govuk-radios__hint">
+                          {preset.description}
+                        </div>
+                        {!isBehaviorOff(preset.config) && (
+                          <div className="govuk-body-s govuk-radios__hint">
+                            <strong>{describeBehavior(preset.config)}</strong>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="govuk-radios__item">
+                  <input
+                    className="govuk-radios__input"
+                    id="behavior-custom"
+                    type="radio"
+                    name="behavior-mode"
+                    value={CUSTOM_BEHAVIOR_MODE}
+                    checked={behaviorMode === CUSTOM_BEHAVIOR_MODE}
+                    onChange={() => selectBehaviorMode(CUSTOM_BEHAVIOR_MODE)}
+                  />
+                  <div>
+                    <label
+                      className="govuk-label govuk-radios__label"
+                      htmlFor="behavior-custom"
+                    >
+                      Custom
+                    </label>
+                    <div className="govuk-hint govuk-radios__hint">
+                      Set the numbers yourself, starting from whichever preset was
+                      selected.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {behaviorMode === CUSTOM_BEHAVIOR_MODE && (
+                <div className="govuk-radios__conditional">
+                  {BEHAVIOR_FIELDS.map((field) => {
+                    const id = `behavior-${field.path.join("-")}`;
+                    const { min, max, step } = behaviorInputProps(field.kind);
+                    const value = getBehaviorValue(behavior, field.path);
+                    return (
+                      <div className="govuk-form-group" key={id}>
+                        <label className="govuk-label" htmlFor={id}>
+                          {field.label}
+                        </label>
+                        {field.hint && <div className="govuk-hint">{field.hint}</div>}
+                        <input
+                          className="govuk-input govuk-input--width-10"
+                          id={id}
+                          type="number"
+                          min={min}
+                          max={max}
+                          step={step}
+                          value={value === null ? "" : value}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            // Only the latency cap can be blank, meaning "no cap";
+                            // clearing any other field would silently mean 0, so
+                            // the last value stands until something valid is typed.
+                            if (raw === "") {
+                              if (field.kind !== "optional_ms") return;
+                              setBehavior((cfg) =>
+                                setBehaviorValue(cfg, field.path, null),
+                              );
+                              return;
+                            }
+                            const parsed = Number(raw);
+                            if (Number.isNaN(parsed)) return;
+                            const clamped = Math.min(
+                              max ?? Number.MAX_SAFE_INTEGER,
+                              Math.max(min, parsed),
+                            );
+                            setBehavior((cfg) =>
+                              setBehaviorValue(cfg, field.path, clamped),
+                            );
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </fieldset>
+
+            {!isBehaviorOff(behavior) && (
+              <div className="govuk-warning-text">
+                <span className="govuk-warning-text__icon" aria-hidden="true">
+                  !
+                </span>
+                <strong className="govuk-warning-text__text">
+                  <span className="govuk-visually-hidden">Warning</span>
+                  All seven systems will behave this way for the whole run —{" "}
+                  {describeBehavior(behavior)} — including for portal pages and
+                  forms used while it is running. They return to their defaults
+                  when the run ends.
+                </strong>
+              </div>
+            )}
+          </div>
+
           <details className="govuk-details">
             <summary className="govuk-details__summary">
               <span className="govuk-details__summary-text">
@@ -482,6 +670,7 @@ export default function SimulationManagement() {
               <th className="govuk-table__header">Created</th>
               <th className="govuk-table__header">Status</th>
               <th className="govuk-table__header">Project</th>
+              <th className="govuk-table__header">Behaviour</th>
               <th className="govuk-table__header">Clock speed</th>
               <th className="govuk-table__header">Duration</th>
               <th className="govuk-table__header">Estimated actual time</th>
@@ -510,6 +699,11 @@ export default function SimulationManagement() {
                 </td>
                 <td className="govuk-table__cell">
                   {projectLabel(simulation)}
+                </td>
+                {/* Runs created before system behaviour existed have no block;
+                    they left the systems alone, so they read as off. */}
+                <td className="govuk-table__cell">
+                  {behaviorPresetLabel(simulation.parameters.behavior ?? BEHAVIOR_OFF)}
                 </td>
                 <td className="govuk-table__cell">
                   {simulation.parameters.clockSpeed}x

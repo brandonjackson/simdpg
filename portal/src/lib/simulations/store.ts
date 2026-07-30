@@ -7,6 +7,11 @@ import { getDb } from "../db";
 import { simulations, simulationRuns } from "../db/schema";
 import { eventsFilePath, logFilePath } from "./paths";
 import { loadConfig, GENERATOR_CONFIG, type GeneratorConfig } from "./generators/config";
+import {
+  BEHAVIOR_OFF,
+  parseBehavior,
+  type BehaviorConfig,
+} from "@simdpg/system-kit/behavior";
 
 export const CLOCK_SPEED_OPTIONS = [1, 60, 3600, 86400] as const;
 
@@ -37,6 +42,14 @@ export interface SimulationParameters {
    * deleted. Records created before projects existed have neither field.
    */
   projectName: string;
+  /**
+   * How the systems themselves behave for the length of this run — latency,
+   * injected failures, and rate limiting. Defined once here and applied to all
+   * seven systems by the worker, which clears it again when the run ends.
+   * Defaults to off, so a run changes nothing unless it was asked to.
+   * Records created before this existed have no field; treat that as off.
+   */
+  behavior: BehaviorConfig;
 }
 
 export interface SimulationRecord {
@@ -97,6 +110,11 @@ export function parseSimulationParameters(input: unknown): SimulationParameters 
   const projectId = typeof raw.projectId === "string" ? raw.projectId.trim() : "";
   if (!projectId) throw new Error("projectId is required");
 
+  // Behaviour is off unless the request asks for something; a malformed block
+  // degrades field-by-field to off rather than failing the whole simulation.
+  const behavior =
+    raw.behavior === undefined ? BEHAVIOR_OFF : parseBehavior(raw.behavior);
+
   return {
     clockSpeed,
     durationSeconds: parsePositiveInteger(
@@ -105,6 +123,7 @@ export function parseSimulationParameters(input: unknown): SimulationParameters 
     ),
     usesExistingPopulation: true,
     generatorConfig,
+    behavior,
     projectId,
     projectName:
       typeof raw.projectName === "string" && raw.projectName.trim()

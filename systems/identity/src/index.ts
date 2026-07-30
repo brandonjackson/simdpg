@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { requestId, notFound, badRequest, docsHtml } from "@simdpg/system-kit";
+import { requestId, notFound, badRequest, docsHtml, createBehavior } from "@simdpg/system-kit";
 import { db, ensureTables } from "./db/index.js";
 import { citizens, addresses } from "./db/schema.js";
 import { citizenRouter } from "./routes/citizens.js";
@@ -20,8 +20,14 @@ const OPENAPI_PATH = resolve(__dirname, "..", "openapi.yaml");
 const app = express();
 const PORT = process.env.PORT ?? 3001;
 
+// Stochastic behaviour — latency, injected failures, and rate limiting. Off
+// unless a simulation (or SIMDPG_BEHAVIOR* in the environment) turns it on, and
+// never applied to /health, /docs or /admin, so the control plane stays sound.
+const behavior = createBehavior("identity");
+
 app.use(express.json());
 app.use(requestId);
+app.use(behavior.middleware);
 
 // ---------------------------------------------------------------------------
 // Health
@@ -82,6 +88,7 @@ app.get("/citizens", async (req, res, next) => {
 // ---------------------------------------------------------------------------
 app.use("/citizens", citizenRouter);
 app.use("/households", householdRouter);
+app.use("/admin/behavior", behavior.router);
 app.use("/admin", adminRouter);
 
 // ---------------------------------------------------------------------------

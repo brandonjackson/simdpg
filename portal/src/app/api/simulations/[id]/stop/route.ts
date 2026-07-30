@@ -3,6 +3,8 @@ import {
   SimulationTransitionError,
   stopSimulation,
 } from "@/lib/simulations/store";
+import { clearSystemBehavior } from "@/lib/system-behavior";
+import { isBehaviorOff } from "@simdpg/system-kit/behavior";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,15 @@ export async function POST(_request: Request, { params }: RouteContext) {
         { error: "Simulation not found" },
         { status: 404 },
       );
+    }
+
+    // The worker clears the behaviour it applied as it shuts down, but a stop is
+    // exactly when that worker might already be gone, so clear it from here too.
+    // Both paths are idempotent, and every system also expires the config on its
+    // own — see applySystemBehavior's expiresAt.
+    const behavior = simulation.parameters.behavior;
+    if (behavior && !isBehaviorOff(behavior)) {
+      await clearSystemBehavior();
     }
 
     return NextResponse.json({ simulation });
