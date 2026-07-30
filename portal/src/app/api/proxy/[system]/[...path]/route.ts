@@ -37,6 +37,10 @@ async function proxy(
   const init: RequestInit = {
     method: request.method,
     headers,
+    // A proxied GET must hit the system, not Next's Data Cache — otherwise the
+    // sandbox and citizen pages replay whatever the record looked like the
+    // first time it was requested. See the note in api-clients' BaseClient.
+    cache: "no-store",
   };
 
   if (request.method !== "GET" && request.method !== "HEAD") {

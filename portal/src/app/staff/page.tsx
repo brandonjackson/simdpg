@@ -1,6 +1,8 @@
 import { SYSTEM_URLS } from "@simdpg/api-clients";
 import { identity, health } from "@/lib/systems";
 
+// Re-render on every request. Note this only governs *rendering* — it does not
+// stop Next caching the fetches below, which each opt out with `no-store`.
 export const dynamic = "force-dynamic";
 
 interface DashboardStats {
@@ -37,13 +39,16 @@ async function loadStats(): Promise<{
       const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
       const civilRegistryUrl = SYSTEM_URLS.civilRegistry;
       const res = await fetch(
-        `${civilRegistryUrl}/births?since=${encodeURIComponent(monthStart)}`
+        `${civilRegistryUrl}/births?since=${encodeURIComponent(monthStart)}`,
+        { cache: "no-store" }
       );
       if (res.ok) {
         const data = await res.json();
         stats.recentBirths = Array.isArray(data) ? data.length : 0;
       } else {
-        const fallback = await fetch(`${civilRegistryUrl}/births`);
+        const fallback = await fetch(`${civilRegistryUrl}/births`, {
+          cache: "no-store",
+        });
         if (fallback.ok) {
           const data = await fallback.json();
           stats.recentBirths = Array.isArray(data) ? data.length : 0;
@@ -69,7 +74,8 @@ async function loadStats(): Promise<{
       // The client doesn't have a direct "list all active enrollments" method,
       // so we'll hit the endpoint directly
       const res = await fetch(
-        `${SYSTEM_URLS.benefits}/enrollments?status=active`
+        `${SYSTEM_URLS.benefits}/enrollments?status=active`,
+        { cache: "no-store" }
       );
       if (res.ok) {
         const data = await res.json();

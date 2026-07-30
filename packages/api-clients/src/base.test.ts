@@ -83,6 +83,21 @@ describe("BaseClient.request", () => {
     );
   });
 
+  // Regression: without this, Next.js stores GET responses in its Data Cache
+  // for a year, so the portal's dashboards report whatever the systems held
+  // when the page was first rendered.
+  it("opts every request out of caching", async () => {
+    const fetchMock = mockFetch({ json: () => ({}) });
+    const client = new TestClient("https://api.example");
+
+    await client.getJson("/admin/stats");
+    await client.postJson("/citizens", { given_name: "Ada" });
+
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.cache).toBe("no-store");
+    }
+  });
+
   it("throws an ApiError carrying the response envelope on non-2xx", async () => {
     mockFetch({
       ok: false,
