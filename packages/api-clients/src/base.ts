@@ -28,6 +28,13 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * `RequestInit` as typed by @types/node (undici) omits the standard `cache`
+ * field, so name it here rather than pulling the whole DOM lib in. Node accepts
+ * and ignores it; Next.js reads it (see the note in {@link BaseClient.request}).
+ */
+type FetchInit = RequestInit & { cache?: "no-store" };
+
 export class BaseClient {
   constructor(protected baseUrl: string) {}
 
@@ -36,13 +43,23 @@ export class BaseClient {
     options: RequestInit = {},
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const res = await fetch(url, {
+    const init: FetchInit = {
+      // Every system read is live, mutable state. Next.js patches `fetch` in
+      // server components and route handlers and, when no cache option is
+      // given, stores GET responses in its Data Cache with `revalidate: false`
+      // — i.e. for a year — so the portal would serve counts and records from
+      // whenever the container first rendered the page. `dynamic =
+      // "force-dynamic"` does not cover this: it forces dynamic *rendering*
+      // but leaves `fetchCache` alone. Opt out here so no caller can inherit a
+      // stale read by forgetting to.
+      cache: "no-store",
       ...options,
       headers: {
         "Content-Type": "application/json",
         ...options.headers,
       },
-    });
+    };
+    const res = await fetch(url, init);
 
     if (!res.ok) {
       const body = (await res.json().catch(() => ({

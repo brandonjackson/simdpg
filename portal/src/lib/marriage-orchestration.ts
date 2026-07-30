@@ -19,7 +19,10 @@ async function safeJson(res: Response) {
 
 async function getHousehold(citizenId: string) {
   try {
-    const res = await fetch(`${SYSTEM_URLS.identity}/citizens/${encodeURIComponent(citizenId)}/household`);
+    const res = await fetch(
+      `${SYSTEM_URLS.identity}/citizens/${encodeURIComponent(citizenId)}/household`,
+      { cache: "no-store" },
+    );
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -29,7 +32,10 @@ async function getHousehold(citizenId: string) {
 
 async function getCitizen(citizenId: string) {
   try {
-    const res = await fetch(`${SYSTEM_URLS.identity}/citizens/${encodeURIComponent(citizenId)}`);
+    const res = await fetch(
+      `${SYSTEM_URLS.identity}/citizens/${encodeURIComponent(citizenId)}`,
+      { cache: "no-store" },
+    );
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -145,7 +151,9 @@ export async function processApplication(payload: MarriagePayload) {
   }
 
   try {
-    const programsRes = await fetch(`${SYSTEM_URLS.benefits}/programs`);
+    const programsRes = await fetch(`${SYSTEM_URLS.benefits}/programs`, {
+      cache: "no-store",
+    });
     const programsBody = await safeJson(programsRes);
     const programs = Array.isArray(programsBody?.data) ? programsBody.data : programsBody?.data ?? [];
 
