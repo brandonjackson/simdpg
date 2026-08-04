@@ -2,10 +2,29 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import http from "node:http";
 import { eq } from "drizzle-orm";
 import { eventsFilePath } from "./paths.js";
 import type { SimulationEvent } from "./events.js";
+import type { CreateTransport } from "./worker.js";
+import type { OutcomeCounts } from "./queue.js";
+
+/**
+ * A fake delivery pool: records the events runWorker publishes and reports a
+ * scripted tally back, so runWorker's DB writes can be tested without a real
+ * Redis or a consuming worker. The real end-to-end path is exercised by
+ * worker.integration.test.ts against a live Redis.
+ */
+function fakeTransport(counts: OutcomeCounts) {
+  const enqueued: SimulationEvent[] = [];
+  const create: CreateTransport = () => ({
+    reset: async () => {},
+    enqueue: async (event) => { enqueued.push(event); },
+    // Settled == enqueued once everything is published, so the drain returns.
+    readCounts: async () => counts,
+    close: async () => {},
+  });
+  return { create, enqueued };
+}
 
 let dir: string;
 
@@ -57,30 +76,23 @@ afterEach(async () => {
 });
 
 describe("runWorker", () => {
-  it("delivers events, records completed run-state, and flips the record terminal", async () => {
+  it("publishes every event and records terminal run-state from the pool's counters", async () => {
     const { runWorker, db, simulations, simulationRuns } = await load();
     seedRunning(db, simulations, "s1");
 
-    const received: unknown[] = [];
-    const server = http.createServer((req, res) => {
-      let body = "";
-      req.on("data", (c) => (body += c));
-      req.on("end", () => { received.push(JSON.parse(body)); res.writeHead(200).end(); });
-    });
-    await new Promise<void>((r) => server.listen(0, r));
-    const url = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}`;
-
     await writeEvents("s1", [
-      { id: "e1", scheduledMicros: 0, targetKey: "national-id", targetUrl: url, payload: { n: 1 } },
+      { id: "e1", scheduledMicros: 0, targetKey: "national-id", targetUrl: "http://hook", payload: { n: 1 } },
       { id: "e2", scheduledMicros: 0, targetKey: "national-id", targetUrl: null, payload: { n: 2 } },
     ]);
 
-    await runWorker("s1");
-    await new Promise<void>((r) => server.close(() => r()));
+    // The pool reports one delivered, one skipped (the null-target event).
+    const transport = fakeTransport({ delivered: 1, skipped: 1, failed: 0 });
+    await runWorker("s1", transport.create);
 
-    expect(received).toEqual([{ n: 1 }]);
+    // Every event is published — the scheduler no longer decides "skipped" itself.
+    expect(transport.enqueued.map((e) => e.id)).toEqual(["e1", "e2"]);
 
-    // Worker-owned run-state row.
+    // Worker-owned run-state row, built from the pool's counters.
     const run = db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "s1")).get();
     expect(run?.status).toBe("completed");
     expect(run).toMatchObject({ delivered: 1, skipped: 1, failed: 0, total: 2 });
