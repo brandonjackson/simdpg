@@ -93,6 +93,41 @@ describe("runWorker", () => {
     expect(JSON.parse(sim!.stats!)).toEqual({ delivered: 1, skipped: 1, failed: 0, total: 2 });
   });
 
+  it("flushes live counts to the run row while the run is still going", async () => {
+    // The portal renders whatever this row says, so the row moving mid-run *is*
+    // live progress in the UI — with no portal change of any kind.
+    process.env.SIM_STATE_FLUSH_MS = "50";
+    const { runWorker, db, simulations, simulationRuns } = await load();
+    seedRunning(db, simulations, "live");
+
+    const server = http.createServer((req, res) => {
+      req.resume();
+      req.on("end", () => res.writeHead(200).end());
+    });
+    await new Promise<void>((r) => server.listen(0, r));
+    const url = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}`;
+
+    // Second event lands 400ms in, so the run outlives several flushes.
+    await writeEvents("live", [
+      { id: "e1", scheduledMicros: 0, targetKey: "national-id", targetUrl: url, payload: { n: 1 } },
+      { id: "e2", scheduledMicros: 400_000, targetKey: "national-id", targetUrl: url, payload: { n: 2 } },
+    ]);
+
+    const running = runWorker("live");
+    const row = () =>
+      db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "live")).get();
+    await vi.waitFor(
+      () => expect(row()).toMatchObject({ status: "running", delivered: 1, total: 2 }),
+      { timeout: 2000, interval: 20 },
+    );
+
+    await running;
+    await new Promise<void>((r) => server.close(() => r()));
+
+    expect(row()).toMatchObject({ status: "completed", delivered: 2, total: 2 });
+    delete process.env.SIM_STATE_FLUSH_MS;
+  });
+
   it("records failed run-state (and record) when the events file is missing", async () => {
     const { runWorker, db, simulations, simulationRuns } = await load();
     seedRunning(db, simulations, "missing");

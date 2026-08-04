@@ -16,11 +16,17 @@ export interface RunCounts {
   total: number;
 }
 
-/** Live view of a run, emitted whenever a delivery starts or finishes. */
+/**
+ * Live view of a run, emitted whenever a delivery starts or finishes.
+ *
+ * The same shape carries aggregated progress once delivery is distributed across
+ * a worker pool (see RunStateAggregator), where `inFlight` means queue depth —
+ * work handed over but not yet settled — rather than POSTs this process holds.
+ */
 export interface ProgressSnapshot extends RunCounts {
-  /** Deliveries currently in flight. */
+  /** Deliveries currently in flight; queue depth when a pool owns delivery. */
   inFlight: number;
-  /** High-water mark of in-flight deliveries so far. */
+  /** High-water mark of the above so far. */
   peakConcurrency: number;
 }
 

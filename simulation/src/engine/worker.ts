@@ -1,12 +1,12 @@
 import { beginBehavior } from "./behavior.js";
 import { readEvents, type SimulationEvent } from "./events.js";
-import { writeRunState, type SimulationRunState } from "./run-state.js";
 import {
-  runEvents,
-  DEFAULT_MAX_CONCURRENCY,
-  type RunCounts,
-  type ProgressSnapshot,
-} from "./scheduler.js";
+  RunStateAggregator,
+  flushIntervalFromEnv,
+  queueDepthWarnFromEnv,
+} from "./run-aggregator.js";
+import { writeRunState } from "./run-state.js";
+import { runEvents, DEFAULT_MAX_CONCURRENCY, type ProgressSnapshot } from "./scheduler.js";
 import { sleep, log, logError } from "../utils.js";
 
 /** Concurrent deliveries allowed; override with SIM_MAX_CONCURRENCY. */
@@ -20,7 +20,8 @@ const PROGRESS_LOG_INTERVAL_MS = 1000;
 
 /**
  * Execute a generated simulation: schedule every event's POST by real time,
- * then record the terminal run-state to the shared database. writeRunState also
+ * flushing run-state to the shared database as the counts move (see
+ * RunStateAggregator) and once more when it ends. writeRunState also
  * stamps the authoritative `simulations` record, so the portal reads a
  * consistent status with no reconciliation. Never throws — failures are written
  * as run-state.
@@ -49,18 +50,34 @@ export async function runWorker(id: string): Promise<void> {
   let stopped = false;
   process.on("SIGTERM", () => { stopped = true; });
 
-  await writeRunState(id, {
-    pid: process.pid, status: "running", startedAt,
-    delivered: 0, skipped: 0, failed: 0, total: events.length,
-  });
-  log(`Simulation ${id}: running ${events.length} events (cap ${maxConcurrencyFromEnv()})`);
-
-  const finalize = async (status: SimulationRunState["status"], counts: RunCounts) => {
-    await writeRunState(id, {
-      pid: process.pid, status, startedAt, completedAt: new Date().toISOString(),
-      delivered: counts.delivered, skipped: counts.skipped, failed: counts.failed, total: counts.total,
-    });
+  // Nothing here writes run-state directly any more: the aggregator owns the row
+  // and flushes it on a timer, which is what gives the portal live counts. With
+  // a worker pool no single process knows the counts, so the counts have to be
+  // read back from somewhere — today that is this process's own progress
+  // snapshots, and once delivery moves to the pool only `readCounts` changes
+  // (to `redisCountsSource`). Nothing downstream, in the portal included, moves.
+  let latest: ProgressSnapshot = {
+    delivered: 0, skipped: 0, failed: 0, total: events.length, inFlight: 0, peakConcurrency: 0,
   };
+  const aggregator = new RunStateAggregator(
+    id,
+    { pid: process.pid, startedAt, total: events.length },
+    {
+      now: Date.now,
+      sleep,
+      readCounts: () => ({
+        delivered: latest.delivered, skipped: latest.skipped, failed: latest.failed,
+      }),
+      // Handed to delivery but not yet settled — queue depth once a pool owns
+      // delivery, POSTs in flight while it is this process.
+      enqueued: () =>
+        latest.delivered + latest.skipped + latest.failed + latest.inFlight,
+    },
+    { flushIntervalMs: flushIntervalFromEnv(), queueDepthWarn: queueDepthWarnFromEnv() },
+  );
+
+  await aggregator.flush("running");
+  log(`Simulation ${id}: running ${events.length} events (cap ${maxConcurrencyFromEnv()})`);
 
   // Degrade the systems for the length of this run, if the simulation asked for
   // it, and get back the undo. Applied before the first delivery so the very
@@ -73,6 +90,7 @@ export async function runWorker(id: string): Promise<void> {
   const runStart = Date.now();
   let lastProgressLog = 0;
   const onProgress = (s: ProgressSnapshot): void => {
+    latest = s;
     const now = Date.now();
     const done = s.delivered + s.skipped + s.failed;
     // Log at most once per interval, but always log the final drain (inFlight 0).
@@ -86,23 +104,27 @@ export async function runWorker(id: string): Promise<void> {
     );
   };
 
+  aggregator.start();
   try {
-    const { counts, stopped: wasStopped, peakConcurrency } = await runEvents(
+    const { stopped: wasStopped, peakConcurrency } = await runEvents(
       events,
       runStart,
       { now: Date.now, sleep, fetch, shouldStop: () => stopped, onProgress },
       { maxConcurrency },
     );
-    await finalize(wasStopped ? "stopped" : "completed", counts);
+    // finish() waits for the queue to drain before the terminal write, so the
+    // counts it records are final rather than a snapshot mid-flight.
+    await aggregator.finish(wasStopped ? "stopped" : "completed");
     log(
       `Simulation ${id}: ${wasStopped ? "stopped" : "completed"} ` +
         `(peak concurrency ${peakConcurrency}/${maxConcurrency})`,
     );
   } catch (err) {
-    await writeRunState(id, {
-      pid: process.pid, status: "failed", startedAt, completedAt: new Date().toISOString(),
+    // Nothing is outstanding after a crash, so don't wait on a drain that will
+    // never come — record whatever was delivered before it went down.
+    await aggregator.finish("failed", {
       error: err instanceof Error ? err.message : String(err),
-      delivered: 0, skipped: 0, failed: 0, total: events.length,
+      drain: false,
     });
     logError(`Simulation ${id} crashed`, err);
   } finally {
