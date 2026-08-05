@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { notFound, getPagination, listResponse } from "@simdpg/system-kit";
@@ -54,15 +54,28 @@ function formatProgram(row: typeof programs.$inferSelect) {
 // ---------------------------------------------------------------------------
 
 /**
- * GET /programs — list all programs, optionally filter by status.
+ * GET /programs — list all programs, optionally filter by status and/or name.
+ *
+ * `?name=` is a case-insensitive substring match. It exists so an integration
+ * can resolve a programme it knows by name ("Child Protection Support") into an
+ * ID at run time, instead of hard-coding a UUID that a re-seed could change.
  */
 router.get(
   "/",
   asyncHandler(async (req, res) => {
     const status = req.query.status as "active" | "suspended" | "closed" | undefined;
+    const name = typeof req.query.name === "string" ? req.query.name.trim() : "";
     const { offset, limit, page, per_page } = getPagination(req);
 
-    const where = status ? eq(programs.status, status) : undefined;
+    const filters = [
+      status ? eq(programs.status, status) : undefined,
+      // SQLite's LIKE is case-insensitive for ASCII, which is what makes this a
+      // case-insensitive match. `%` and `_` in the query keep their usual LIKE
+      // wildcard meaning — harmless here, and occasionally handy.
+      name ? like(programs.name, `%${name}%`) : undefined,
+    ].filter((f): f is Exclude<typeof f, undefined> => f !== undefined);
+
+    const where = filters.length > 0 ? and(...filters) : undefined;
 
     const total =
       db.select({ c: sql<number>`count(*)` }).from(programs).where(where).get()

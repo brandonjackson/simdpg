@@ -39,6 +39,25 @@ docker compose up                 # start all 7 systems + portal (reuses the ima
 - The portal's own database lives on the `portal-data` volume (`/app/portal/data`).
 - `docker compose down` stops the stack (data preserved); `docker compose down -v` wipes all data.
 
+### Seeding is one-shot — reference data must not depend on it
+
+Seeding runs **once per volume**: `SEED_CMD` is skipped when `data/.seeded`
+exists, and each system's seed script also skips a database that already has
+rows. Both markers live on the persistent volume, so once a volume has been
+seeded the seed never runs again — a table emptied afterwards (by hand, or by a
+`/admin/reset`) stays empty for the life of that volume.
+
+That is fine for population data, which the simulation engine and the staff
+population page own. It is **not** fine for reference data that integrations
+address by ID: benefit programmes went missing from the live sandbox this way,
+and every OpenFn workflow doing `GET /programs/{id}` broke with
+`404 Program not found`.
+
+So benefit programmes have **stable, hard-coded IDs** and are re-created on
+every server start, not just by the seed — see
+`systems/benefits/src/db/reference-data.ts`. Any future reference data should
+follow the same pattern rather than relying on the seed to be there.
+
 > **Don't use `docker compose up --build` unless you have the Buildx/BuildKit
 > plugin.** With BuildKit, Compose builds the shared image once. With Docker's
 > *legacy* builder (no buildx), Compose builds the image **once per service, in
