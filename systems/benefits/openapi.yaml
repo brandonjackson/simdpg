@@ -58,6 +58,15 @@ paths:
           required: false
           schema: { type: string, enum: [active, suspended, closed] }
           description: Filter programmes by status.
+        - name: name
+          in: query
+          required: false
+          schema: { type: string }
+          description: >
+            Case-insensitive substring match on the programme name. Use this to
+            resolve a programme you know by name into its ID at run time rather
+            than hard-coding a UUID.
+          example: Child Protection
       responses:
         "200":
           description: A page of programmes

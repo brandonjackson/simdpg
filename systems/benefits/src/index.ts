@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requestId, docsHtml, createBehavior } from "@simdpg/system-kit";
 import { ensureTables } from "./db/index.js";
+import { ensureReferencePrograms } from "./db/reference-data.js";
 import programsRouter from "./routes/programs.js";
 import enrollmentsRouter from "./routes/enrollments.js";
 import paymentsRouter from "./routes/payments.js";
@@ -13,6 +14,18 @@ import { errorHandler } from "./middleware/error-handler.js";
 
 // Ensure tables exist on startup
 ensureTables();
+
+// Programmes are reference data every integration addresses by ID, so restore
+// any that are missing on each start rather than only from the one-shot seed.
+// Without this, an emptied `programs` table stays empty (the seed skips a
+// database the entrypoint has already marked seeded) and the system serves an
+// empty programme list indefinitely.
+const restoredPrograms = ensureReferencePrograms();
+if (restoredPrograms.length > 0) {
+  console.log(
+    `Restored ${restoredPrograms.length} reference programme(s): ${restoredPrograms.join(", ")}`,
+  );
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OPENAPI_PATH = resolve(__dirname, "..", "openapi.yaml");

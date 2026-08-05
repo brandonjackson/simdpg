@@ -1,81 +1,60 @@
 /**
- * Seed script — creates 3 programs, 5 enrollments, and 10 payments.
+ * Seed script — ensures the reference programmes exist, then creates 6
+ * enrollments and 12 payments.
  * Run: npx tsx src/db/seed.ts  (from systems/benefits/)
+ *
+ * The two halves are guarded separately. Programmes are reference data with
+ * stable IDs (see reference-data.ts) and are ensured on every run — the server
+ * does the same on start, so they cannot go permanently missing. Enrollments
+ * and payments are population data: they are seeded only into an empty table,
+ * because `/admin/reset` and the simulation engine both own them legitimately
+ * and re-seeding would fight with that.
  */
 import { v4 as uuidv4 } from "uuid";
 import { sql } from "drizzle-orm";
 import { db, ensureTables } from "./index.js";
-import { programs, enrollments, payments } from "./schema.js";
+import { enrollments, payments } from "./schema.js";
+import { PROGRAM_IDS, ensureReferencePrograms } from "./reference-data.js";
 
 ensureTables();
 
-// Check if data already exists
-const count = db
+console.log("Seeding benefits database...");
+
+// ---------------------------------------------------------------------------
+// Programs (reference data — idempotent)
+// ---------------------------------------------------------------------------
+
+const createdPrograms = ensureReferencePrograms();
+if (createdPrograms.length > 0) {
+  for (const name of createdPrograms) {
+    console.log(`  Created program: ${name}`);
+  }
+} else {
+  console.log("  Programs already present — nothing to add.");
+}
+
+const childBenefitId = PROGRAM_IDS.childBenefit;
+const seniorPensionId = PROGRAM_IDS.seniorPension;
+const maternityGrantId = PROGRAM_IDS.maternityGrant;
+const childProtectionId = PROGRAM_IDS.childProtection;
+
+// ---------------------------------------------------------------------------
+// Enrollments + payments (population data — only into an empty table)
+// ---------------------------------------------------------------------------
+
+const enrollmentCount = db
   .select({ count: sql<number>`COUNT(*)` })
-  .from(programs)
+  .from(enrollments)
   .get();
 
-if (count && count.count > 0) {
-  console.log(`Database already has ${count.count} programs — skipping seed.`);
+if (enrollmentCount && enrollmentCount.count > 0) {
+  console.log(
+    `  Database already has ${enrollmentCount.count} enrollments — skipping population data.`,
+  );
   process.exit(0);
 }
 
-console.log("Seeding benefits database...");
-
 const now = new Date().toISOString();
-const today = now.split("T")[0];
-
-// ---------------------------------------------------------------------------
-// Programs
-// ---------------------------------------------------------------------------
-
-const childBenefitId = uuidv4();
-const seniorPensionId = uuidv4();
-const maternityGrantId = uuidv4();
-
-const seedPrograms = [
-  {
-    id: childBenefitId,
-    name: "Child Benefit",
-    description:
-      "Monthly cash transfer for households with children under 18 years of age.",
-    eligibility_rules: JSON.stringify({ max_age: 18 }),
-    payment_amount: 150,
-    payment_frequency: "monthly" as const,
-    status: "active" as const,
-    created_at: now,
-    updated_at: now,
-  },
-  {
-    id: seniorPensionId,
-    name: "Senior Pension",
-    description:
-      "Monthly pension for citizens aged 65 and above to support retirement.",
-    eligibility_rules: JSON.stringify({ min_age: 65 }),
-    payment_amount: 500,
-    payment_frequency: "monthly" as const,
-    status: "active" as const,
-    created_at: now,
-    updated_at: now,
-  },
-  {
-    id: maternityGrantId,
-    name: "Maternity Grant",
-    description:
-      "One-time grant for new mothers to cover costs associated with childbirth.",
-    eligibility_rules: JSON.stringify({}),
-    payment_amount: 1000,
-    payment_frequency: "one-time" as const,
-    status: "active" as const,
-    created_at: now,
-    updated_at: now,
-  },
-];
-
-for (const p of seedPrograms) {
-  db.insert(programs).values(p).run();
-  console.log(`  Created program: ${p.name}`);
-}
 
 // ---------------------------------------------------------------------------
 // Enrollments
@@ -153,6 +132,20 @@ const seedEnrollments = [
     household_id: householdIds[0],
     status: "active" as const,
     enrolled_at: "2025-03-20T11:00:00.000Z",
+    terminated_at: null,
+    termination_reason: null,
+    created_at: now,
+    updated_at: now,
+  },
+  // An open child protection case, so the programme has history behind it when
+  // a demo enrols someone new into it.
+  {
+    id: uuidv4(),
+    program_id: childProtectionId,
+    citizen_id: citizenIds[0],
+    household_id: householdIds[0],
+    status: "active" as const,
+    enrolled_at: "2025-02-10T13:00:00.000Z",
     terminated_at: null,
     termination_reason: null,
     created_at: now,
@@ -292,6 +285,29 @@ const seedPayments = [
     status: "paid" as const,
     scheduled_date: "2025-03-20",
     paid_date: "2025-03-20T14:00:00.000Z",
+    created_at: now,
+    updated_at: now,
+  },
+  // 2 monthly payments for enrollment 5 (Child Protection Support)
+  {
+    id: uuidv4(),
+    enrollment_id: enrollmentIds[5],
+    amount: 300,
+    currency: "SIM",
+    status: "paid" as const,
+    scheduled_date: "2025-03-01",
+    paid_date: "2025-03-01T09:15:00.000Z",
+    created_at: now,
+    updated_at: now,
+  },
+  {
+    id: uuidv4(),
+    enrollment_id: enrollmentIds[5],
+    amount: 300,
+    currency: "SIM",
+    status: "scheduled" as const,
+    scheduled_date: "2025-04-01",
+    paid_date: null,
     created_at: now,
     updated_at: now,
   },
