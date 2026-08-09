@@ -1,5 +1,5 @@
 import { readEvents, type SimulationEvent } from "./events.js";
-import { writeRunState, type SimulationRunState } from "./run-state.js";
+import { writeRunState, flushRunProgress, type SimulationRunState } from "./run-state.js";
 import { runEvents, type RunCounts, type ProgressSnapshot } from "./scheduler.js";
 import {
   createDeliveryQueue,
@@ -13,6 +13,11 @@ import { sleep, log, logError } from "../utils.js";
 
 /** Min ms between live progress log lines, so a big run isn't per-event noise. */
 const PROGRESS_LOG_INTERVAL_MS = 1000;
+
+/** How often live counts are flushed to the DB so the portal shows progress
+ * mid-run. A timer, not per-event: at 10k events/s a per-event write would
+ * hammer the single SQLite writer this whole change exists to relieve. */
+const RUN_STATE_FLUSH_MS = 1000;
 
 /** Run-scoped queue depth past which the pool is visibly losing the race with
  * the clock, and deliveries are going out late. */
@@ -94,6 +99,7 @@ export async function runWorker(
   process.on("SIGTERM", () => { stopped = true; });
 
   const transport = createTransport(id);
+  let flushTimer: ReturnType<typeof setInterval> | undefined;
 
   const finalize = async (status: SimulationRunState["status"], counts: RunCounts) => {
     await writeRunState(id, {
@@ -114,6 +120,7 @@ export async function runWorker(
     const runStart = Date.now();
     let lastProgressLog = 0;
     let lastDepthWarn = 0;
+    let latest: ProgressSnapshot | null = null;
 
     // The scheduler must never pause to let the pool catch up — that would
     // corrupt the schedule — so a pool losing the race can only be made visible.
@@ -127,6 +134,7 @@ export async function runWorker(
     };
 
     const onProgress = (s: ProgressSnapshot): void => {
+      latest = s;
       const now = Date.now();
       const done = s.delivered + s.skipped + s.failed;
       warnIfBehind(s, now);
@@ -141,6 +149,23 @@ export async function runWorker(
       );
     };
 
+    // Mirror the latest counts to the record the portal reads, on a timer, so a
+    // run shows live progress instead of jumping from 0 to done. No-ops until the
+    // first snapshot arrives, and after the record leaves `running`.
+    const flushLatest = async (): Promise<void> => {
+      if (!latest) return;
+      try {
+        await flushRunProgress(id, {
+          pid: process.pid, startedAt,
+          delivered: latest.delivered, skipped: latest.skipped, failed: latest.failed, total: latest.total,
+        });
+      } catch (err) {
+        // A transient DB write must not kill the run; the terminal write reconciles.
+        logError(`Simulation ${id}: live progress flush failed`, err);
+      }
+    };
+    flushTimer = setInterval(() => { void flushLatest(); }, RUN_STATE_FLUSH_MS);
+
     const { counts, stopped: wasStopped, enqueued, failedToEnqueue, maxLagMs, drainStalled } =
       await runEvents(
         events,
@@ -154,6 +179,10 @@ export async function runWorker(
           onProgress,
         },
       );
+    // Stop live flushes before the terminal write, so a late timer tick can't
+    // clobber the terminal row with a stale `running` mirror.
+    clearInterval(flushTimer);
+    flushTimer = undefined;
     // A stalled drain still finalizes: the counters are the best total available,
     // and leaving the row `running` forever is strictly worse than a short count.
     // runEvents has already logged which jobs never settled.
@@ -174,6 +203,7 @@ export async function runWorker(
     });
     logError(`Simulation ${id} crashed`, err);
   } finally {
+    if (flushTimer) clearInterval(flushTimer);
     await transport.close();
   }
 }

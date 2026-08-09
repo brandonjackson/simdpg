@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb, simulations, simulationRuns } from "./db.js";
 
 export interface SimulationRunState {
@@ -14,6 +14,70 @@ export interface SimulationRunState {
 }
 
 const TERMINAL: SimulationRunState["status"][] = ["completed", "stopped", "failed"];
+
+/** The counts a live progress flush carries — the terminal `stats` shape minus
+ * `error`, which only a terminal state has. */
+export interface RunProgress {
+  pid: number;
+  startedAt: string;
+  delivered: number;
+  skipped: number;
+  failed: number;
+  total: number;
+}
+
+/**
+ * Flush live counts mid-run so the portal shows progress before the run ends.
+ *
+ * With N workers no single process holds the counts, so the scheduler reads them
+ * from Redis and calls this on a ~1s timer. Two writes in one transaction:
+ *   - the worker-owned `simulation_runs` row keeps its authoritative running counts;
+ *   - the `simulations` record's `stats` blob is mirrored **only while the record
+ *     is still `running`**, because that blob is the single field the portal reads
+ *     for counts (`parseStats`). The `running` guard means a late flush can't
+ *     resurrect counts onto a record that already finished (the design doc's
+ *     "flush to `simulation_runs`, portal reads that row" is not how this portal
+ *     reads — it reads the record — so the mirror is what makes counts visible).
+ *
+ * Deliberately does not touch status or the terminal stamps — `writeRunState`
+ * owns those. Non-terminal, so it never writes `completed_at`/`stopped_at`.
+ */
+export async function flushRunProgress(id: string, progress: RunProgress): Promise<void> {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const stats = {
+    delivered: progress.delivered,
+    skipped: progress.skipped,
+    failed: progress.failed,
+    total: progress.total,
+  };
+
+  const runRow = {
+    simulation_id: id,
+    pid: progress.pid,
+    status: "running" as const,
+    started_at: progress.startedAt,
+    completed_at: null,
+    error: null,
+    delivered: progress.delivered,
+    skipped: progress.skipped,
+    failed: progress.failed,
+    total: progress.total,
+    updated_at: now,
+  };
+
+  db.transaction((tx) => {
+    tx.insert(simulationRuns)
+      .values(runRow)
+      .onConflictDoUpdate({ target: simulationRuns.simulation_id, set: runRow })
+      .run();
+
+    tx.update(simulations)
+      .set({ stats: JSON.stringify(stats), updated_at: now })
+      .where(and(eq(simulations.id, id), eq(simulations.status, "running")))
+      .run();
+  });
+}
 
 /**
  * Persist the worker's run-state to the shared SQLite database.

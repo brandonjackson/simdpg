@@ -129,15 +129,24 @@ pool is not tied to one host.
 
 ### Run-state aggregation
 
-Workers `INCR` Redis counters per outcome. The scheduler flushes those counters
-to the `simulation_runs` row on a ~1s timer and writes the terminal state at the
-end, reusing `writeRunState` unchanged. The existing `ProgressSnapshot` shape is
-kept, with `inFlight` reinterpreted as queue depth.
+Workers `INCR` Redis counters per outcome. The scheduler reads those counters and
+mirrors them, on a ~1s timer, onto the `simulations` record's `stats` blob —
+guarded to only write while the record is still `running`, so a late flush can't
+clobber a terminal row. `writeRunState` still writes the terminal state at the
+end unchanged; the live mirror is a separate `flushRunProgress`.
+
+The mirror targets the **record**, not the `simulation_runs` row, because the
+record's `stats` is the only field the portal reads for counts (`parseStats`);
+writing `simulation_runs` alone would leave the portal showing zero until the run
+finished. `flushRunProgress` keeps the `simulation_runs` counts current too, but
+that row is authoritative-for-the-worker, not a portal read path. The
+`ProgressSnapshot` carries run-scoped `depth` (published-minus-settled, since the
+shared queue's queue-wide depth can't isolate one run) and publish `lagMs`.
 
 Workers deliberately do **not** write SQLite. N processes contending on one
 writer would reintroduce `SQLITE_BUSY` at exactly the rate this change exists to
-scale. The portal reads the same row it reads today, so **no portal changes are
-required**.
+scale. Only the scheduler writes, to the same record the portal reads today, so
+**no portal changes are required**.
 
 ### Stop and failure
 
