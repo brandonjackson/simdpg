@@ -1,5 +1,7 @@
 import { beginBehavior } from "./behavior.js";
 import { readEvents, type SimulationEvent } from "./events.js";
+import { closeRedis } from "./redis.js";
+import { createRunControl } from "./run-control.js";
 import { writeRunState, type SimulationRunState } from "./run-state.js";
 import {
   runEvents,
@@ -46,8 +48,23 @@ export async function runWorker(id: string): Promise<void> {
     return;
   }
 
+  // Stopping is a signal to this pid, but the work may not be in this process:
+  // the pool holds it. So SIGTERM raises a flag every worker can see, and this
+  // process stops publishing. See run-control.ts.
+  const runControl = createRunControl();
+  // A previous run of this simulation may have been stopped; clear its flag
+  // before publishing anything, or the pool would drop this run's jobs too.
+  await runControl.clearStopped(id);
+
   let stopped = false;
-  process.on("SIGTERM", () => { stopped = true; });
+  let stopPublished: Promise<void> = Promise.resolve();
+  const onSigterm = (): void => {
+    if (stopped) return;
+    stopped = true;
+    log(`Simulation ${id}: stop requested — cancelling queued deliveries`);
+    stopPublished = runControl.markStopped(id);
+  };
+  process.on("SIGTERM", onSigterm);
 
   await writeRunState(id, {
     pid: process.pid, status: "running", startedAt,
@@ -93,6 +110,10 @@ export async function runWorker(id: string): Promise<void> {
       { now: Date.now, sleep, fetch, shouldStop: () => stopped, onProgress },
       { maxConcurrency },
     );
+    // Only claim the run is stopped once the flag is durable — a worker popping
+    // a job after this point must see it and drop the delivery. The counts are
+    // whatever the run reached, so `stopped` records accurate partial totals.
+    await stopPublished;
     await finalize(wasStopped ? "stopped" : "completed", counts);
     log(
       `Simulation ${id}: ${wasStopped ? "stopped" : "completed"} ` +
@@ -109,5 +130,9 @@ export async function runWorker(id: string): Promise<void> {
     // However the run ended — completed, stopped, or crashed — the systems go
     // back to behaving normally.
     await endBehavior();
+    process.off("SIGTERM", onSigterm);
+    // The stop flag deliberately outlives this process (queued jobs still need
+    // to see it); only the connection is released, so the process can exit.
+    await closeRedis();
   }
 }
