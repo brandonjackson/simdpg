@@ -132,3 +132,53 @@ export async function runEvents(
   await Promise.all(pending);
   return { counts, stopped, peakConcurrency };
 }
+
+export interface PublishDeps {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+  shouldStop: () => boolean;
+  /** Hand one event to the queue. Awaited, so backpressure is Redis's round trip. */
+  publish: (event: SimulationEvent) => Promise<void>;
+}
+
+export interface PublishResult {
+  /** Events handed to the queue — the denominator the drain waits on. */
+  enqueued: number;
+  stopped: boolean;
+  /** Worst observed gap between an event's scheduled moment and its enqueue. */
+  maxLagMs: number;
+}
+
+/**
+ * Queued counterpart to runEvents: walk the schedule and enqueue each event at
+ * its moment, delivering nothing itself.
+ *
+ * There is no concurrency cap here — pool concurrency (replicas × per-worker
+ * concurrency) replaces it. The loop must never pause to let the pool catch up,
+ * because pausing corrupts the schedule; when the pool lags, the queue grows and
+ * `maxLagMs` records it so the shortfall is visible rather than silent.
+ */
+export async function publishEvents(
+  events: SimulationEvent[],
+  startMs: number,
+  deps: PublishDeps,
+): Promise<PublishResult> {
+  const ordered = [...events].sort((a, b) => a.scheduledMicros - b.scheduledMicros);
+  let enqueued = 0;
+  let maxLagMs = 0;
+  let stopped = false;
+
+  for (const event of ordered) {
+    if (deps.shouldStop()) { stopped = true; break; }
+    const targetMs = startMs + event.scheduledMicros / 1000;
+    const waitMs = targetMs - deps.now();
+    if (waitMs > 0) await deps.sleep(waitMs);
+    if (deps.shouldStop()) { stopped = true; break; }
+
+    maxLagMs = Math.max(maxLagMs, deps.now() - targetMs);
+    await deps.publish(event);
+    enqueued += 1;
+  }
+
+  return { enqueued, stopped, maxLagMs };
+}

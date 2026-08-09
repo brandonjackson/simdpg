@@ -22,6 +22,7 @@ Systems communicate only via HTTP — no shared databases.
 
 Simulation Engine
   └── Generates synthetic population, replays life events through system APIs
+  └── Delivers a run's events through a Redis-backed worker pool (docker compose)
 ```
 
 ## Quick Start
@@ -386,6 +387,67 @@ While a run is in progress its detail page shows what each system is doing and h
 many requests were delayed, failed, or throttled, with a **Reset all systems to
 default** button for the rare case where a run ended without clearing up.
 
+### Delivering events through a worker pool
+
+A run must sustain thousands of webhook deliveries per second, and one Node
+process tops out around 1–2k. So delivery is split in two — see
+[the design](docs/specs/2026-07-19-queued-event-delivery-design.md):
+
+```
+Portal ──spawns──► Scheduler (1 per run)      ┌──► sim-worker 1 ─┐
+                     ├─ owns the clock        │                  │
+                     ├─ enqueues each event ──┼──► sim-worker 2 ─┼──► OpenFn
+                     │      at its moment     │        …         │    webhooks
+                     └─ sums Redis counters   └──► sim-worker 8 ─┘
+                            ↓
+                      simulation_runs (SQLite)
+```
+
+The scheduler owns timing and nothing else; the workers own HTTP and nothing
+else. Workers are stateless and interchangeable — jobs carry their own
+`simulationId`, so a worker needs no volume and no per-run setup. Only the
+scheduler writes SQLite, which is what keeps eight processes off one writer.
+
+**It is off unless `REDIS_URL` is set.** `npm run dev` has no Redis, so a run
+there delivers in-process exactly as before. `docker compose up` sets it, and
+starts Redis plus eight workers:
+
+```bash
+docker compose up                       # + redis + 8 × sim-worker
+docker compose up --scale sim-worker=4  # or fewer
+```
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `REDIS_URL` | Redis to queue through. **Unset = in-process delivery.** | unset |
+| `SIM_WORKER_CONCURRENCY` | Deliveries in flight per worker process | `200` |
+| `SIM_DELIVERY_TIMEOUT_MS` | Per-POST abort timeout | `15000` |
+| `SIM_DRAIN_TIMEOUT_MS` | How long the scheduler waits for the pool to finish | `60000` |
+| `SIM_QUEUE_NAME` | Queue name, for running two stacks against one Redis | `sim:deliveries` |
+
+Stop still works the way it always did: the portal SIGTERMs the scheduler, which
+sets a Redis stop flag; workers drop anything still queued for that run rather
+than POSTing it.
+
+#### Measuring what the pool actually does
+
+`replicas: 8` is a starting guess, not a tuned number. To re-measure before
+changing it:
+
+```bash
+docker build -t simdpg:latest .
+docker compose up -d redis sim-worker
+docker compose --profile bench up -d sim-mock-webhook
+REDIS_URL=redis://127.0.0.1:6379 npm run sim:bench -w @simdpg/simulation
+```
+
+It prints two rates, and the gap between them is the whole story: the **enqueue
+rate** is what the scheduler's `setTimeout` loop can publish, and the **delivery
+rate** is what the pool drained. Expect the enqueue rate to cap near 1–2k/sec on
+Node's ~1ms timer floor however many workers idle — that ceiling is the pool's
+real limit today, and closing it is phase 2 (time bucketing + `addBulk`), not
+more replicas.
+
 ## Scripts
 
 | Command | Description |
@@ -399,6 +461,8 @@ default** button for the rare case where a run ended without clearing up.
 | `npm run lint` | Validate all systems' OpenAPI specs (`redocly lint`) |
 | `npm run check:routes` | Verify each app's routes match its OpenAPI spec |
 | `npm run test` | Run tests across all workspaces |
+| `npm run sim:worker -w @simdpg/simulation` | Join the delivery pool (needs `REDIS_URL`) |
+| `npm run sim:bench -w @simdpg/simulation` | Measure the pool's achieved deliveries/sec |
 
 ## Tech Stack
 

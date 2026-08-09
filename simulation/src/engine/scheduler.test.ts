@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { deliver, runEvents, type DeliveryDeps } from "./scheduler.js";
+import { deliver, runEvents, publishEvents, type DeliveryDeps } from "./scheduler.js";
 import type { SimulationEvent } from "./events.js";
 
 interface FetchOptions {
@@ -161,5 +161,80 @@ describe("runEvents", () => {
     releaseFirst();
     const { counts } = await run;
     expect(counts.delivered).toBe(2);
+  });
+});
+
+describe("publishEvents", () => {
+  /** A fake queue: records what was enqueued and at what fake-clock instant. */
+  function fakeQueue() {
+    const jobs: { id: string; at: number }[] = [];
+    let clock = 0;
+    return {
+      jobs,
+      deps: (over: Partial<Parameters<typeof publishEvents>[2]> = {}) => ({
+        now: () => clock,
+        sleep: async (ms: number) => { clock += ms; },
+        shouldStop: () => false,
+        publish: async (event: SimulationEvent) => { jobs.push({ id: event.id, at: clock }); },
+        ...over,
+      }),
+    };
+  }
+
+  it("enqueues every event in scheduledMicros order, at its scheduled moment", async () => {
+    const q = fakeQueue();
+    const events = [
+      ev({ id: "c", scheduledMicros: 30_000 }),
+      ev({ id: "a", scheduledMicros: 10_000 }),
+      ev({ id: "b", scheduledMicros: 20_000 }),
+    ];
+    const result = await publishEvents(events, 0, q.deps());
+    expect(q.jobs).toEqual([
+      { id: "a", at: 10 },
+      { id: "b", at: 20 },
+      { id: "c", at: 30 },
+    ]);
+    expect(result).toMatchObject({ enqueued: 3, stopped: false });
+  });
+
+  it("enqueues an event whose targetUrl is null — the worker decides to skip", async () => {
+    const q = fakeQueue();
+    await publishEvents([ev({ id: "x", targetUrl: null })], 0, q.deps());
+    expect(q.jobs.map((j) => j.id)).toEqual(["x"]);
+  });
+
+  it("stops publishing when asked, leaving the rest unqueued", async () => {
+    const q = fakeQueue();
+    let stop = false;
+    const events = [
+      ev({ id: "a", scheduledMicros: 0 }),
+      ev({ id: "b", scheduledMicros: 1000 }),
+      ev({ id: "c", scheduledMicros: 2000 }),
+    ];
+    const result = await publishEvents(
+      events,
+      0,
+      q.deps({ publish: async (e: SimulationEvent) => { q.jobs.push({ id: e.id, at: 0 }); stop = true; }, shouldStop: () => stop }),
+    );
+    expect(q.jobs.map((j) => j.id)).toEqual(["a"]);
+    expect(result).toMatchObject({ enqueued: 1, stopped: true });
+  });
+
+  it("reports lag instead of pausing when enqueueing runs late", async () => {
+    // Publishing itself costs 5ms of fake clock while events are 1ms apart, so
+    // the loop falls behind. It must keep going — pausing would corrupt the
+    // schedule — and surface the lag.
+    let clock = 0;
+    const events = Array.from({ length: 4 }, (_, i) =>
+      ev({ id: String(i), scheduledMicros: i * 1000 }),
+    );
+    const result = await publishEvents(events, 0, {
+      now: () => clock,
+      sleep: async (ms: number) => { clock += ms; },
+      shouldStop: () => false,
+      publish: async () => { clock += 5; },
+    });
+    expect(result.enqueued).toBe(4);
+    expect(result.maxLagMs).toBeGreaterThan(0);
   });
 });

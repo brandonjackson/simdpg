@@ -7,6 +7,8 @@ import {
   type RunCounts,
   type ProgressSnapshot,
 } from "./scheduler.js";
+import { queueingEnabled, workerConcurrency } from "./queue.js";
+import { runQueuedDelivery } from "./queued-run.js";
 import { sleep, log, logError } from "../utils.js";
 
 /** Concurrent deliveries allowed; override with SIM_MAX_CONCURRENCY. */
@@ -53,7 +55,13 @@ export async function runWorker(id: string): Promise<void> {
     pid: process.pid, status: "running", startedAt,
     delivered: 0, skipped: 0, failed: 0, total: events.length,
   });
-  log(`Simulation ${id}: running ${events.length} events (cap ${maxConcurrencyFromEnv()})`);
+  const queued = queueingEnabled();
+  log(
+    queued
+      ? `Simulation ${id}: running ${events.length} events via the delivery pool ` +
+          `(per-worker concurrency ${workerConcurrency()})`
+      : `Simulation ${id}: running ${events.length} events (cap ${maxConcurrencyFromEnv()})`,
+  );
 
   const finalize = async (status: SimulationRunState["status"], counts: RunCounts) => {
     await writeRunState(id, {
@@ -72,6 +80,8 @@ export async function runWorker(id: string): Promise<void> {
   const maxConcurrency = maxConcurrencyFromEnv();
   const runStart = Date.now();
   let lastProgressLog = 0;
+  // In queued mode `inFlight` is queue depth, not local sockets — same shape,
+  // reinterpreted, so the portal reads the snapshot it always has.
   const onProgress = (s: ProgressSnapshot): void => {
     const now = Date.now();
     const done = s.delivered + s.skipped + s.failed;
@@ -79,25 +89,53 @@ export async function runWorker(id: string): Promise<void> {
     if (now - lastProgressLog < PROGRESS_LOG_INTERVAL_MS && s.inFlight > 0) return;
     lastProgressLog = now;
     const secs = ((now - runStart) / 1000).toFixed(1);
+    const load = queued
+      ? `queued ${s.inFlight} (peak ${s.peakConcurrency})`
+      : `in-flight ${s.inFlight}/${maxConcurrency} (peak ${s.peakConcurrency})`;
     log(
-      `Simulation ${id} [+${secs}s]: in-flight ${s.inFlight}/${maxConcurrency} ` +
-        `(peak ${s.peakConcurrency}) — delivered ${s.delivered}, skipped ${s.skipped}, ` +
-        `failed ${s.failed} of ${s.total} (${done}/${s.total} done)`,
+      `Simulation ${id} [+${secs}s]: ${load} — delivered ${s.delivered}, ` +
+        `skipped ${s.skipped}, failed ${s.failed} of ${s.total} (${done}/${s.total} done)`,
     );
   };
 
   try {
-    const { counts, stopped: wasStopped, peakConcurrency } = await runEvents(
-      events,
-      runStart,
-      { now: Date.now, sleep, fetch, shouldStop: () => stopped, onProgress },
-      { maxConcurrency },
-    );
-    await finalize(wasStopped ? "stopped" : "completed", counts);
-    log(
-      `Simulation ${id}: ${wasStopped ? "stopped" : "completed"} ` +
-        `(peak concurrency ${peakConcurrency}/${maxConcurrency})`,
-    );
+    if (queued) {
+      const result = await runQueuedDelivery({
+        simulationId: id,
+        events,
+        startMs: runStart,
+        shouldStop: () => stopped,
+        // Flushing pool counters to SQLite is the scheduler's job alone; the
+        // workers never touch the database.
+        onFlush: async (s) => {
+          onProgress(s);
+          await writeRunState(id, {
+            pid: process.pid, status: "running", startedAt,
+            delivered: s.delivered, skipped: s.skipped, failed: s.failed, total: s.total,
+          });
+        },
+      });
+      await finalize(result.stopped ? "stopped" : "completed", result.counts);
+      const elapsed = (Date.now() - runStart) / 1000;
+      const done = result.counts.delivered + result.counts.skipped + result.counts.failed;
+      log(
+        `Simulation ${id}: ${result.stopped ? "stopped" : "completed"} in ${elapsed.toFixed(1)}s ` +
+          `(${(done / Math.max(elapsed, 0.001)).toFixed(0)} deliveries/sec, ` +
+          `peak queue depth ${result.peakQueueDepth}, max schedule lag ${result.maxLagMs.toFixed(0)}ms)`,
+      );
+    } else {
+      const { counts, stopped: wasStopped, peakConcurrency } = await runEvents(
+        events,
+        runStart,
+        { now: Date.now, sleep, fetch, shouldStop: () => stopped, onProgress },
+        { maxConcurrency },
+      );
+      await finalize(wasStopped ? "stopped" : "completed", counts);
+      log(
+        `Simulation ${id}: ${wasStopped ? "stopped" : "completed"} ` +
+          `(peak concurrency ${peakConcurrency}/${maxConcurrency})`,
+      );
+    }
   } catch (err) {
     await writeRunState(id, {
       pid: process.pid, status: "failed", startedAt, completedAt: new Date().toISOString(),

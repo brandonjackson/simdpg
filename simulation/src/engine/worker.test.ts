@@ -49,6 +49,9 @@ beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "sim-worker-"));
   process.env.SIM_DATA_DIR = dir;
   delete process.env.PORTAL_DB_FILE;
+  // These cover the in-process delivery path; REDIS_URL would switch the worker
+  // to the pool, so a developer's ambient Redis must not change what runs here.
+  delete process.env.REDIS_URL;
   vi.resetModules();
 });
 afterEach(async () => {

@@ -11,13 +11,18 @@
     "sim:year": "tsx src/index.ts year",
     "sim:scale": "tsx src/index.ts scale",
     "sim:apply": "tsx src/index.ts apply",
-    "sim:run": "tsx src/index.ts run"
+    "sim:run": "tsx src/index.ts run",
+    "sim:worker": "tsx src/index.ts worker",
+    "sim:bench": "tsx src/index.ts bench",
+    "sim:mock-webhook": "tsx src/mock-webhook.ts"
   },
   "dependencies": {
     "@simdpg/api-clients": "*",
     "@simdpg/system-kit": "*",
     "better-sqlite3": "^11.0.0",
-    "drizzle-orm": "^0.36.0"
+    "bullmq": "^5.34.0",
+    "drizzle-orm": "^0.36.0",
+    "ioredis": "^5.4.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",

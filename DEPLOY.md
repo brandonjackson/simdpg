@@ -15,6 +15,7 @@ monorepo once. It runs **one** workspace per container, selected two ways:
 | `SEED_CMD`   | (compose) seed the DB **once** on a fresh volume (systems only)  | `npm run db:seed -w @simdpg/identity`|
 | `PORT`       | Port to listen on (compose sets 3001–3007; Railway injects 8080) | `3001` … `3007`                      |
 | `*_URL`      | Override a system's URL; auto-derived otherwise                  | see below                            |
+| `REDIS_URL`  | Queue simulation deliveries through the worker pool. **Unset = in-process delivery** | `redis://redis:6379` |
 
 Systems are independent (they don't call each other — they only emit webhooks
 to an optional `WEBHOOK_URL`), so only the portal needs to reach the systems —
@@ -31,7 +32,7 @@ this avoids rebuilding the image per service:
 
 ```bash
 docker build -t simdpg:latest .   # build the shared image once
-docker compose up                 # start all 7 systems + portal (reuses the image)
+docker compose up                 # 7 systems + portal + redis + 8 workers (reuses the image)
 ```
 
 - Portal: http://localhost:3000  •  Systems: http://localhost:3001–3007 (`/health`, `/docs`)
@@ -57,6 +58,58 @@ So benefit programmes have **stable, hard-coded IDs** and are re-created on
 every server start, not just by the seed — see
 `systems/benefits/src/db/reference-data.ts`. Any future reference data should
 follow the same pattern rather than relying on the seed to be there.
+
+### The simulation delivery pool
+
+`docker compose up` also starts `redis` and **eight `sim-worker` replicas**. They
+consume one queue (`sim:deliveries`) and POST a run's events to the registered
+OpenFn webhooks, so a run's throughput scales with the pool instead of being
+bounded by one process's event loop. Workers are stateless: no ports, no volume,
+no per-run state, so `--scale sim-worker=N` is the only knob.
+
+The portal is what turns this on. It passes its own `REDIS_URL` to the scheduler
+it spawns, and the scheduler queues only when that variable is set — so **Railway,
+which has no Redis, keeps delivering in-process** with no configuration and no
+code path to remember.
+
+| Variable | Purpose | Default |
+| -------- | ------- | ------- |
+| `SIM_WORKER_CONCURRENCY` | Deliveries in flight per worker process | `200` |
+| `SIM_DELIVERY_TIMEOUT_MS` | Per-POST abort timeout | `15000` |
+| `SIM_DRAIN_TIMEOUT_MS` | How long the scheduler waits for the pool after the last enqueue | `60000` |
+| `SIM_QUEUE_NAME` | Queue name, to isolate two stacks sharing one Redis | `sim:deliveries` |
+
+Redis runs with persistence off (`--save "" --appendonly no`) on purpose: the
+queue holds a run's in-flight deliveries, which are worthless once the run ends,
+so an fsync per job would buy nothing.
+
+**`replicas: 8` is a starting guess, not a tuned value.** It was derived from a
+measured ~1–2k deliveries/sec per Node process against a 10k/sec target. Before
+changing it, measure — the harness is in the repo:
+
+```bash
+docker compose up -d redis sim-worker
+docker compose --profile bench up -d sim-mock-webhook    # target the workers can reach
+REDIS_URL=redis://127.0.0.1:6379 npm run sim:bench -w @simdpg/simulation
+```
+
+It reports the **enqueue rate** (what the scheduler published) and the
+**delivery rate** (what the pool drained). If the two are close and both sit near
+1–2k/sec, adding replicas will not help: the scheduler still arms one
+`setTimeout` per event and is pinned to Node's ~1ms timer floor. That ceiling is
+removed by the phase 2 time-bucketing work, not by a bigger pool. Raise replicas
+only when the delivery rate trails the enqueue rate and queue depth is growing —
+the scheduler logs that as `queue depth N — the pool is behind the schedule`.
+
+`docker compose up -d redis` on its own is also what the pool's integration test
+needs:
+
+```bash
+docker compose up -d redis
+REDIS_URL=redis://127.0.0.1:6379 npm run test -w @simdpg/simulation
+```
+
+Without `REDIS_URL` those tests skip, so the default `npm test` needs no Redis.
 
 > **Don't use `docker compose up --build` unless you have the Buildx/BuildKit
 > plugin.** With BuildKit, Compose builds the shared image once. With Docker's

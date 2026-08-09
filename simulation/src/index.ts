@@ -6,6 +6,8 @@
  *   year      - Simulate one year of life events
  *   scale     - Run at scale with configurable parameters
  *   apply     - Submit national ID applications through the OpenFn workflow
+ *   run       - Execute a generated simulation (spawned by the portal)
+ *   worker    - Join the delivery pool and consume queued deliveries
  *
  * Environment variables:
  *   POPULATION_SIZE    - Target population size (default: 100)
@@ -24,6 +26,7 @@ import { generate, configFromEnv } from "./generate.js";
 import { runYear, runScale, yearConfigFromEnv, scaleConfigFromEnv } from "./run.js";
 import { runApplications, applyConfigFromEnv } from "./events/application.js";
 import { runWorker } from "./engine/worker.js";
+import { runDeliveryPool } from "./engine/delivery-worker.js";
 import { log, logError } from "./utils.js";
 
 const command = process.argv[2];
@@ -65,6 +68,16 @@ async function main(): Promise<void> {
       await runWorker(id);
       break;
     }
+    case "worker": {
+      // Long-lived member of the delivery pool (the `sim-worker` container).
+      await runDeliveryPool();
+      break;
+    }
+    case "bench": {
+      const { runBenchmark } = await import("./bench.js");
+      await runBenchmark();
+      break;
+    }
     default:
       log("Usage: tsx src/index.ts <command>");
       log("");
@@ -73,6 +86,8 @@ async function main(): Promise<void> {
       log("  year      - Simulate one year of life events");
       log("  scale     - Run at scale with configurable parameters");
       log("  apply     - Submit national ID applications through the OpenFn workflow");
+      log("  run       - Execute a generated simulation by id");
+      log("  worker    - Join the delivery pool (needs REDIS_URL)");
       log("");
       log("Environment variables:");
       log("  POPULATION_SIZE    - Target population size (default: 100)");

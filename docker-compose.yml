@@ -1,7 +1,7 @@
 # SimDPG — production-like local stack.
 #
 #   docker build -t simdpg:latest .   build the shared image ONCE
-#   docker compose up                 start all systems + portal (reuses image)
+#   docker compose up                 start all systems + portal + delivery pool
 #   docker compose down               stop (data volumes preserved)
 #   docker compose down -v            stop and wipe all SQLite data
 #
@@ -24,6 +24,53 @@ x-app: &app
     dockerfile: Dockerfile
 
 services:
+  # Work queue for simulation event delivery. In-memory only: the queue holds a
+  # run's in-flight deliveries, which are worthless once the run is over, so
+  # persistence would only cost fsyncs on the hot path.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # The delivery pool. Stateless and interchangeable — no volume, no ports, no
+  # per-run state (jobs carry their own simulationId), so scaling is just
+  # `--scale sim-worker=N`. Workers never write SQLite; the scheduler flushes
+  # their Redis counters, which is what keeps N processes off one writer.
+  #
+  # replicas: 8 comes from a measured ~1–2k deliveries/sec per Node process
+  # against the 10k target. It is a starting guess, not a tuned value — see
+  # DEPLOY.md for how to re-measure before changing it.
+  sim-worker:
+    <<: *app
+    environment:
+      SERVICE_DIR: simulation
+      START_CMD: node dist/index.js worker
+      REDIS_URL: redis://redis:6379
+      SIM_WORKER_CONCURRENCY: 200
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 8
+
+  # Benchmark target for `npm run sim:bench` (profile: bench, so a normal
+  # `docker compose up` never starts it). It lives in compose rather than on the
+  # host because the workers — in containers — have to be able to reach it.
+  sim-mock-webhook:
+    <<: *app
+    profiles: ["bench"]
+    environment:
+      SERVICE_DIR: simulation
+      START_CMD: node dist/mock-webhook.js
+      PORT: 3010
+      MOCK_LATENCY_MS: 0
+    ports: ["3010:3010"]
+
   identity:
     <<: *app
     environment:
@@ -105,9 +152,14 @@ services:
       NOTIFICATIONS_URL: http://notifications:3005
       PAYMENTS_URL: http://payments:3006
       SOCIAL_REGISTRY_URL: http://social-registry:3007
+      # Setting this is what switches a run's delivery from in-process POSTs to
+      # the worker pool. The portal passes it through to the scheduler it spawns.
+      REDIS_URL: redis://redis:6379
     ports: ["3000:3000"]
     volumes: ["portal-data:/app/portal/data"]
     depends_on:
+      redis:
+        condition: service_healthy
       identity:
         condition: service_healthy
       civil-registry:
