@@ -196,10 +196,20 @@ export async function runWorker(
         `)`,
     );
   } catch (err) {
+    // Preserve the counts the pool already recorded rather than zeroing them: a
+    // crash late in a run (e.g. an enqueue failure after 900 delivered) would
+    // otherwise hide the real toll. readCounts may itself throw if Redis is the
+    // crash cause — fall back to zeros so this path stays never-throwing.
+    let counts = { delivered: 0, skipped: 0, failed: 0 };
+    try {
+      counts = await transport.readCounts();
+    } catch (readErr) {
+      logError(`Simulation ${id}: could not read counts after crash`, readErr);
+    }
     await writeRunState(id, {
       pid: process.pid, status: "failed", startedAt, completedAt: new Date().toISOString(),
       error: err instanceof Error ? err.message : String(err),
-      delivered: 0, skipped: 0, failed: 0, total: events.length,
+      delivered: counts.delivered, skipped: counts.skipped, failed: counts.failed, total: events.length,
     });
     logError(`Simulation ${id} crashed`, err);
   } finally {

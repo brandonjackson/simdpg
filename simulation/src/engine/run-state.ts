@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb, simulations, simulationRuns } from "./db.js";
 
 export interface SimulationRunState {
@@ -44,6 +44,14 @@ export interface RunProgress {
  */
 export async function flushRunProgress(id: string, progress: RunProgress): Promise<void> {
   const db = getDb();
+  // Bail unless the record is still `running`. Both the mirror onto `simulations`
+  // and the upsert into `simulation_runs` are gated on this, so a late flush
+  // (the portal stamped `stopped` between a worker's flush macro-task and its
+  // terminal write) can neither resurrect `simulation_runs` to `running` nor
+  // clobber the terminal record — the two windows would otherwise diverge.
+  const row = db.select({ status: simulations.status }).from(simulations).where(eq(simulations.id, id)).get();
+  if (!row || row.status !== "running") return;
+
   const now = new Date().toISOString();
   const stats = {
     delivered: progress.delivered,
@@ -74,7 +82,7 @@ export async function flushRunProgress(id: string, progress: RunProgress): Promi
 
     tx.update(simulations)
       .set({ stats: JSON.stringify(stats), updated_at: now })
-      .where(and(eq(simulations.id, id), eq(simulations.status, "running")))
+      .where(eq(simulations.id, id))
       .run();
   });
 }
