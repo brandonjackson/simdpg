@@ -16,6 +16,15 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true });
 });
 
+/**
+ * Path helpers only. These are pure, and resolving one must not open (or create
+ * a directory for) the database it names — a path assertion has to be able to
+ * name a location this process can't write to.
+ */
+async function loadPaths() {
+  return import("./paths.js");
+}
+
 /** Fresh modules per test, so each gets its own database in its own tempdir. */
 async function load() {
   const [events, paths, db] = await Promise.all([
@@ -28,19 +37,19 @@ async function load() {
 
 describe("paths", () => {
   it("resolves the shared sqlite db under data/ in SIM_DATA_DIR", async () => {
-    const { simDbPath } = await load();
+    const { simDbPath } = await loadPaths();
     expect(simDbPath()).toBe(path.join(dir, "data", "simulations.sqlite"));
   });
 
   it("honours PORTAL_DB_FILE as an explicit override", async () => {
     process.env.PORTAL_DB_FILE = "/mnt/vol/portal.sqlite";
-    const { simDbPath } = await load();
+    const { simDbPath } = await loadPaths();
     expect(simDbPath()).toBe("/mnt/vol/portal.sqlite");
     delete process.env.PORTAL_DB_FILE;
   });
 
   it("resolves the pre-database events file under .simulations", async () => {
-    const { eventsFilePath } = await load();
+    const { eventsFilePath } = await loadPaths();
     expect(eventsFilePath("abc")).toBe(
       path.join(dir, ".simulations", "abc.events.json"),
     );
