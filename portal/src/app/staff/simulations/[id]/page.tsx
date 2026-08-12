@@ -35,6 +35,23 @@ interface SystemBehaviorResponse {
   error?: string;
 }
 
+interface CopyResponse {
+  simulation?: SimulationRecord;
+  /** True when a re-run's copy was generated and is now running. */
+  started?: boolean;
+  error?: string;
+}
+
+/**
+ * Whether this simulation has had its turn: the copy of a finished run is a
+ * re-run, while the copy of one still waiting is just a copy. A run in progress
+ * counts as unfinished — starting a second one alongside it would have both
+ * fighting over the same systems, so it is offered as a plain copy.
+ */
+function hasFinished(status: SimulationStatus): boolean {
+  return status === "stopped" || status === "completed" || status === "failed";
+}
+
 /**
  * A run's behaviour config. Runs created before system behaviour existed have no
  * block; those left the systems alone, so they read as off.
@@ -204,6 +221,9 @@ export default function SimulationDetails({ params }: PageProps) {
     null,
   );
   const [resettingBehavior, setResettingBehavior] = useState(false);
+  // Set when a re-run's copy was created but generating or starting it failed.
+  // The copy is saved, so the page links to it instead of losing the settings.
+  const [strandedCopyId, setStrandedCopyId] = useState<string | null>(null);
 
   // Derived early because the polling effect below keys off it.
   const behaviorConfig = simulation ? behaviorOf(simulation) : BEHAVIOR_OFF;
@@ -303,6 +323,7 @@ export default function SimulationDetails({ params }: PageProps) {
 
   async function runAction(action: "generate" | "start" | "stop") {
     setError(null);
+    setStrandedCopyId(null);
     setActing(action);
 
     try {
@@ -323,12 +344,52 @@ export default function SimulationDetails({ params }: PageProps) {
   }
 
   /**
+   * Copy this simulation's settings into a new simulation. `start` also generates
+   * and starts the copy, which is what Re-run does for a finished run. Either way
+   * the copy is a different simulation, so its own page is where the run controls
+   * and its stats live — go there once it exists.
+   */
+  async function copyRun(start: boolean) {
+    setError(null);
+    setStrandedCopyId(null);
+    setActing(start ? "rerun" : "copy");
+
+    try {
+      const res = await fetch(`/api/simulations/${params.id}/copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ start }),
+      });
+      const data = (await res.json()) as CopyResponse;
+      if (!res.ok || !data.simulation) {
+        throw new Error(data.error || "Could not copy simulation");
+      }
+      if (data.error) {
+        // The copy exists but could not be run — usually because generation could
+        // not reach the systems. Report it here rather than navigating to a page
+        // that would only show an unexplained "Created".
+        setStrandedCopyId(data.simulation.id);
+        throw new Error(data.error);
+      }
+      window.location.href = `/staff/simulations/${data.simulation.id}`;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : `Could not ${start ? "re-run" : "copy"} simulation`,
+      );
+      setActing(null);
+    }
+  }
+
+  /**
    * Put the systems back to their defaults by hand. The worker does this itself
    * when a run ends, and each system expires its config anyway — this is for the
    * case where a worker was killed before it could.
    */
   async function resetSystemBehavior() {
     setError(null);
+    setStrandedCopyId(null);
     setResettingBehavior(true);
 
     try {
@@ -398,6 +459,18 @@ export default function SimulationDetails({ params }: PageProps) {
           <h2 className="govuk-error-summary__title">There is a problem</h2>
           <ul className="govuk-error-summary__list">
             <li>{error}</li>
+            {strandedCopyId && (
+              <li>
+                The copy was saved with these settings.{" "}
+                <a
+                  className="govuk-link"
+                  href={`/staff/simulations/${strandedCopyId}`}
+                >
+                  Open {shortId(strandedCopyId)}
+                </a>{" "}
+                to try again once the problem is fixed.
+              </li>
+            )}
           </ul>
         </div>
       )}
@@ -449,12 +522,52 @@ export default function SimulationDetails({ params }: PageProps) {
             </button>
           )}
 
-          {(simulation.status === "stopped" ||
-            simulation.status === "completed" ||
-            simulation.status === "failed") && (
+          {hasFinished(simulation.status) && (
             <div className="govuk-inset-text">
               The simulation has finished running. See the stats below.
             </div>
+          )}
+
+          {/* Copy the settings into a new simulation. A finished run gets
+              Re-run, which also generates and starts the copy; anything else
+              gets a plain copy, since there is nothing to repeat yet. */}
+          {hasFinished(simulation.status) ? (
+            <>
+              <button
+                type="button"
+                className="govuk-button"
+                onClick={() => copyRun(true)}
+                disabled={acting !== null}
+              >
+                {acting === "rerun" ? "Re-running..." : "Re-run"}
+              </button>
+              <p className="govuk-hint">
+                Runs these settings again as a new simulation. Its events are
+                generated fresh from the population and webhook URLs registered
+                now, so it repeats the configuration rather than replaying this
+                run&rsquo;s events. This run and its stats are left as they are.
+              </p>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="govuk-button govuk-button--secondary"
+                onClick={() => copyRun(false)}
+                disabled={acting !== null}
+                // Sits beside whichever control this status offers — Generate,
+                // Start, or Stop, each of which always renders above.
+                style={{ marginLeft: 10 }}
+              >
+                {acting === "copy" ? "Copying..." : "Copy"}
+              </button>
+              <p className="govuk-hint">
+                Creates a new simulation with these settings, ready to generate
+                and start.
+                {simulation.status === "running" &&
+                  " This run keeps going — the copy is not started, so the two do not compete for the systems."}
+              </p>
+            </>
           )}
 
           {behaviorEnabled && (
@@ -679,6 +792,22 @@ export default function SimulationDetails({ params }: PageProps) {
               <dt className="govuk-summary-list__key">Simulation ID</dt>
               <dd className="govuk-summary-list__value">{simulation.id}</dd>
             </div>
+            {/* Only set when this simulation came from Copy or Re-run. The source
+                may have been deleted since, so the link can 404 — that is better
+                than hiding where the settings came from. */}
+            {simulation.parameters.copiedFrom && (
+              <div className="govuk-summary-list__row">
+                <dt className="govuk-summary-list__key">Copied from</dt>
+                <dd className="govuk-summary-list__value">
+                  <a
+                    className="govuk-link"
+                    href={`/staff/simulations/${simulation.parameters.copiedFrom}`}
+                  >
+                    {shortId(simulation.parameters.copiedFrom)}
+                  </a>
+                </dd>
+              </div>
+            )}
             {/* The project's name is snapshotted at creation, so a renamed or
                 deleted project still reads correctly here. Runs created before
                 projects existed have neither field. */}
@@ -776,9 +905,7 @@ export default function SimulationDetails({ params }: PageProps) {
             </div>
           </dl>
 
-          {(simulation.status === "stopped" ||
-            simulation.status === "completed" ||
-            simulation.status === "failed") && (
+          {hasFinished(simulation.status) && (
             <>
               <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
               <h2 className="govuk-heading-l">Stats</h2>

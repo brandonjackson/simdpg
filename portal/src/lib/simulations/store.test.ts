@@ -150,6 +150,106 @@ describe("transitions", () => {
   });
 });
 
+describe("copySimulation", () => {
+  const PROJECT = { id: "default", name: "Default project" };
+
+  it("copies the settings into a new created simulation and records the source", async () => {
+    const store = await loadStore();
+    const source = await store.createSimulation({
+      ...PARAMS,
+      behavior: behaviorPreset("flaky")!.config,
+    });
+
+    const copy = await store.copySimulation(source.id, PROJECT);
+
+    expect(copy).not.toBeNull();
+    expect(copy!.id).not.toBe(source.id);
+    expect(copy!.status).toBe("created");
+    expect(copy!.parameters.clockSpeed).toBe(PARAMS.clockSpeed);
+    expect(copy!.parameters.durationSeconds).toBe(PARAMS.durationSeconds);
+    expect(copy!.parameters.generatorConfig).toEqual(PARAMS.generatorConfig);
+    expect(copy!.parameters.behavior).toEqual(behaviorPreset("flaky")!.config);
+    expect(copy!.parameters.copiedFrom).toBe(source.id);
+
+    // Both survive: a re-run never disturbs the run it was made from.
+    expect((await store.getSimulation(source.id))?.status).toBe("created");
+    expect(await store.listSimulations()).toHaveLength(2);
+  });
+
+  it("targets the project the caller resolved, so a renamed project reads correctly", async () => {
+    const store = await loadStore();
+    const source = await store.createSimulation(PARAMS);
+
+    const copy = await store.copySimulation(source.id, {
+      id: "proj-2",
+      name: "Training run 3",
+    });
+
+    expect(copy!.parameters.projectId).toBe("proj-2");
+    expect(copy!.parameters.projectName).toBe("Training run 3");
+  });
+
+  it("starts a fresh timeline rather than inheriting the source's run", async () => {
+    const store = await loadStore();
+    const { db, simulations } = await loadDb();
+
+    db.insert(simulations)
+      .values({
+        id: "done-1",
+        created_at: "t0",
+        updated_at: "t3",
+        status: "completed",
+        parameters: JSON.stringify(PARAMS),
+        generated_at: "t1",
+        started_at: "t2",
+        completed_at: "t3",
+        stats: JSON.stringify({ delivered: 7, skipped: 0, failed: 1, total: 8 }),
+      })
+      .run();
+
+    const copy = await store.copySimulation("done-1", PROJECT);
+
+    expect(copy!.status).toBe("created");
+    expect(copy!.generatedAt).toBeUndefined();
+    expect(copy!.startedAt).toBeUndefined();
+    expect(copy!.completedAt).toBeUndefined();
+    expect(copy!.stats).toBeUndefined();
+  });
+
+  // Copying re-parses rather than cloning the stored JSON, so a record written
+  // before behaviour and per-event chances existed comes out runnable.
+  it("fills in defaults when copying a record that predates newer parameters", async () => {
+    const store = await loadStore();
+    const { db, simulations } = await loadDb();
+
+    db.insert(simulations)
+      .values({
+        id: "legacy-1",
+        created_at: "t0",
+        updated_at: "t0",
+        status: "completed",
+        parameters: JSON.stringify({
+          clockSpeed: 3600,
+          durationSeconds: 86_400,
+          usesExistingPopulation: true,
+        }),
+      })
+      .run();
+
+    const copy = await store.copySimulation("legacy-1", PROJECT);
+
+    expect(copy!.parameters.behavior).toEqual(BEHAVIOR_OFF);
+    expect(copy!.parameters.generatorConfig).toEqual(GENERATOR_CONFIG);
+    expect(copy!.parameters.projectId).toBe(PROJECT.id);
+    expect(copy!.parameters.projectName).toBe(PROJECT.name);
+  });
+
+  it("returns null when the simulation to copy is gone", async () => {
+    const store = await loadStore();
+    expect(await store.copySimulation("missing", PROJECT)).toBeNull();
+  });
+});
+
 describe("listRunningRuns (crash detection)", () => {
   it("surfaces run rows still marked running so a reaper can find abandoned workers", async () => {
     const store = await loadStore();
@@ -276,5 +376,29 @@ describe("parseSimulationParameters project", () => {
   it("falls back to the id when no project name is supplied", () => {
     const p = parseSimulationParameters({ ...base, projectId: "proj-3" });
     expect(p.projectName).toBe("proj-3");
+  });
+});
+
+describe("parseSimulationParameters copiedFrom", () => {
+  const base = {
+    clockSpeed: 3600,
+    durationSeconds: 86_400,
+    projectId: "default",
+  };
+
+  it("leaves the key out entirely for a simulation made from the wizard", () => {
+    expect("copiedFrom" in parseSimulationParameters(base)).toBe(false);
+  });
+
+  it("keeps the source id a copy was made from", () => {
+    const p = parseSimulationParameters({ ...base, copiedFrom: " sim-1 " });
+    expect(p.copiedFrom).toBe("sim-1");
+  });
+
+  it("ignores a blank or non-string source id", () => {
+    expect(parseSimulationParameters({ ...base, copiedFrom: "  " }).copiedFrom)
+      .toBeUndefined();
+    expect(parseSimulationParameters({ ...base, copiedFrom: 7 }).copiedFrom)
+      .toBeUndefined();
   });
 });

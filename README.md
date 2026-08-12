@@ -337,7 +337,8 @@ A Next.js app with gov.uk-inspired design (green header, breadcrumbs, one-questi
 - Simulations (`/staff/simulations`) — create a run against the current
   population, choosing its clock speed, duration, target project, per-event
   chances, and how the systems themselves behave while it runs (see
-  [system behaviour](#simulating-degraded-systems) below)
+  [system behaviour](#simulating-degraded-systems) below), and copy or re-run an
+  existing one (see [Copying and re-running a run](#copying-and-re-running-a-run))
 
 Each system also exposes admin endpoints used by the population page:
 `GET /admin/stats` (record counts) and `POST /admin/reset` (wipe that
@@ -356,6 +357,36 @@ YEARS=5 CONCURRENCY=10 npm run sim:scale -w @simdpg/simulation  # Multi-year at 
 ```
 
 Event types: births, deaths, marriages, clinic visits, vaccinations, benefit claims — each at demographically realistic rates.
+
+### Copying and re-running a run
+
+Filling in the wizard again to repeat a run is the slow way round. Every
+simulation in `/staff/simulations`, and its own detail page, offers one button for
+this — the label depends on whether the run has had its turn:
+
+| Source | Button | What happens |
+|---|---|---|
+| Created, generated, or still running | **Copy** | A new simulation with the same settings, sitting at `created`. Generate and start it when you're ready. A run in progress carries on untouched, and the copy isn't started, so the two never compete for the systems. |
+| Stopped, completed, or failed | **Re-run** | The same copy, then generated and started in one go. |
+
+Either way it's the *configuration* that carries over — clock speed, duration,
+target project, per-event chances, system behaviour — and never the result. The
+copy is a fresh record with its own timeline and no stats, and the run it came
+from is left exactly as it was; its detail page names its source under **Copied
+from**.
+
+The copy's events are generated fresh, so a re-run repeats the settings rather
+than replaying the original's event script: it draws on the population alive
+*now* and resolves the webhook URLs registered *now*. Expect a different number
+of events each time — the generators are random, and a finished run's script is a
+record of what that run did, not a template.
+
+The copy targets the same project as its source. If that project has since been
+deleted there's nowhere to send the events, so the copy is refused rather than
+quietly redirected at another project — start a new simulation and choose one.
+Both actions are `POST /api/simulations/:id/copy`, which takes `{ start: true }`
+to generate and start the copy, and an optional `projectId` to point it somewhere
+else.
 
 ### Simulating degraded systems
 

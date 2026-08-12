@@ -50,6 +50,12 @@ export interface SimulationParameters {
    * Records created before this existed have no field; treat that as off.
    */
   behavior: BehaviorConfig;
+  /**
+   * Simulation these parameters were copied from, when this one was made with
+   * Copy or Re-run instead of the wizard. Provenance only — nothing reads it to
+   * run the copy, and the source may since have been deleted.
+   */
+  copiedFrom?: string;
 }
 
 export interface SimulationRecord {
@@ -115,6 +121,11 @@ export function parseSimulationParameters(input: unknown): SimulationParameters 
   const behavior =
     raw.behavior === undefined ? BEHAVIOR_OFF : parseBehavior(raw.behavior);
 
+  const copiedFrom =
+    typeof raw.copiedFrom === "string" && raw.copiedFrom.trim()
+      ? raw.copiedFrom.trim()
+      : undefined;
+
   return {
     clockSpeed,
     durationSeconds: parsePositiveInteger(
@@ -129,6 +140,9 @@ export function parseSimulationParameters(input: unknown): SimulationParameters 
       typeof raw.projectName === "string" && raw.projectName.trim()
         ? raw.projectName.trim()
         : projectId,
+    // Omitted rather than set to undefined, so a simulation made from the wizard
+    // has no such key at all and round-trips through JSON unchanged.
+    ...(copiedFrom ? { copiedFrom } : {}),
   };
 }
 
@@ -185,6 +199,41 @@ export async function createSimulation(
   }).run();
 
   return simulation;
+}
+
+/**
+ * Create a new simulation from an existing one's settings.
+ *
+ * One operation serves both portal actions: copying a simulation that has not run
+ * yet, and re-running one that has. What carries over is the configuration —
+ * clock speed, duration, target project, generator chances, system behaviour —
+ * never the result. The copy is a fresh `created` record with its own timeline
+ * and no stats, so its event script is generated against whatever population and
+ * webhook URLs exist at that point. A finished run's script is a record of what
+ * that run did, not a template for the next one.
+ *
+ * The caller resolves the target project (the copy route does, so a deleted
+ * project is reported rather than silently swapped for another one). Returns null
+ * when the source simulation no longer exists.
+ */
+export async function copySimulation(
+  sourceId: string,
+  project: { id: string; name: string },
+): Promise<SimulationRecord | null> {
+  const source = await getSimulation(sourceId);
+  if (!source) return null;
+
+  // Re-parsed rather than copied verbatim: an old record can predate fields a run
+  // now needs (system behaviour, per-event chances), and parsing fills those in
+  // with the same defaults a brand-new simulation would get.
+  const parameters = parseSimulationParameters({
+    ...source.parameters,
+    projectId: project.id,
+    projectName: project.name,
+    copiedFrom: source.id,
+  });
+
+  return createSimulation(parameters);
 }
 
 export async function deleteSimulation(id: string): Promise<boolean> {
