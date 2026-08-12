@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSimulation } from "@/lib/simulations/store";
-import { readEvents } from "@/lib/simulations/events";
-import { readGenerationSummary } from "@/lib/simulations/generation";
+import { readScript } from "@/lib/simulations/script";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +18,14 @@ export async function GET(_request: Request, { params }: RouteContext) {
     );
   }
 
-  const events = await readEvents(params.id);
-  // Sent alongside the events so the detail page can account for a short or
-  // empty script. Null for runs generated before summaries existed.
-  const generation = await readGenerationSummary(params.id);
+  const script = await readScript(params.id);
 
-  return NextResponse.json({ events, generation });
+  // `hasScript` distinguishes the two ways `events` comes back empty: a script
+  // that generated no events (which runs, and whose `generation` summary says
+  // why it is empty) from no script at all (which cannot run until regenerated).
+  return NextResponse.json({
+    events: script?.events ?? [],
+    generation: script?.generation ?? null,
+    hasScript: script !== null,
+  });
 }

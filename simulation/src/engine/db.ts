@@ -23,6 +23,18 @@ export const simulations = sqliteTable("simulations", {
   stats: text("stats"),
 });
 
+/**
+ * The event script the portal generated for a simulation, read at start. It
+ * lives here rather than in a file so it shares the record's volume — see
+ * portal/src/lib/db/schema.ts.
+ */
+export const simulationScripts = sqliteTable("simulation_scripts", {
+  simulation_id: text("simulation_id").primaryKey(),
+  events: text("events").notNull(),
+  generation: text("generation"),
+  updated_at: text("updated_at").notNull(),
+});
+
 export const simulationRuns = sqliteTable("simulation_runs", {
   simulation_id: text("simulation_id").primaryKey(),
   pid: integer("pid"),
@@ -39,7 +51,7 @@ export const simulationRuns = sqliteTable("simulation_runs", {
   updated_at: text("updated_at").notNull(),
 });
 
-const schema = { simulations, simulationRuns };
+const schema = { simulations, simulationRuns, simulationScripts };
 
 let cached: BetterSQLite3Database<typeof schema> | null = null;
 
@@ -65,7 +77,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
   // portal already created them; the DDL mirrors the portal's ensureTables so a
   // worker that boots first produces an identical schema. The worker reads
   // neither `projects` nor `form_webhooks` (a run's target URLs are baked into
-  // its event file at generation time), so the portal remains the only place
+  // its event script at generation time), so the portal remains the only place
   // that seeds the default project and migrates pre-projects registrations.
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS simulations (
@@ -92,6 +104,13 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
       skipped       INTEGER NOT NULL DEFAULT 0,
       failed        INTEGER NOT NULL DEFAULT 0,
       total         INTEGER NOT NULL DEFAULT 0,
+      updated_at    TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS simulation_scripts (
+      simulation_id TEXT PRIMARY KEY,
+      events        TEXT NOT NULL,
+      generation    TEXT,
       updated_at    TEXT NOT NULL
     );
 

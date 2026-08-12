@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  canGenerate,
   getSimulation,
   generateSimulation,
   SimulationTransitionError,
@@ -22,18 +23,19 @@ export async function POST(_request: Request, { params }: RouteContext) {
       );
     }
 
-    // Guard before generating: re-running generate on an already-generated (or
-    // otherwise non-created) simulation would overwrite its persisted event
-    // script with fresh random events before generateSimulation rejects the
-    // transition. Reject first so a 409 never mutates state.
-    if (simulation.status !== "created") {
+    // Guard before generating: re-running generate on an already-generated
+    // simulation would overwrite its persisted event script with fresh random
+    // events before generateSimulation rejects the transition. Reject first so
+    // a 409 never mutates state. A record whose script is missing is the one
+    // exception — there, generating again is the recovery, not a loss.
+    if (!(await canGenerate(simulation))) {
       throw new SimulationTransitionError(
         "Only created simulations can be generated",
       );
     }
 
     await generateEvents(params.id, simulation.parameters);
-    const updated = await generateSimulation(params.id);
+    const updated = await generateSimulation(params.id, simulation.status);
 
     return NextResponse.json({ simulation: updated });
   } catch (err) {

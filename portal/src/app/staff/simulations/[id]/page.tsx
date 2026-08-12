@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SimulationRecord, SimulationStatus } from "@/lib/simulations/store";
 import type { SimulationEvent } from "@/lib/simulations/events";
-import type { GenerationSummary } from "@/lib/simulations/generation";
+import type { GenerationSummary } from "@/lib/simulations/script";
 import {
   GENERATOR_CONFIG_FIELDS,
   getConfigValue,
@@ -26,6 +26,8 @@ interface SimulationResponse {
 interface EventsResponse {
   events?: SimulationEvent[];
   generation?: GenerationSummary | null;
+  /** False when no script is stored at all, as opposed to one with no events. */
+  hasScript?: boolean;
   error?: string;
 }
 
@@ -47,6 +49,17 @@ function behaviorOf(simulation: SimulationRecord): BehaviorConfig {
 function hasGeneratedEvents(status: SimulationStatus): boolean {
   return status !== "created";
 }
+
+/**
+ * Why a simulation that says "generated" can have no script. Scripts used to be
+ * written under the portal's working directory, which is not the mounted volume
+ * on a container host: every redeploy left records claiming a script that was
+ * no longer there, and starting one failed on the missing file. Scripts now
+ * live in the database beside the record, so generating again is a real fix and
+ * not a retry.
+ */
+const MISSING_SCRIPT_EXPLANATION =
+  "This run's event script was kept outside the portal's database, so it did not survive a restart or redeploy. Scripts are now stored with the simulation record. Generate this simulation again — its parameters are unchanged, the events are drawn fresh, and the new script will last.";
 
 /** "marriage-registration" -> "Marriage registration". */
 function formatEventType(targetKey: string): string {
@@ -200,6 +213,8 @@ export default function SimulationDetails({ params }: PageProps) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [events, setEvents] = useState<SimulationEvent[] | null>(null);
   const [generation, setGeneration] = useState<GenerationSummary | null>(null);
+  /** Null until the events request answers; false when the script is gone. */
+  const [hasScript, setHasScript] = useState<boolean | null>(null);
   const [systemBehavior, setSystemBehavior] = useState<SystemBehaviorResult[] | null>(
     null,
   );
@@ -208,6 +223,12 @@ export default function SimulationDetails({ params }: PageProps) {
   // Derived early because the polling effect below keys off it.
   const behaviorConfig = simulation ? behaviorOf(simulation) : BEHAVIOR_OFF;
   const behaviorEnabled = !isBehaviorOff(behaviorConfig);
+
+  // A record with no script can't run as it stands — `failed` is where starting
+  // one lands — so it offers Generate instead of Start.
+  const scriptMissing =
+    hasScript === false &&
+    (simulation?.status === "generated" || simulation?.status === "failed");
 
   const loadEvents = useCallback(async () => {
     try {
@@ -218,6 +239,7 @@ export default function SimulationDetails({ params }: PageProps) {
       if (res.ok && data.events) {
         setEvents(data.events);
         setGeneration(data.generation ?? null);
+        setHasScript(data.hasScript ?? true);
       }
     } catch {
       // Non-fatal: the events section simply stays hidden.
@@ -315,6 +337,9 @@ export default function SimulationDetails({ params }: PageProps) {
       }
       setSimulation(data.simulation);
       setNowMs(Date.now());
+      // Regenerating leaves the status alone when it was already `generated`, so
+      // the status-keyed effect won't reload the script this replaced.
+      if (action === "generate") await loadEvents();
     } catch (err) {
       setError(err instanceof Error ? err.message : `Could not ${action} simulation`);
     } finally {
@@ -416,18 +441,34 @@ export default function SimulationDetails({ params }: PageProps) {
 
           <h2 className="govuk-heading-l">Run controls</h2>
 
-          {simulation.status === "created" && (
+          {scriptMissing && (
+            <div className="govuk-warning-text">
+              <span className="govuk-warning-text__icon" aria-hidden="true">
+                !
+              </span>
+              <strong className="govuk-warning-text__text">
+                <span className="govuk-visually-hidden">Warning</span>
+                {MISSING_SCRIPT_EXPLANATION}
+              </strong>
+            </div>
+          )}
+
+          {(simulation.status === "created" || scriptMissing) && (
             <button
               type="button"
               className="govuk-button"
               onClick={() => runAction("generate")}
               disabled={acting !== null}
             >
-              {acting === "generate" ? "Generating..." : "Generate"}
+              {acting === "generate"
+                ? "Generating..."
+                : scriptMissing
+                  ? "Generate again"
+                  : "Generate"}
             </button>
           )}
 
-          {simulation.status === "generated" && (
+          {simulation.status === "generated" && !scriptMissing && (
             <button
               type="button"
               className="govuk-button"
@@ -568,7 +609,21 @@ export default function SimulationDetails({ params }: PageProps) {
               <hr className="govuk-section-break govuk-section-break--l govuk-section-break--visible" />
               <h2 className="govuk-heading-l">Generated events</h2>
 
-              {events.length === 0 ? (
+              {hasScript === false ? (
+                <>
+                  <p className="govuk-body">
+                    This simulation&apos;s event script is no longer stored, so
+                    there is nothing to show.
+                  </p>
+                  <div className="govuk-inset-text">
+                    {/* A run that already happened keeps its counts, so say
+                        that rather than offering it a recovery it can't use. */}
+                    {scriptMissing
+                      ? MISSING_SCRIPT_EXPLANATION
+                      : "Event scripts were kept outside the portal's database until recently, so this one did not survive a restart or redeploy. What the run delivered is still recorded below."}
+                  </div>
+                </>
+              ) : events.length === 0 ? (
                 <>
                   <p className="govuk-body">
                     No events were generated for this simulation.

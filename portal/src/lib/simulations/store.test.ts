@@ -70,16 +70,19 @@ describe("store CRUD", () => {
     expect(list[0].id).toBe(sim.id);
   });
 
-  it("deletes a simulation and its events file, and reports missing on re-delete", async () => {
+  it("deletes a simulation and its script, and reports missing on re-delete", async () => {
     const store = await loadStore();
+    const script = await import("./script");
     const { eventsFilePath } = await import("./paths");
     const sim = await store.createSimulation(PARAMS);
 
+    await script.writeScript(sim.id, [], null);
     await fs.mkdir(path.dirname(eventsFilePath(sim.id)), { recursive: true });
     await fs.writeFile(eventsFilePath(sim.id), "[]");
 
     expect(await store.deleteSimulation(sim.id)).toBe(true);
     expect(await store.getSimulation(sim.id)).toBeNull();
+    expect(await script.readScript(sim.id)).toBeNull();
     await expect(fs.access(eventsFilePath(sim.id))).rejects.toThrow();
     expect(await store.deleteSimulation(sim.id)).toBe(false);
   });
@@ -88,15 +91,120 @@ describe("store CRUD", () => {
 describe("transitions", () => {
   it("generates a created simulation and rejects generating it twice", async () => {
     const store = await loadStore();
+    const script = await import("./script");
     const sim = await store.createSimulation(PARAMS);
 
     const generated = await store.generateSimulation(sim.id);
     expect(generated?.status).toBe("generated");
     expect(generated?.generatedAt).toBeTruthy();
 
+    // As the generate route does, before the record flips to `generated`.
+    await script.writeScript(sim.id, [], null);
+
     await expect(store.generateSimulation(sim.id)).rejects.toThrow(
       store.SimulationTransitionError,
     );
+  });
+
+  // Nothing may generate over a run that is under way or already has results,
+  // whatever status the caller claims to have seen.
+  it("rejects generating a running or finished simulation", async () => {
+    const store = await loadStore();
+    const { db, simulations } = await loadDb();
+    for (const status of ["running", "completed", "stopped"] as const) {
+      db.insert(simulations)
+        .values({
+          id: status,
+          created_at: "t0",
+          updated_at: "t0",
+          status,
+          parameters: JSON.stringify(PARAMS),
+          started_at: "t1",
+        })
+        .run();
+
+      const record = (await store.getSimulation(status))!;
+      expect(await store.canGenerate(record)).toBe(false);
+      await expect(store.generateSimulation(status, status)).rejects.toThrow(
+        store.SimulationTransitionError,
+      );
+    }
+  });
+
+  // How a redeploy used to leave things: the record survives on the volume, the
+  // script it names does not. Generating again is the only way back, and there
+  // is nothing to overwrite, so it is allowed.
+  //
+  // Ordered as the generate route orders it: the decision is made first, the
+  // script is written second, and the transition is recorded last — so the
+  // transition must not re-ask whether a script exists.
+  it("regenerates a generated simulation whose script is missing", async () => {
+    const store = await loadStore();
+    const script = await import("./script");
+    const sim = await store.createSimulation(PARAMS);
+    await store.generateSimulation(sim.id);
+
+    const record = (await store.getSimulation(sim.id))!;
+    expect(await store.canGenerate(record)).toBe(true);
+    await script.writeScript(sim.id, [], null);
+
+    const regenerated = await store.generateSimulation(sim.id, record.status);
+    expect(regenerated?.status).toBe("generated");
+    expect(regenerated?.generatedAt).not.toBe(record.generatedAt);
+  });
+
+  it("refuses to regenerate a simulation whose script is intact", async () => {
+    const store = await loadStore();
+    const script = await import("./script");
+    const sim = await store.createSimulation(PARAMS);
+    await store.generateSimulation(sim.id);
+    await script.writeScript(sim.id, [], null);
+
+    expect(await store.canGenerate((await store.getSimulation(sim.id))!)).toBe(
+      false,
+    );
+  });
+
+  it("regenerates a failed simulation whose script is missing, clearing its stats", async () => {
+    const store = await loadStore();
+    const { db, simulations } = await loadDb();
+    db.insert(simulations)
+      .values({
+        id: "lost-script",
+        created_at: "t0",
+        updated_at: "t2",
+        status: "failed",
+        parameters: JSON.stringify(PARAMS),
+        started_at: "t1",
+        completed_at: "t2",
+        stats: JSON.stringify({
+          delivered: 0,
+          skipped: 0,
+          failed: 0,
+          total: 0,
+          error: "This simulation has no event script to run.",
+        }),
+      })
+      .run();
+
+    const regenerated = await store.generateSimulation("lost-script", "failed");
+    expect(regenerated?.status).toBe("generated");
+    expect(regenerated?.stats).toBeUndefined();
+    expect(regenerated?.startedAt).toBeUndefined();
+    expect(regenerated?.completedAt).toBeUndefined();
+  });
+
+  // Starting it would spawn a worker that can only fail; saying so leaves the
+  // record startable once it has been generated again.
+  it("refuses to start a generated simulation whose script is missing", async () => {
+    const store = await loadStore();
+    const sim = await store.createSimulation(PARAMS);
+    await store.generateSimulation(sim.id);
+
+    await expect(store.startSimulation(sim.id)).rejects.toThrow(
+      store.MISSING_SCRIPT_MESSAGE,
+    );
+    expect((await store.getSimulation(sim.id))?.status).toBe("generated");
   });
 
   it("rejects stopping a never-started (generated) simulation", async () => {

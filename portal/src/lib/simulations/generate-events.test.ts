@@ -1,15 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Citizen } from "@simdpg/api-clients";
 import { generateEvents } from "./generate-events";
 import { randomNationalIdReg } from "./generators/random-national-id-reg";
-import { eventsFilePath } from "./paths";
-import type { SimulationEvent } from "./events";
 import type { SimulationParameters } from "./store";
 import { GENERATOR_CONFIG } from "./generators/config";
-import { readGenerationSummary } from "./generation";
+import { readScript } from "./script";
 import { BEHAVIOR_OFF } from "@simdpg/system-kit/behavior";
 
 function citizen(over: Partial<Citizen> = {}): Citizen {
@@ -41,13 +39,18 @@ const params: SimulationParameters = {
   projectName: "Project one",
 };
 
+// Generation writes scripts to the shared database, whose connection is opened
+// once and cached in module state — so the whole file shares one temp database
+// rather than a fresh one per test. Each test uses its own simulation id.
 let dir: string;
-beforeEach(async () => {
+beforeAll(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "sim-gen-"));
   process.env.SIM_DATA_DIR = dir;
+  process.env.PORTAL_DB_FILE = path.join(dir, "test.sqlite");
 });
-afterEach(async () => {
+afterAll(async () => {
   delete process.env.SIM_DATA_DIR;
+  delete process.env.PORTAL_DB_FILE;
   await fs.rm(dir, { recursive: true, force: true });
 });
 
@@ -70,10 +73,7 @@ describe("generateEvents", () => {
     });
     expect(typeof events[0].id).toBe("string");
 
-    const onDisk = JSON.parse(
-      await fs.readFile(eventsFilePath("s1"), "utf8"),
-    ) as SimulationEvent[];
-    expect(onDisk).toEqual(events);
+    expect((await readScript("s1"))?.events).toEqual(events);
   });
 
   it("computes scheduledMicros = simSeconds / clockSpeed * 1e6", async () => {
@@ -144,8 +144,9 @@ describe("generateEvents", () => {
       listPrograms: async () => [],
     });
     expect(events).toEqual([]);
-    const onDisk = JSON.parse(await fs.readFile(eventsFilePath("s5"), "utf8"));
-    expect(onDisk).toEqual([]);
+    // Stored, not absent: an empty script is a run with nothing to deliver, and
+    // the worker must be able to tell that from a script that went missing.
+    expect(await readScript("s5")).toMatchObject({ events: [] });
   });
 
   it("sorts events ascending by scheduledMicros", async () => {
@@ -210,7 +211,7 @@ describe("generateEvents", () => {
       generators: [randomNationalIdReg],
     });
 
-    expect(await readGenerationSummary("s-summary")).toMatchObject({
+    expect((await readScript("s-summary"))?.generation).toMatchObject({
       citizens: 1, // the deceased one is filtered out before generating
       programs: 1,
       days: 2,
@@ -229,7 +230,7 @@ describe("generateEvents", () => {
       generators: [randomNationalIdReg],
     });
 
-    expect(await readGenerationSummary("s-empty")).toMatchObject({
+    expect((await readScript("s-empty"))?.generation).toMatchObject({
       citizens: 0,
       events: 0,
       days: 3_600 / 86_400,
@@ -238,8 +239,8 @@ describe("generateEvents", () => {
     });
   });
 
-  it("has no generation summary for a simulation that was never generated", async () => {
-    expect(await readGenerationSummary("never-generated")).toBeNull();
+  it("has no script at all for a simulation that was never generated", async () => {
+    expect(await readScript("never-generated")).toBeNull();
   });
 
   it("uses parameters.generatorConfig when running generators", async () => {
