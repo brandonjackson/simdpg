@@ -208,7 +208,10 @@ bottleneck, not the file format.
 - **`targetKey` resolves to no URL** → event still emitted with `targetUrl: null`;
   the engine already skips these gracefully (`scheduler.ts:23`).
 - **Sim shorter than 1 day** → `numDays = 0` → zero events. **Known v1 limitation**
-  of the hardcoded `dt`.
+  of the hardcoded `dt`. *Superseded:* generation now walks `daySteps()`, which
+  keeps the trailing part-day and scales each generator's per-day rate by the
+  fraction of a day it covers, so a sub-day run draws its proportional share
+  instead of nothing.
 - **Empty event list** is valid — generation succeeds with `[]`.
 
 ## Cross-ticket dependency (for #55, not #54)
@@ -258,7 +261,8 @@ both processes. #54 owns steps 1–3; #55 owns 4–6.
   - one-registration-per-citizen cap (`break` after first hit);
   - payload shape matches the `national-id` contract, including address fallback
     when `addresses` is absent;
-  - `numDays = 0` (sub-day sim) produces zero events.
+  - `numDays = 0` (sub-day sim) produces zero events. *Superseded:* a sub-day sim
+    now rolls once against the day-probability scaled by the part-day.
 - **Orchestrator test** (stub Identity client + `resolveFormWebhook`):
   - events sorted ascending by `scheduledMicros`;
   - `scheduledMicros === scheduledSimSeconds / clockSpeed * 1e6`;

@@ -1,5 +1,5 @@
 import type { GeneratedEvent, GeneratorContext, RandomEventGenerator } from "./types";
-import { cityNames, drawCount, isAdult, pick, sampleWithoutReplacement, simDayToDate } from "./pools";
+import { cityNames, daySteps, drawCount, isAdult, pick, sampleWithoutReplacement, simDayToDate } from "./pools";
 
 /**
  * Steady daily-count marriage generator (recurring). Expected marriages/day =
@@ -10,16 +10,16 @@ export const randomMarriage: RandomEventGenerator = {
   key: "random-marriage",
   generate({ citizens, dtSeconds, durationSeconds, random, config }: GeneratorContext): GeneratedEvent[] {
     const { dailyRatePerPopulation } = config.marriage;
-    const numDays = Math.floor(durationSeconds / dtSeconds);
+    const steps = daySteps(durationSeconds, dtSeconds);
     const adults = citizens.filter((c) => isAdult(c.date_of_birth));
     const events: GeneratedEvent[] = [];
     if (adults.length < 2) return events;
 
-    for (let day = 0; day < numDays; day++) {
-      const count = drawCount(dailyRatePerPopulation * citizens.length, random);
+    for (const { day, fraction, stepSeconds } of steps) {
+      const count = drawCount(dailyRatePerPopulation * citizens.length * fraction, random);
       for (let m = 0; m < count; m++) {
         const [a, b] = sampleWithoutReplacement(adults, 2, random);
-        const offset = Math.floor(random() * dtSeconds);
+        const offset = Math.floor(random() * stepSeconds);
         events.push({
           scheduledSimSeconds: day * dtSeconds + offset,
           targetKey: "marriage-registration",

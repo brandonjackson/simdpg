@@ -64,4 +64,27 @@ describe("randomBirth", () => {
     const events = randomBirth.generate(ctx({ random: () => 1 }));
     expect(events).toHaveLength(0);
   });
+
+  it("scales the daily count by a part-day run and schedules inside it", () => {
+    const mother = citizen({ national_id: "MOM", sex: "female" });
+    // 6 hours = a quarter day: count bump 0 (->1 birth); mother idx 0;
+    // offset 0.5 of the 6-hour step; sex roll 0.9 (female); given idx 0; place idx 0.
+    const random = seq([0, 0, 0.5, 0.9, 0, 0]);
+    const events = randomBirth.generate(
+      ctx({ citizens: [mother], durationSeconds: 21_600, random }),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].scheduledSimSeconds).toBe(Math.floor(0.5 * 21_600));
+  });
+
+  it("emits nothing on a part-day run when the count roll misses the scaled rate", () => {
+    // A quarter-day expects a quarter of the daily count, so a roll that would
+    // have cleared the full daily remainder no longer does.
+    const rate = GENERATOR_CONFIG.birth.dailyRatePerPopulation;
+    const random = seq([rate - 0.0001]);
+    const events = randomBirth.generate(
+      ctx({ durationSeconds: 21_600, random }),
+    );
+    expect(events).toHaveLength(0);
+  });
 });

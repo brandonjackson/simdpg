@@ -5,7 +5,7 @@ import path from "node:path";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { simulations, simulationRuns } from "../db/schema";
-import { eventsFilePath, logFilePath } from "./paths";
+import { eventsFilePath, generationFilePath, logFilePath } from "./paths";
 import { loadConfig, GENERATOR_CONFIG, type GeneratorConfig } from "./generators/config";
 import {
   BEHAVIOR_OFF,
@@ -194,6 +194,7 @@ export async function deleteSimulation(id: string): Promise<boolean> {
   }
   getDb().delete(simulationRuns).where(eq(simulationRuns.simulation_id, id)).run();
   await fs.rm(eventsFilePath(id), { force: true });
+  await fs.rm(generationFilePath(id), { force: true });
   return true;
 }
 

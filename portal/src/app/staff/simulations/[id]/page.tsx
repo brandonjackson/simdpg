@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SimulationRecord, SimulationStatus } from "@/lib/simulations/store";
 import type { SimulationEvent } from "@/lib/simulations/events";
+import type { GenerationSummary } from "@/lib/simulations/generation";
 import {
   GENERATOR_CONFIG_FIELDS,
   getConfigValue,
@@ -24,6 +25,7 @@ interface SimulationResponse {
 
 interface EventsResponse {
   events?: SimulationEvent[];
+  generation?: GenerationSummary | null;
   error?: string;
 }
 
@@ -100,6 +102,30 @@ function formatDate(value?: string): string {
   return value ? new Date(value).toLocaleString() : "Not yet";
 }
 
+/**
+ * Why an event script came out empty. Generation draws random events from the
+ * *existing* population at per-simulated-day rates, so an empty script means
+ * either there was nobody to draw from, or the run was too short (or its rates
+ * too low) for a single draw to land — neither of which the empty list itself
+ * can tell you.
+ */
+function explainNoEvents(generation: GenerationSummary | null): string {
+  if (!generation) {
+    return "This run was generated before the portal recorded what generation drew on, so there is nothing more to say about it. Create a new simulation to see those details.";
+  }
+
+  if (generation.citizens === 0) {
+    return "The Identity system had no alive citizens when this was generated, and events are drawn from the existing population. Seed the systems (npm run setup) or generate a population (npm run setup:generate), then create a new simulation.";
+  }
+
+  return (
+    `Generation drew on ${plural(generation.citizens, "alive citizen")} over ` +
+    `${formatDuration(generation.days * 86_400)} of simulated time. Generator rates are ` +
+    "per simulated day, so a short run at low rates often lands no events at all. " +
+    "Create a new simulation with a longer duration or higher rates."
+  );
+}
+
 function statusTagClass(status: SimulationStatus): string {
   switch (status) {
     case "created":
@@ -173,6 +199,7 @@ export default function SimulationDetails({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [events, setEvents] = useState<SimulationEvent[] | null>(null);
+  const [generation, setGeneration] = useState<GenerationSummary | null>(null);
   const [systemBehavior, setSystemBehavior] = useState<SystemBehaviorResult[] | null>(
     null,
   );
@@ -190,6 +217,7 @@ export default function SimulationDetails({ params }: PageProps) {
       const data = (await res.json()) as EventsResponse;
       if (res.ok && data.events) {
         setEvents(data.events);
+        setGeneration(data.generation ?? null);
       }
     } catch {
       // Non-fatal: the events section simply stays hidden.
@@ -541,11 +569,28 @@ export default function SimulationDetails({ params }: PageProps) {
               <h2 className="govuk-heading-l">Generated events</h2>
 
               {events.length === 0 ? (
-                <p className="govuk-body">
-                  No events were generated for this simulation.
-                </p>
+                <>
+                  <p className="govuk-body">
+                    No events were generated for this simulation.
+                  </p>
+                  <div className="govuk-inset-text">
+                    {explainNoEvents(generation)}
+                  </div>
+                </>
               ) : (
                 <>
+                  {generation && generation.unroutedEvents > 0 && (
+                    <div className="govuk-inset-text">
+                      {generation.unroutedEvents === events.length
+                        ? `None of the ${plural(events.length, "generated event")} have`
+                        : `${generation.unroutedEvents} of the ${plural(events.length, "generated event")} have`}{" "}
+                      a webhook registered for this run&apos;s project (
+                      {generation.unroutedTargets.join(", ")}), so the run will
+                      skip them rather than deliver them. Register those forms
+                      under Webhooks, then create a new simulation.
+                    </div>
+                  )}
+
                   <div className="govuk-stat-grid">
                     <div className="govuk-stat">
                       <div className="govuk-stat__value">{events.length}</div>
