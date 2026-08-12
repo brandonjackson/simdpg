@@ -795,24 +795,60 @@ export default function SimulationDetails({ params }: PageProps) {
               )}
 
               {stats ? (
-                <div className="govuk-stat-grid">
-                  <div className="govuk-stat">
-                    <div className="govuk-stat__value">{stats.delivered}</div>
-                    <div className="govuk-stat__label">Delivered</div>
+                <>
+                  <p className="govuk-body">
+                    Every event in a run is one POST to the webhook URL
+                    registered for that form in this simulation&apos;s project —
+                    usually an OpenFn workflow&apos;s Webhook trigger. These
+                    counts say what happened to each POST.
+                  </p>
+                  <div className="govuk-stat-grid">
+                    <div className="govuk-stat">
+                      <div className="govuk-stat__value">{stats.delivered}</div>
+                      <div className="govuk-stat__label">Delivered</div>
+                      <p className="govuk-stat__hint">
+                        Sent and accepted: the webhook answered with a 2xx.
+                      </p>
+                    </div>
+                    <div className="govuk-stat">
+                      <div className="govuk-stat__value">{stats.skipped}</div>
+                      <div className="govuk-stat__label">Skipped</div>
+                      <p className="govuk-stat__hint">
+                        Never sent anywhere — no webhook URL is registered for
+                        that form in this project, so there was nowhere to post
+                        it.
+                      </p>
+                    </div>
+                    <div className="govuk-stat">
+                      <div className="govuk-stat__value">{stats.failed}</div>
+                      <div className="govuk-stat__label">Failed</div>
+                      <p className="govuk-stat__hint">
+                        Sent, but rejected: the webhook returned a non-2xx
+                        status, timed out, or could not be reached.
+                      </p>
+                    </div>
+                    <div className="govuk-stat">
+                      <div className="govuk-stat__value">{stats.total}</div>
+                      <div className="govuk-stat__label">Total</div>
+                      <p className="govuk-stat__hint">
+                        Events the run was scheduled to send. The other three
+                        add up to less than this if the run was stopped early.
+                      </p>
+                    </div>
                   </div>
-                  <div className="govuk-stat">
-                    <div className="govuk-stat__value">{stats.skipped}</div>
-                    <div className="govuk-stat__label">Skipped</div>
-                  </div>
-                  <div className="govuk-stat">
-                    <div className="govuk-stat__value">{stats.failed}</div>
-                    <div className="govuk-stat__label">Failed</div>
-                  </div>
-                  <div className="govuk-stat">
-                    <div className="govuk-stat__value">{stats.total}</div>
-                    <div className="govuk-stat__label">Total</div>
-                  </div>
-                </div>
+                  {simulation.parameters.projectId && stats.skipped > 0 && (
+                    <p className="govuk-body">
+                      To stop events being skipped,{" "}
+                      <a
+                        className="govuk-link"
+                        href={`/staff/webhooks?project=${encodeURIComponent(simulation.parameters.projectId)}`}
+                      >
+                        register a webhook URL for every form
+                      </a>{" "}
+                      in this project before the next run.
+                    </p>
+                  )}
+                </>
               ) : (
                 <p className="govuk-body">
                   No simulation stats have been recorded yet.

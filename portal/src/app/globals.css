@@ -846,6 +846,14 @@ a:focus {
   color: var(--govuk-dark-grey);
 }
 
+/* Optional one-line explanation of what a stat counts. */
+.govuk-stat__hint {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--govuk-dark-grey);
+  margin: 8px 0 0;
+}
+
 /* ===== TIMELINE ===== */
 .govuk-timeline {
   border-left: 4px solid var(--govuk-mid-grey);
