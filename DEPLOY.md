@@ -21,8 +21,9 @@ to an optional `WEBHOOK_URL`), so only the portal needs to reach the systems —
 and it derives those URLs automatically. Databases are SQLite files under each
 system's `data/` dir; that directory must be backed by a persistent volume. The
 **portal now has a database too** — `portal/data/simulations.sqlite`, holding
-simulation records, run-state, and the form-webhook registry — so it likewise
-needs a persistent volume (override the path with `PORTAL_DB_FILE`).
+simulation records, their generated event scripts, run-state, and the
+form-webhook registry — so it likewise needs a persistent volume (override the
+path with `PORTAL_DB_FILE`).
 
 ## Local (docker-compose)
 
@@ -104,10 +105,20 @@ For the **portal** service, also:
 - **Public domain:** add one and accept Railway's auto-detected port. Do **not**
   pin `PORT`.
 - **Volume:** mount at `/app/portal/data` so the portal's SQLite database
-  (simulation records, run-state, and the form-webhook registry) survives
-  redeploys. Without it, simulations and registered form webhooks are wiped on
-  every deploy. (Override the file location with `PORTAL_DB_FILE` if you mount
-  elsewhere.)
+  (simulation records, their event scripts, run-state, and the form-webhook
+  registry) survives redeploys. Without it, simulations and registered form
+  webhooks are wiped on every deploy. (Override the file location with
+  `PORTAL_DB_FILE` if you mount elsewhere.)
+
+  Everything a simulation needs is in that one file, so a redeploy can no longer
+  keep a record while losing what it runs. Event scripts used to be written to
+  `/app/portal/.simulations/`, outside the volume: a redeploy left simulations
+  reading "generated" whose scripts were gone, and starting one failed
+  immediately with `ENOENT ... .events.json`. A simulation left in that state by
+  an older build can be generated again from its detail page — the button says
+  so — which gives it a script that lasts. Only the per-run worker logs
+  (`.simulations/<id>.log`) are still written outside the volume; losing them
+  costs a finished run's console output, nothing more.
 
 Delete the non-server services Railway auto-creates (`@simdpg/system-kit`,
 `@simdpg/api-clients`, `@simdpg/simulation`) — they aren't web servers.
@@ -157,7 +168,8 @@ to name their own endpoints, so they never borrow the legacy URL.
 
 Registered URLs are stored in the portal's SQLite database
 (`portal/data/simulations.sqlite`, in the `form_webhooks` table, keyed by project
-and form), alongside the `projects` table, simulation records and run-state.
+and form), alongside the `projects` table, simulation records, event scripts and
+run-state.
 Mount a persistent volume at `/app/portal/data` (see the portal service above) so
 projects and registrations survive redeploys; override the database path with
 `PORTAL_DB_FILE` if you mount elsewhere. If a save can't be written, the staff UI

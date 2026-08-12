@@ -9,8 +9,8 @@ import {
 import { resolveFormWebhook } from "@/lib/form-webhooks";
 import { REGISTRY } from "./generators";
 import type { RandomEventGenerator } from "./generators";
-import { writeEvents, type SimulationEvent } from "./events";
-import { writeGenerationSummary } from "./generation";
+import type { SimulationEvent } from "./events";
+import { writeScript } from "./script";
 import type { SimulationParameters } from "./store";
 import { GENERATOR_CONFIG } from "./generators/config";
 
@@ -95,10 +95,10 @@ export async function generateEvents(
   }
 
   events.sort((a, b) => a.scheduledMicros - b.scheduledMicros);
-  await writeEvents(id, events);
 
-  // Record what this drew on, so a short or empty script can explain itself.
-  await writeGenerationSummary(id, {
+  // Stored with a record of what generation drew on, so a short or empty script
+  // can explain itself.
+  await writeScript(id, events, {
     generatedAt: new Date().toISOString(),
     citizens: citizens.length,
     programs: programs.length,

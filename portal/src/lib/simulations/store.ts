@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { promises as fs, createWriteStream, mkdirSync } from "node:fs";
+import { createWriteStream, mkdirSync } from "node:fs";
 import path from "node:path";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { simulations, simulationRuns } from "../db/schema";
-import { eventsFilePath, generationFilePath, logFilePath } from "./paths";
+import { logFilePath } from "./paths";
+import { deleteScript, hasScript } from "./script";
 import { loadConfig, GENERATOR_CONFIG, type GeneratorConfig } from "./generators/config";
 import {
   BEHAVIOR_OFF,
@@ -77,6 +78,15 @@ export class SimulationTransitionError extends Error {
     this.name = "SimulationTransitionError";
   }
 }
+
+/**
+ * Shown when a simulation has no event script to run. Worded as a next step
+ * because there is one: generation is repeatable, so the record can be made
+ * runnable again in a click. The worker says the same thing if it gets that far
+ * (simulation/src/engine/events.ts) — keep the two in step.
+ */
+export const MISSING_SCRIPT_MESSAGE =
+  "This simulation has no event script to run. Generate it again, then start it.";
 
 type SimulationRow = typeof simulations.$inferSelect;
 
@@ -242,8 +252,7 @@ export async function deleteSimulation(id: string): Promise<boolean> {
     return false;
   }
   getDb().delete(simulationRuns).where(eq(simulationRuns.simulation_id, id)).run();
-  await fs.rm(eventsFilePath(id), { force: true });
-  await fs.rm(generationFilePath(id), { force: true });
+  await deleteScript(id);
   return true;
 }
 
@@ -283,20 +292,65 @@ function updateSimulation(
   });
 }
 
+/**
+ * Statuses a *missing* script can be regenerated from. Both describe a record
+ * that cannot run as it stands: `generated` says a script exists when none
+ * does, and `failed` is where starting one of those lands. Regenerating is
+ * safe precisely because there is nothing to overwrite — a run whose script is
+ * intact is never rewritten, so its recorded events stay the events it ran.
+ */
+const REGENERABLE_STATUSES: SimulationStatus[] = ["generated", "failed"];
+
+/**
+ * Whether generation may run for a simulation: because it has never been
+ * generated, or because its script is gone and regenerating is the only way
+ * back to a runnable run.
+ */
+export async function canGenerate(
+  simulation: SimulationRecord,
+): Promise<boolean> {
+  if (simulation.status === "created") return true;
+  if (!REGENERABLE_STATUSES.includes(simulation.status)) return false;
+  return !(await hasScript(simulation.id));
+}
+
+/** Every status generation may run from. */
+const GENERATABLE_STATUSES: SimulationStatus[] = [
+  "created",
+  ...REGENERABLE_STATUSES,
+];
+
+/**
+ * Record that a simulation has been generated. `from` is the status the caller
+ * saw when {@link canGenerate} said yes, and the transition is rejected if the
+ * record has moved on since — the caller writes the script between the two, so
+ * this cannot re-derive the answer (the script it is about to record would be
+ * the very thing making it look already-generated).
+ */
 export async function generateSimulation(
   id: string,
+  from: SimulationStatus = "created",
 ): Promise<SimulationRecord | null> {
   return updateSimulation(id, (simulation, now) => {
-    if (simulation.status !== "created") {
+    if (
+      simulation.status !== from ||
+      !GENERATABLE_STATUSES.includes(simulation.status)
+    ) {
       throw new SimulationTransitionError(
         "Only created simulations can be generated",
       );
     }
 
+    // Clear any earlier attempt's outcome: after regeneration this record has a
+    // fresh script and has never been run, and stale stats would say otherwise.
     return {
       ...simulation,
       status: "generated",
       generatedAt: now,
+      startedAt: undefined,
+      stoppedAt: undefined,
+      completedAt: undefined,
+      stats: undefined,
     };
   });
 }
@@ -339,6 +393,13 @@ function spawnWorker(id: string): void {
 }
 
 export async function startSimulation(id: string): Promise<SimulationRecord | null> {
+  // Refuse a run that cannot deliver anything rather than spawning a worker to
+  // discover it: a failed record is a dead end, whereas this says what to do.
+  const current = await getSimulation(id);
+  if (current && current.status === "generated" && !(await hasScript(id))) {
+    throw new SimulationTransitionError(MISSING_SCRIPT_MESSAGE);
+  }
+
   const updated = updateSimulation(id, (simulation, now) => {
     if (simulation.status !== "generated") {
       throw new SimulationTransitionError("Only generated simulations can be started");

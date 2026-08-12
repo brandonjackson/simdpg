@@ -150,6 +150,13 @@ export function getDb(): Db {
       updated_at    TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS simulation_scripts (
+      simulation_id TEXT PRIMARY KEY,
+      events        TEXT NOT NULL,
+      generation    TEXT,
+      updated_at    TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS form_webhooks (
       project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       key        TEXT NOT NULL,

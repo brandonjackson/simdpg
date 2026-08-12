@@ -65,6 +65,27 @@ export const simulationRuns = sqliteTable(
 );
 
 /**
+ * A simulation's precomputed event script, plus the summary of what generation
+ * drew on to produce it. Written once by generation, read by the worker when
+ * the run starts and by the detail page to describe the script.
+ *
+ * It lives in the database because the record does. Scripts used to be written
+ * to `.simulations/<id>.events.json` under the portal's working directory,
+ * which is *not* the mounted volume: a redeploy kept every `generated` record
+ * and deleted every script, so pressing Start produced a run that failed
+ * immediately with a bare `ENOENT ... .events.json`. Record and script now
+ * share one volume and one lifetime.
+ */
+export const simulationScripts = sqliteTable("simulation_scripts", {
+  simulation_id: text("simulation_id").primaryKey(),
+  /** JSON-encoded SimulationEvent[] — the whole script, in schedule order. */
+  events: text("events").notNull(),
+  /** JSON-encoded GenerationSummary. Null for scripts written without one. */
+  generation: text("generation"),
+  updated_at: text("updated_at").notNull(),
+});
+
+/**
  * An OpenFn project (or any other set of workflow endpoints) that webhook
  * registrations belong to. Cloning an OpenFn project produces a fresh set of
  * webhook URLs; registering that clone as a project here lets staff keep several

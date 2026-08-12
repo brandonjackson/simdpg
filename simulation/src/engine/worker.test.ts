@@ -4,15 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { eq } from "drizzle-orm";
-import { eventsFilePath } from "./paths.js";
 import type { SimulationEvent } from "./events.js";
 
 let dir: string;
-
-async function writeEvents(id: string, events: SimulationEvent[]): Promise<void> {
-  await fs.mkdir(path.join(dir, ".simulations"), { recursive: true });
-  await fs.writeFile(eventsFilePath(id), JSON.stringify(events));
-}
 
 /**
  * Load the worker and the shared DB against the current tempdir. getDb() opens
@@ -20,11 +14,32 @@ async function writeEvents(id: string, events: SimulationEvent[]): Promise<void>
  * registry (in beforeEach) and imports fresh to get an isolated database.
  */
 async function load() {
-  const [{ runWorker }, { getDb, simulations, simulationRuns }] = await Promise.all([
-    import("./worker.js"),
-    import("./db.js"),
-  ]);
-  return { runWorker, db: getDb(), simulations, simulationRuns };
+  const [{ runWorker }, { getDb, simulations, simulationRuns, simulationScripts }] =
+    await Promise.all([import("./worker.js"), import("./db.js")]);
+  return {
+    runWorker,
+    db: getDb(),
+    simulations,
+    simulationRuns,
+    simulationScripts,
+  };
+}
+
+/** Store a script the way the portal's generation step does. */
+function writeScript(
+  db: Awaited<ReturnType<typeof load>>["db"],
+  simulationScripts: Awaited<ReturnType<typeof load>>["simulationScripts"],
+  id: string,
+  events: SimulationEvent[],
+): void {
+  db.insert(simulationScripts)
+    .values({
+      simulation_id: id,
+      events: JSON.stringify(events),
+      generation: null,
+      updated_at: "t0",
+    })
+    .run();
 }
 
 /** Seed a running simulation record, as the portal would before spawning the worker. */
@@ -58,7 +73,8 @@ afterEach(async () => {
 
 describe("runWorker", () => {
   it("delivers events, records completed run-state, and flips the record terminal", async () => {
-    const { runWorker, db, simulations, simulationRuns } = await load();
+    const { runWorker, db, simulations, simulationRuns, simulationScripts } =
+      await load();
     seedRunning(db, simulations, "s1");
 
     const received: unknown[] = [];
@@ -70,7 +86,7 @@ describe("runWorker", () => {
     await new Promise<void>((r) => server.listen(0, r));
     const url = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}`;
 
-    await writeEvents("s1", [
+    writeScript(db, simulationScripts, "s1", [
       { id: "e1", scheduledMicros: 0, targetKey: "national-id", targetUrl: url, payload: { n: 1 } },
       { id: "e2", scheduledMicros: 0, targetKey: "national-id", targetUrl: null, payload: { n: 2 } },
     ]);
@@ -93,7 +109,7 @@ describe("runWorker", () => {
     expect(JSON.parse(sim!.stats!)).toEqual({ delivered: 1, skipped: 1, failed: 0, total: 2 });
   });
 
-  it("records failed run-state (and record) when the events file is missing", async () => {
+  it("records failed run-state (and record) when there is no script", async () => {
     const { runWorker, db, simulations, simulationRuns } = await load();
     seedRunning(db, simulations, "missing");
 
@@ -101,7 +117,9 @@ describe("runWorker", () => {
 
     const run = db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "missing")).get();
     expect(run?.status).toBe("failed");
-    expect(run?.error).toBeTruthy();
+    // The run page shows this verbatim, so it says what to do rather than which
+    // file could not be opened.
+    expect(run?.error).toMatch(/Generate it again/);
 
     const sim = db.select().from(simulations).where(eq(simulations.id, "missing")).get();
     expect(sim?.status).toBe("failed");
