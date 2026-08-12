@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  daySteps,
   isAdult,
   pick,
   drawCount,
@@ -48,5 +49,34 @@ describe("pools helpers", () => {
   it("exposes non-empty name/cause pools", () => {
     expect(cityNames.length).toBeGreaterThan(0);
     expect(CAUSES_OF_DEATH.length).toBeGreaterThan(0);
+  });
+});
+
+describe("daySteps", () => {
+  it("whole-day durations are whole steps", () => {
+    expect(daySteps(3 * 86_400, 86_400)).toEqual([
+      { day: 0, fraction: 1, stepSeconds: 86_400 },
+      { day: 1, fraction: 1, stepSeconds: 86_400 },
+      { day: 2, fraction: 1, stepSeconds: 86_400 },
+    ]);
+  });
+
+  it("keeps a sub-day duration as one partial step instead of dropping it", () => {
+    expect(daySteps(3_600, 86_400)).toEqual([
+      { day: 0, fraction: 1 / 24, stepSeconds: 3_600 },
+    ]);
+  });
+
+  it("keeps the trailing part-day after the whole days", () => {
+    expect(daySteps(86_400 + 21_600, 86_400)).toEqual([
+      { day: 0, fraction: 1, stepSeconds: 86_400 },
+      { day: 1, fraction: 0.25, stepSeconds: 21_600 },
+    ]);
+  });
+
+  it("returns no steps for a non-positive duration or step size", () => {
+    expect(daySteps(0, 86_400)).toEqual([]);
+    expect(daySteps(-1, 86_400)).toEqual([]);
+    expect(daySteps(86_400, 0)).toEqual([]);
   });
 });

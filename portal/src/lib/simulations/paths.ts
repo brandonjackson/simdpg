@@ -24,6 +24,16 @@ export function eventsFilePath(id: string): string {
   return path.join(simDataDir(), ".simulations", `${id}.events.json`);
 }
 
+/**
+ * Sidecar recording what generation drew on and produced for a simulation —
+ * population size, days covered, and unroutable targets. It is what lets the
+ * detail page explain a short or empty event script instead of only reporting
+ * one. Absent for runs generated before it existed.
+ */
+export function generationFilePath(id: string): string {
+  return path.join(simDataDir(), ".simulations", `${id}.generation.json`);
+}
+
 /** Worker log for a simulation. The portal tees the spawned worker's stdout and
  * stderr here so a run's progress is inspectable after the fact. */
 export function logFilePath(id: string): string {

@@ -62,6 +62,43 @@ export function drawCount(expected: number, random: () => number): number {
   return random() < expected - base ? base + 1 : base;
 }
 
+/** One generation time-step: a whole simulated day, or a run's trailing part-day. */
+export interface DayStep {
+  /** Day index from the start of the run; feeds the dated payload fields. */
+  day: number;
+  /** Share of a full day this step covers — 1 for whole days, < 1 for the tail. */
+  fraction: number;
+  /** Seconds within the step an event can be scheduled at. */
+  stepSeconds: number;
+}
+
+/**
+ * Split a run's duration into day steps, keeping the trailing partial day
+ * rather than flooring it away. Generators scale their per-day rates by
+ * `fraction`, so a run shorter than a day (or one ending mid-day) draws its
+ * proportional share of events instead of silently generating none.
+ */
+export function daySteps(durationSeconds: number, dtSeconds: number): DayStep[] {
+  if (!(durationSeconds > 0) || !(dtSeconds > 0)) return [];
+
+  const wholeDays = Math.floor(durationSeconds / dtSeconds);
+  const steps: DayStep[] = [];
+  for (let day = 0; day < wholeDays; day++) {
+    steps.push({ day, fraction: 1, stepSeconds: dtSeconds });
+  }
+
+  const remainder = durationSeconds - wholeDays * dtSeconds;
+  if (remainder > 0) {
+    steps.push({
+      day: wholeDays,
+      fraction: remainder / dtSeconds,
+      stepSeconds: remainder,
+    });
+  }
+
+  return steps;
+}
+
 /** Up to min(k, arr.length) distinct elements (Fisher–Yates prefix shuffle). */
 export function sampleWithoutReplacement<T>(
   arr: readonly T[],

@@ -10,6 +10,7 @@ import { resolveFormWebhook } from "@/lib/form-webhooks";
 import { REGISTRY } from "./generators";
 import type { RandomEventGenerator } from "./generators";
 import { writeEvents, type SimulationEvent } from "./events";
+import { writeGenerationSummary } from "./generation";
 import type { SimulationParameters } from "./store";
 import { GENERATOR_CONFIG } from "./generators/config";
 
@@ -95,5 +96,20 @@ export async function generateEvents(
 
   events.sort((a, b) => a.scheduledMicros - b.scheduledMicros);
   await writeEvents(id, events);
+
+  // Record what this drew on, so a short or empty script can explain itself.
+  await writeGenerationSummary(id, {
+    generatedAt: new Date().toISOString(),
+    citizens: citizens.length,
+    programs: programs.length,
+    days: parameters.durationSeconds / DT_SECONDS,
+    events: events.length,
+    unroutedTargets: [...urlCache.entries()]
+      .filter(([, url]) => url === null)
+      .map(([key]) => key)
+      .sort(),
+    unroutedEvents: events.filter((e) => e.targetUrl === null).length,
+  });
+
   return events;
 }

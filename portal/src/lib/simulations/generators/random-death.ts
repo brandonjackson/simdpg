@@ -2,6 +2,7 @@ import type { GeneratedEvent, GeneratorContext, RandomEventGenerator } from "./t
 import {
   CAUSES_OF_DEATH,
   cityNames,
+  daySteps,
   drawCount,
   pick,
   sampleWithoutReplacement,
@@ -23,12 +24,13 @@ export const randomDeath: RandomEventGenerator = {
   key: "random-death",
   generate({ citizens, dtSeconds, durationSeconds, random, config }: GeneratorContext): GeneratedEvent[] {
     const { dailyRatePerPopulation, stepDelaySeconds } = config.death;
-    const numDays = Math.floor(durationSeconds / dtSeconds);
+    const steps = daySteps(durationSeconds, dtSeconds);
     const events: GeneratedEvent[] = [];
     let remaining = citizens.slice(); // draining pool
 
-    for (let day = 0; day < numDays && remaining.length > 0; day++) {
-      const count = drawCount(dailyRatePerPopulation * remaining.length, random);
+    for (const { day, fraction, stepSeconds } of steps) {
+      if (remaining.length === 0) break;
+      const count = drawCount(dailyRatePerPopulation * remaining.length * fraction, random);
       if (count === 0) continue;
       const dying = sampleWithoutReplacement(remaining, count, random);
       if (dying.length === 0) continue;
@@ -36,7 +38,7 @@ export const randomDeath: RandomEventGenerator = {
       remaining = remaining.filter((c) => !dyingSet.has(c));
 
       for (const c of dying) {
-        const offset = Math.floor(random() * dtSeconds);
+        const offset = Math.floor(random() * stepSeconds);
         const lookupAt = day * dtSeconds + offset;
         events.push({
           scheduledSimSeconds: lookupAt,

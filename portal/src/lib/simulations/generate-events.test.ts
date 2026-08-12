@@ -9,6 +9,8 @@ import { eventsFilePath } from "./paths";
 import type { SimulationEvent } from "./events";
 import type { SimulationParameters } from "./store";
 import { GENERATOR_CONFIG } from "./generators/config";
+import { readGenerationSummary } from "./generation";
+import { BEHAVIOR_OFF } from "@simdpg/system-kit/behavior";
 
 function citizen(over: Partial<Citizen> = {}): Citizen {
   return {
@@ -34,6 +36,7 @@ const params: SimulationParameters = {
   durationSeconds: 10 * 86_400,
   usesExistingPopulation: true,
   generatorConfig: GENERATOR_CONFIG,
+  behavior: BEHAVIOR_OFF,
   projectId: "proj-1",
   projectName: "Project one",
 };
@@ -177,6 +180,66 @@ describe("generateEvents", () => {
       generators: [spyGen as any],
     });
     expect(seen[0]).toEqual([{ id: "p1" }]);
+  });
+
+  // Every rate is per simulated day, and the day loop used to floor the run's
+  // duration — so anything under 24h generated an empty script with no hint why.
+  it("generates events for a run shorter than one simulated day", async () => {
+    const events = await generateEvents(
+      "s-subday",
+      { ...params, durationSeconds: 1_800 },
+      {
+        listCitizens: async () => [citizen()],
+        resolveTarget: async () => ({ url: "http://hook" }),
+        random: () => 0, // always registers, offset 0
+        generators: [randomNationalIdReg],
+        listPrograms: async () => [],
+      },
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0].scheduledMicros).toBe(0);
+  });
+
+  it("records what generation drew on, including unroutable targets", async () => {
+    await generateEvents("s-summary", { ...params, durationSeconds: 2 * 86_400 }, {
+      listCitizens: async () => [citizen(), citizen({ id: "c2", status: "deceased" })],
+      listPrograms: async () => [{ id: "p1" } as any],
+      resolveTarget: async () => null,
+      random: () => 0,
+      generators: [randomNationalIdReg],
+    });
+
+    expect(await readGenerationSummary("s-summary")).toMatchObject({
+      citizens: 1, // the deceased one is filtered out before generating
+      programs: 1,
+      days: 2,
+      events: 1,
+      unroutedEvents: 1,
+      unroutedTargets: ["national-id"],
+    });
+  });
+
+  it("records a zero-citizen, zero-event generation so the empty script is explainable", async () => {
+    await generateEvents("s-empty", { ...params, durationSeconds: 3_600 }, {
+      listCitizens: async () => [],
+      listPrograms: async () => [],
+      resolveTarget: async () => ({ url: "http://hook" }),
+      random: () => 0,
+      generators: [randomNationalIdReg],
+    });
+
+    expect(await readGenerationSummary("s-empty")).toMatchObject({
+      citizens: 0,
+      events: 0,
+      days: 3_600 / 86_400,
+      unroutedTargets: [],
+      unroutedEvents: 0,
+    });
+  });
+
+  it("has no generation summary for a simulation that was never generated", async () => {
+    expect(await readGenerationSummary("never-generated")).toBeNull();
   });
 
   it("uses parameters.generatorConfig when running generators", async () => {

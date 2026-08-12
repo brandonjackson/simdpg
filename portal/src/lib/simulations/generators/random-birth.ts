@@ -1,6 +1,7 @@
 import type { GeneratedEvent, GeneratorContext, RandomEventGenerator } from "./types";
 import {
   cityNames,
+  daySteps,
   drawCount,
   femaleGivenNames,
   isAdult,
@@ -18,17 +19,17 @@ export const randomBirth: RandomEventGenerator = {
   key: "random-birth",
   generate({ citizens, dtSeconds, durationSeconds, random, config }: GeneratorContext): GeneratedEvent[] {
     const { dailyRatePerPopulation } = config.birth;
-    const numDays = Math.floor(durationSeconds / dtSeconds);
+    const steps = daySteps(durationSeconds, dtSeconds);
     const mothers = citizens.filter((c) => c.sex === "female" && isAdult(c.date_of_birth));
     const fathers = citizens.filter((c) => c.sex === "male" && isAdult(c.date_of_birth));
     const events: GeneratedEvent[] = [];
     if (mothers.length === 0) return events;
 
-    for (let day = 0; day < numDays; day++) {
-      const count = drawCount(dailyRatePerPopulation * citizens.length, random);
+    for (const { day, fraction, stepSeconds } of steps) {
+      const count = drawCount(dailyRatePerPopulation * citizens.length * fraction, random);
       for (let b = 0; b < count; b++) {
         const mother = pick(mothers, random);
-        const offset = Math.floor(random() * dtSeconds);
+        const offset = Math.floor(random() * stepSeconds);
         const sex: "male" | "female" = random() < 0.5 ? "male" : "female";
         const givenName = pick(sex === "male" ? maleGivenNames : femaleGivenNames, random);
         const father = fathers.length > 0 ? pick(fathers, random) : null;

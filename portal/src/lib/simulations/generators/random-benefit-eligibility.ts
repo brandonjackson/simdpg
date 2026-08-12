@@ -1,5 +1,5 @@
 import type { GeneratedEvent, GeneratorContext, RandomEventGenerator } from "./types";
-import { drawCount, pick } from "./pools";
+import { daySteps, drawCount, pick } from "./pools";
 
 /**
  * Steady daily-count benefit-eligibility generator (recurring). Each sampled
@@ -13,15 +13,15 @@ export const randomBenefitEligibility: RandomEventGenerator = {
   key: "random-benefit-eligibility",
   generate({ citizens, programs, dtSeconds, durationSeconds, random, config }: GeneratorContext): GeneratedEvent[] {
     const { dailyRatePerPopulation, chainProbabilities, stepDelaySeconds } = config.benefits;
-    const numDays = Math.floor(durationSeconds / dtSeconds);
+    const steps = daySteps(durationSeconds, dtSeconds);
     const events: GeneratedEvent[] = [];
     if (citizens.length === 0) return events;
 
-    for (let day = 0; day < numDays; day++) {
-      const count = drawCount(dailyRatePerPopulation * citizens.length, random);
+    for (const { day, fraction, stepSeconds } of steps) {
+      const count = drawCount(dailyRatePerPopulation * citizens.length * fraction, random);
       for (let n = 0; n < count; n++) {
         const c = pick(citizens, random);
-        const offset = Math.floor(random() * dtSeconds);
+        const offset = Math.floor(random() * stepSeconds);
         const at = day * dtSeconds + offset;
         events.push({
           scheduledSimSeconds: at,

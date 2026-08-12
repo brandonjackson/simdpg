@@ -105,9 +105,28 @@ describe("randomNationalIdReg", () => {
     });
   });
 
-  it("emits nothing when the sim is shorter than one day (numDays = 0)", () => {
+  it("still registers on a sub-day run, scaling the probability by the part-day", () => {
+    // One hour = 1/24 of a day, so the roll must clear dailyProb/24, and the
+    // offset falls inside that hour rather than a whole day.
+    const random = seq([NATIONAL_ID_DAILY_PROB / 24 - 0.0001, 0.5]);
     const events = randomNationalIdReg.generate(
-      ctx({ durationSeconds: 3600, random: () => 0 }),
+      ctx({ durationSeconds: 3600, random }),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].scheduledSimSeconds).toBe(Math.floor(0.5 * 3600));
+  });
+
+  it("does not register on a sub-day run when the roll clears the full daily probability but not the scaled one", () => {
+    const random = seq([NATIONAL_ID_DAILY_PROB - 0.0001, 0.5]);
+    const events = randomNationalIdReg.generate(
+      ctx({ durationSeconds: 3600, random }),
+    );
+    expect(events).toHaveLength(0);
+  });
+
+  it("emits nothing when the duration is zero", () => {
+    const events = randomNationalIdReg.generate(
+      ctx({ durationSeconds: 0, random: () => 0 }),
     );
     expect(events).toHaveLength(0);
   });
