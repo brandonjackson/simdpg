@@ -66,6 +66,28 @@ interface SimulationResponse {
   error?: string;
 }
 
+interface CopyResponse {
+  simulation?: SimulationRecord;
+  /** True when a re-run's copy was generated and is now running. */
+  started?: boolean;
+  error?: string;
+}
+
+/**
+ * Whether a simulation has had its turn. A finished run is offered as Re-run,
+ * which starts the copy; anything else — including one still in progress — is
+ * offered as a plain copy, since there is nothing to repeat yet.
+ */
+function hasFinished(status: SimulationStatus): boolean {
+  return status === "stopped" || status === "completed" || status === "failed";
+}
+
+/** Label for a row's copy button, given whether that row's copy is in flight. */
+function copyActionLabel(status: SimulationStatus, busy: boolean): string {
+  if (hasFinished(status)) return busy ? "Re-running..." : "Re-run";
+  return busy ? "Copying..." : "Copy";
+}
+
 function getUnitSeconds(unit: DurationUnit): number {
   return DURATION_UNITS.find((option) => option.value === unit)?.seconds ?? 60;
 }
@@ -192,6 +214,7 @@ export default function SimulationManagement() {
   const [behavior, setBehavior] = useState<BehaviorConfig>(BEHAVIOR_OFF);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -276,6 +299,46 @@ export default function SimulationManagement() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create simulation");
       setCreating(false);
+    }
+  }
+
+  /**
+   * Copy a simulation's settings into a new one. For a finished run this also
+   * generates and starts the copy (Re-run); otherwise the copy is only created.
+   * Either way the new simulation's own page is where its controls and stats are,
+   * so go there — the same place Create lands.
+   */
+  async function handleCopy(simulation: SimulationRecord) {
+    const start = hasFinished(simulation.status);
+    setError(null);
+    setCopyingId(simulation.id);
+
+    try {
+      const res = await fetch(`/api/simulations/${simulation.id}/copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ start }),
+      });
+      const data = (await res.json()) as CopyResponse;
+      if (!res.ok || !data.simulation) {
+        throw new Error(data.error || "Could not copy simulation");
+      }
+      if (data.error) {
+        // The copy was saved but could not be run. Stay here, say why, and let
+        // the refreshed list show the copy so its settings are not lost.
+        await refresh();
+        throw new Error(
+          `${data.error} The copy was saved — open ${shortId(data.simulation.id)} to try again once the problem is fixed.`,
+        );
+      }
+      window.location.href = `/staff/simulations/${data.simulation.id}`;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : `Could not ${start ? "re-run" : "copy"} simulation`,
+      );
+      setCopyingId(null);
     }
   }
 
@@ -725,12 +788,30 @@ export default function SimulationManagement() {
                     Open details
                   </a>
                   <br />
+                  {/* Same settings, new simulation. A finished run re-runs;
+                      anything else is copied without being started. */}
+                  <button
+                    type="button"
+                    className="govuk-button govuk-button--secondary"
+                    onClick={() => handleCopy(simulation)}
+                    disabled={copyingId !== null || deletingId !== null}
+                    // nowrap: the Actions column is narrow enough that "Re-run"
+                    // otherwise breaks across the hyphen.
+                    style={{ marginTop: 10, whiteSpace: "nowrap" }}
+                  >
+                    {copyActionLabel(
+                      simulation.status,
+                      copyingId === simulation.id,
+                    )}
+                  </button>
+                  <br />
                   <button
                     type="button"
                     className="govuk-button govuk-button--warning"
                     onClick={() => handleDelete(simulation.id)}
-                    disabled={deletingId === simulation.id}
-                    style={{ marginTop: 10 }}
+                    // Also held while a copy is in flight, so the source can't be
+                    // deleted from under it.
+                    disabled={deletingId === simulation.id || copyingId !== null}
                   >
                     {deletingId === simulation.id ? "Deleting..." : "Delete"}
                   </button>
