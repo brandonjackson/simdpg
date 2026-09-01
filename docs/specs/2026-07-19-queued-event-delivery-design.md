@@ -82,8 +82,11 @@ verbatim into a shared module: the `AbortController` timeout, the null-`targetUr
 skip, and the never-throws contract all carry over unchanged. One pool serves all
 runs; jobs carry their `simulationId`.
 
-**Redis** — a single queue `sim:deliveries`; counters at
-`sim:run:<id>:{delivered,skipped,failed}`; a stop flag at `sim:run:<id>:stopped`.
+**Redis** — a single queue `sim-deliveries` (BullMQ forbids `:` in a queue
+name — it's the internal key separator — so the hyphen form is used); counters
+at `sim:run:<id>:{delivered,skipped,failed}`; a stop flag at
+`sim:run:<id>:stopped`. The counter and stop-flag keys are plain Redis keys, not
+queue names, so they keep the `:` convention.
 
 ### Transport choice
 
