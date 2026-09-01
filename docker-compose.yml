@@ -24,6 +24,21 @@ x-app: &app
     dockerfile: Dockerfile
 
 services:
+  # Queue transport for the simulation worker pool (see
+  # docs/specs/2026-07-19-queued-event-delivery-design.md). Nothing consumes it
+  # yet. Deliberately has NO volume: queued jobs are meaningless once a run
+  # ends, so persisting them would only replay stale work after a restart.
+  # 6379 is published so the host dev loop (`npm run dev`) can reach it without
+  # running the rest of the stack in Docker: `docker compose up redis`.
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   identity:
     <<: *app
     environment:
@@ -105,6 +120,8 @@ services:
       NOTIFICATIONS_URL: http://notifications:3005
       PAYMENTS_URL: http://payments:3006
       SOCIAL_REGISTRY_URL: http://social-registry:3007
+      # Set ahead of the queue work; the portal does not read this yet.
+      REDIS_URL: redis://redis:6379
     ports: ["3000:3000"]
     volumes: ["portal-data:/app/portal/data"]
     depends_on:
@@ -122,6 +139,8 @@ services:
         condition: service_started
       social-registry:
         condition: service_started
+      redis:
+        condition: service_healthy
 
 volumes:
   identity-data:
