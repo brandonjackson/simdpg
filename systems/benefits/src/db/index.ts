@@ -110,7 +110,7 @@ export function ensureTables(): void {
  */
 const ROW_EXPECTATIONS = {
   programs: "always",
-  enrollments: "seed",
+  enrollments: "population",
 } as const;
 
 /**

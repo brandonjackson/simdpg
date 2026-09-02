@@ -86,13 +86,20 @@ describe("toServiceHealth", () => {
     expect(health.hints.join(" ")).toContain("ensureColumn");
   });
 
-  it("treats an empty database as a warning, not a breakage", () => {
+  it("treats an empty database as a warning with nothing to repair", () => {
+    // The systems are working; there is simply no population. Handing over a
+    // seed command here sends people looking for a fault that isn't there —
+    // the banner points at the population page instead.
     const health = toServiceHealth(
       IDENTITY,
-      report({ status: "empty", problems: ["No data: citizens is empty."] }),
+      report({
+        status: "empty",
+        problems: ["No population records: citizens is empty."],
+      }),
     );
     expect(health.severity).toBe("warning");
-    expect(health.commands).toEqual(["npm run db:seed -w @simdpg/identity"]);
+    expect(health.commands).toEqual([]);
+    expect(health.hints).toEqual([]);
   });
 
   it("reports a service that never answered as an error", () => {

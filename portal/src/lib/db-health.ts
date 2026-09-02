@@ -226,10 +226,24 @@ export function toServiceHealth(
     };
   }
 
+  // An empty database isn't broken, so it gets no repair command: the fix is
+  // to generate a population, and the banner offers that as a link.
+  if (report.status === "empty") {
+    return {
+      ...base,
+      status: "empty",
+      severity: "warning",
+      problems: report.problems,
+      commands: [],
+      hints: [],
+      file: report.file,
+    };
+  }
+
   return {
     ...base,
     status: report.status,
-    severity: report.status === "error" ? "error" : "warning",
+    severity: "error",
     problems: report.problems,
     file: report.file,
     ...fixesFor(descriptor, report),
@@ -240,10 +254,10 @@ export function toServiceHealth(
  * Overall state.
  *
  * Anything broken or unreachable is an error. A service we couldn't verify is a
- * warning. An *empty* database is only raised when every system is empty: one
- * empty system among populated ones is usually deliberate (staff delete a
- * population all the time), whereas nothing anywhere is the signature of a seed
- * that never ran — which is exactly how this failure shows up.
+ * warning. An *empty* database is only raised when every system is empty — no
+ * population anywhere, so every page reads as blank — and even then it is a
+ * notice rather than a fault: one empty system among populated ones is normal,
+ * and so is a deployment nobody has generated a population on yet.
  */
 export function summarize(services: ServiceDbHealth[]): OverallStatus {
   if (services.some((service) => service.severity === "error")) return "error";

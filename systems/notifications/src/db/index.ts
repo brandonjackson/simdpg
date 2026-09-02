@@ -85,7 +85,7 @@ export function ensureTables(): void {
  * check below. Everything else may legitimately be empty.
  */
 const ROW_EXPECTATIONS = {
-  notifications: "seed",
+  notifications: "population",
 } as const;
 
 /**

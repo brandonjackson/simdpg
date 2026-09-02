@@ -1362,6 +1362,35 @@ a:focus {
   white-space: nowrap;
 }
 
+/* The way out of an empty deployment is a page, not a command, so it gets a
+   button of its own rather than a line to paste into a console. */
+.db-alert__action {
+  display: inline-block;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 8px 15px;
+  margin-bottom: 8px;
+  border: 2px solid var(--db-alert-fg);
+  background: var(--db-alert-fg);
+  color: var(--db-alert-bg);
+  text-decoration: none;
+}
+
+.db-alert__action:hover {
+  background: transparent;
+  color: var(--db-alert-fg);
+  text-decoration: underline;
+}
+
+.db-alert__action:focus {
+  outline: 3px solid var(--govuk-focus);
+  outline-offset: 0;
+  background: var(--govuk-focus);
+  color: var(--govuk-black);
+  border-color: var(--govuk-black);
+  text-decoration: none;
+}
+
 .db-alert__copy,
 .db-alert__recheck {
   font-family: var(--govuk-font);

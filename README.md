@@ -360,17 +360,27 @@ answer is summarised in each system's `/health` under `database`.
 
 The portal aggregates all eight databases (its own plus the seven systems) at
 `GET /api/health/database`, and when any of them is unhealthy a banner appears
-at the top of every page naming the service, the problem, and the command to
-run to fix it. Red means broken or unreachable; amber means the databases are
-usable but hold nothing, which is what a seed that never ran looks like.
+at the top of every page. The two states it reports need opposite responses, so
+it words them differently:
+
+- **Red — a database is broken** (missing tables or columns, an unwritable
+  file) or a service isn't answering. The banner names the service and the
+  command to run in its console.
+- **Amber — there is no population**, raised only when every system is empty.
+  Nothing is wrong: the databases work, nobody has generated a population. The
+  banner links to [Population management](#portal) rather than offering a
+  command, because re-seeding a database that is doing its job sends you after
+  a bug that isn't there.
 
 ```bash
 curl localhost:3001/admin/db-health     # one system
 curl localhost:3000/api/health/database # everything, 503 when broken
 ```
 
-Most problems are fixed by re-running the service's seed, which rebuilds the
-schema before it inserts anything and skips a database that already has data:
+A *broken* database is usually fixed by re-running the service's seed, which
+rebuilds the schema before it inserts anything and skips a database that
+already has data (an *empty* one needs no command — generate a population at
+`/staff/population`):
 
 ```bash
 npm run db:seed -w @simdpg/identity   # any system

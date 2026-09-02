@@ -4,40 +4,56 @@ import { useCallback, useEffect, useState } from "react";
 import type { DatabaseHealth, ServiceDbHealth } from "@/lib/db-health";
 
 /**
- * Site-wide banner for a database that isn't working.
+ * Site-wide banner for a database that isn't working — and, separately, for a
+ * deployment that has no population in it yet.
  *
- * The failure this exists for is a quiet one: a system whose tables were never
- * created, or whose volume isn't mounted, still answers every request — with
- * nothing in it. Pages render, forms submit, and the population counter reads
- * 0, which looks exactly like a population of 0. Nothing is logged because
- * nothing threw.
- *
- * So this asks `/api/health/database` on load and every minute after, and when
- * something is wrong it says so at the top of every page, with the command to
- * run in that service's Railway console. It can't be dismissed: a banner you
- * can wave away is one you'll wave away and then spend an afternoon debugging
- * an empty database.
+ * Both look identical from a page: counters read 0 and lists come back empty.
+ * They need opposite responses, though. A broken database (no tables, an
+ * unwritable volume, a schema older than the build) is a fault, and the fix is
+ * a command in that service's Railway console. An empty one is not a fault at
+ * all — the systems are working, nobody has generated a population — and the
+ * fix is the staff population page. Telling someone to re-seed a database that
+ * is doing its job perfectly well sends them after a bug that isn't there, so
+ * the two states are worded and coloured differently.
  */
 
 /** How often to re-check while a page is open. */
 const POLL_MS = 60_000;
 
 /**
- * The two failures that hit every service at once — nothing seeded, or the
- * private network down — otherwise fill the banner with seven copies of the
- * same paragraph and bury the one service that is genuinely broken. Past this
- * many, services sharing a state collapse into a single entry.
+ * Where to send someone whose systems are fine but empty. Declared here rather
+ * than imported from `@/lib/db-health`: that module opens the portal's
+ * database, so only its *types* may cross into a client component — importing
+ * a value from it drags better-sqlite3 into the browser bundle.
+ */
+const POPULATION_PAGE = "/staff/population";
+
+/**
+ * Services that are down all at once — a private network that isn't up, say —
+ * otherwise fill the banner with identical paragraphs and bury the one service
+ * that is genuinely broken. Past this many, they collapse into one entry.
  */
 const GROUP_FROM = 3;
 
 const STATUS_LABELS: Record<ServiceDbHealth["status"], string> = {
   ok: "OK",
-  empty: "No data",
+  empty: "No population",
   error: "Broken",
   unreachable: "Not answering",
 };
 
 const CONSOLE_PATH = "open the service → ⋮ → Console";
+
+/** "Identity, Health and Benefits" — for reading, not for parsing. */
+function nameList(services: ServiceDbHealth[]): string {
+  const labels = services.map((service) => service.label);
+  if (labels.length <= 1) return labels.join("");
+  return `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+}
+
+function heading(services: ServiceDbHealth[]): string {
+  return services.length === 1 ? services[0].label : `${services.length} systems`;
+}
 
 function CommandLine({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
@@ -63,7 +79,7 @@ function CommandLine({ command }: { command: string }) {
   );
 }
 
-/** One service, with everything known about what's wrong and how to fix it. */
+/** One broken service, with what's wrong and the command that fixes it. */
 function ServiceProblem({ service }: { service: ServiceDbHealth }) {
   return (
     <li className="db-alert__service">
@@ -105,44 +121,63 @@ function ServiceProblem({ service }: { service: ServiceDbHealth }) {
   );
 }
 
-/** Several services in the same state, said once. */
-function GroupedProblem({
-  services,
-  status,
-  summary,
-  hint,
-}: {
-  services: ServiceDbHealth[];
-  status: ServiceDbHealth["status"];
-  summary: string;
-  hint: string;
-}) {
-  const commands = services.flatMap((service) => service.commands);
-
+/** Several services that didn't answer, said once. */
+function SilentServices({ services }: { services: ServiceDbHealth[] }) {
   return (
     <li className="db-alert__service">
       <p className="db-alert__service-name">
-        {services.length} services
-        <span className="db-alert__tag">{STATUS_LABELS[status]}</span>
+        {heading(services)}
+        <span className="db-alert__tag">{STATUS_LABELS.unreachable}</span>
+      </p>
+      <p className="db-alert__problem">
+        {nameList(services)} didn&apos;t answer, so nothing they hold can be
+        read.
+      </p>
+      <p className="db-alert__hint">
+        Check the services are deployed and running (Railway &rarr; each service
+        &rarr; Deployments). If they are, the portal can&apos;t reach them over
+        the private network.
+      </p>
+    </li>
+  );
+}
+
+/**
+ * Nothing is wrong here: the databases work, they just have no citizens in
+ * them. So this points at the page that makes some, and never at a console.
+ */
+function NoPopulation({ services }: { services: ServiceDbHealth[] }) {
+  return (
+    <li className="db-alert__service">
+      <p className="db-alert__service-name">
+        {heading(services)}
+        <span className="db-alert__tag">{STATUS_LABELS.empty}</span>
       </p>
 
       <p className="db-alert__problem">
-        {services.map((service) => service.label).join(", ")} — {summary}
+        {nameList(services)} {services.length === 1 ? "is" : "are"} running
+        normally — the {services.length === 1 ? "database is" : "databases are"}{" "}
+        working, {services.length === 1 ? "it holds" : "they hold"} no citizen
+        records. Until a population exists, every counter reads 0 and every
+        search comes back empty.
       </p>
 
-      {commands.length > 0 && (
-        <>
-          <p className="db-alert__fix">
-            Fix it in Railway, running each command in its own service&apos;s
-            console ({CONSOLE_PATH}):
-          </p>
-          {commands.map((command) => (
-            <CommandLine key={command} command={command} />
-          ))}
-        </>
-      )}
+      <p className="db-alert__fix">
+        Generate one in Population management: choose the size and shape you
+        want, then press <strong>Generate population</strong>.
+      </p>
 
-      <p className="db-alert__hint">{hint}</p>
+      <p>
+        <a className="db-alert__action" href={POPULATION_PAGE}>
+          Go to population management
+        </a>
+      </p>
+
+      <p className="db-alert__hint">
+        A handful of sample records can also be restored from a service&apos;s
+        console (<code>npm run db:seed -w @simdpg/identity</code>, once per
+        system), but generating a population is the usual route.
+      </p>
     </li>
   );
 }
@@ -177,16 +212,19 @@ export default function DatabaseAlertBanner() {
   const unhealthy = health.services.filter(
     (service) => service.severity !== "ok",
   );
-  const silent = unhealthy.filter((service) => service.status === "unreachable");
   const empty = unhealthy.filter((service) => service.status === "empty");
+  const silent = unhealthy.filter((service) => service.status === "unreachable");
   const groupSilent = silent.length >= GROUP_FROM;
-  const groupEmpty = empty.length >= GROUP_FROM;
 
+  // Empty databases always collapse into one entry: they share a single fix,
+  // and it isn't a per-service one.
   const listed = unhealthy.filter(
     (service) =>
-      !(groupSilent && service.status === "unreachable") &&
-      !(groupEmpty && service.status === "empty"),
+      service.status !== "empty" &&
+      !(groupSilent && service.status === "unreachable"),
   );
+
+  const emptyOnly = empty.length === unhealthy.length;
 
   return (
     <div
@@ -198,7 +236,9 @@ export default function DatabaseAlertBanner() {
         <h2 className="db-alert__title">
           {health.status === "error"
             ? "Database problem — this site is showing incomplete or missing data"
-            : "Database warning — there is no data to show"}
+            : emptyOnly
+              ? "No population yet — there is nothing for these pages to show"
+              : "Some databases couldn't be checked"}
         </h2>
 
         <ul className="db-alert__services">
@@ -206,23 +246,9 @@ export default function DatabaseAlertBanner() {
             <ServiceProblem key={service.key} service={service} />
           ))}
 
-          {groupEmpty && (
-            <GroupedProblem
-              services={empty}
-              status="empty"
-              summary="every one of them is empty, so every page built on their records shows nothing."
-              hint="Nothing anywhere means the seed never ran. If you deleted the population on purpose, generate a new one from the staff area instead."
-            />
-          )}
+          {empty.length > 0 && <NoPopulation services={empty} />}
 
-          {groupSilent && (
-            <GroupedProblem
-              services={silent}
-              status="unreachable"
-              summary="none of them answered, so nothing they hold can be read."
-              hint="Check the services are deployed and running (Railway → each service → Deployments). If they are, the portal can't reach them over the private network."
-            />
-          )}
+          {groupSilent && <SilentServices services={silent} />}
         </ul>
 
         <p className="db-alert__footer">

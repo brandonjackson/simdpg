@@ -145,11 +145,15 @@ The deployment reports that state instead of hiding it:
   portal's plus the seven systems'), answering 503 when any of them is broken,
   so an uptime check catches it too.
 - A banner at the top of **every** portal page whenever one of them is
-  unhealthy, naming the service, the problem, and the command to run. Red is
-  broken or unreachable; amber is "usable but empty", which is what a seed that
-  never ran looks like.
+  unhealthy. **Red** is broken or unreachable, and names the service, the
+  problem and the command to run. **Amber** is "working, but there is no
+  population" — raised only when every system is empty — and links to the staff
+  population page instead of a command, because nothing there is broken.
 
-To fix one, open that service in Railway (the service → ⋮ → Console) and run:
+An amber banner needs no command: open **Staff → Population management** and
+generate a population (or restore the sample records with the seed command
+below). To fix a red one, open that service in Railway (the service → ⋮ →
+Console) and run:
 
 | Service | Command | What it does |
 | --- | --- | --- |
