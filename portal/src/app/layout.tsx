@@ -1,4 +1,5 @@
 import "./globals.css";
+import DatabaseAlertBanner from "@/components/DatabaseAlertBanner";
 
 export const metadata = {
   title: "SimDPG Portal",
@@ -14,6 +15,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        {/* Above the header, on every page: a broken database shows up as
+            empty pages rather than errors, so the warning has to be the first
+            thing anyone sees. */}
+        <DatabaseAlertBanner />
+
         <header className="govuk-header">
           <div className="govuk-header__container">
             <div className="govuk-header__logo">

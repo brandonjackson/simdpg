@@ -52,6 +52,13 @@ paths:
                   status: { type: string, example: ok }
                   system: { type: string, example: payments }
                   version: { type: string, example: 0.1.0 }
+                  database:
+                    type: string
+                    enum: [ok, empty, error]
+                    description: >
+                      State of this system's database. `empty` means it is
+                      usable but holds no data; `error` means it is broken. See
+                      `/admin/db-health` for the detail.
   /accounts:
     get:
       operationId: listAccounts
@@ -249,6 +256,50 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PaymentWithLedger" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /admin/db-health:
+    get:
+      operationId: getDatabaseHealth
+      tags: [Admin]
+      summary: Database health — schema, writability, and row counts
+      description: >
+        Reports whether this system's database is actually usable: the tables
+        and columns this build's queries need, whether the file can be written
+        to, and row counts for the tables that should not be empty. Always
+        answers 200, including when the database is broken — read `status`, not
+        the HTTP status code. The portal polls this across every system and
+        raises a banner when a report comes back unhealthy.
+      responses:
+        "200":
+          description: Database health report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service: { type: string, example: payments }
+                  status:
+                    type: string
+                    enum: [ok, empty, error]
+                  file:
+                    type: string
+                    example: /app/systems/payments/data/payments.sqlite
+                  writable: { type: boolean }
+                  checkedAt: { type: string, format: date-time }
+                  problems:
+                    type: array
+                    description: Human-readable problems, worst first.
+                    items: { type: string }
+                  missingTables:
+                    type: array
+                    items: { type: string }
+                  missingColumns:
+                    type: array
+                    description: Missing columns as `table.column`.
+                    items: { type: string }
+                  counts:
+                    type: object
+                    description: Row counts for tables that should hold rows.
+                    additionalProperties: { type: integer }
   /admin/stats:
     get:
       operationId: getAdminStats

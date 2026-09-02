@@ -128,6 +128,46 @@ Delete the non-server services Railway auto-creates (`@simdpg/system-kit`,
 > URL — e.g. to point at a system's public domain. The system `PORT` is always
 > pinned from the service name so the portal can reach it.
 
+### When something is wrong with a database
+
+Every service keeps its data in a SQLite file on a mounted volume and creates
+its tables at startup. When that goes wrong — the volume isn't mounted, it's
+mounted read-only, or the database predates the schema the running build
+queries — nothing throws. The service starts, answers every request, and
+returns nothing, so the portal shows a population of 0 and no error anywhere.
+
+The deployment reports that state instead of hiding it:
+
+- `GET /admin/db-health` on any system — tables, columns, writability, and row
+  counts for the tables that shouldn't be empty. Also summarised as `database`
+  in that system's `/health`.
+- `GET /api/health/database` on the portal — all eight databases at once (the
+  portal's plus the seven systems'), answering 503 when any of them is broken,
+  so an uptime check catches it too.
+- A banner at the top of **every** portal page whenever one of them is
+  unhealthy, naming the service, the problem, and the command to run. Red is
+  broken or unreachable; amber is "usable but empty", which is what a seed that
+  never ran looks like.
+
+To fix one, open that service in Railway (the service → ⋮ → Console) and run:
+
+| Service | Command | What it does |
+| --- | --- | --- |
+| any system | `npm run db:seed -w @simdpg/<system>` | Rebuilds the schema, then seeds only if the database is empty |
+| the portal | `npm run db:setup -w @simdpg/portal` | Creates the portal's tables, re-inserts the default project, reports what's left |
+
+Both are idempotent and neither deletes anything, so they're safe to re-run.
+
+Two problems they can't fix on their own, and what the banner says instead:
+
+- **The file isn't writable.** Mount a volume at `/app/systems/<system>/data`
+  (or `/app/portal/data`) and redeploy — until then every write fails while
+  reads keep working, which is the most confusing version of this failure.
+- **A column is missing.** The database was created by an older build and the
+  schema bootstrap has no migration for that column. Add one with `ensureColumn`
+  in that service's `src/db/index.ts` (see `packages/system-kit/src/migrations.ts`)
+  and redeploy; `CREATE TABLE IF NOT EXISTS` alone will never add it.
+
 ### Optional: webhooks for OpenFn
 
 Each system delivers DCI CloudEvents to the per-event targets registered in its

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requestId, docsHtml, createBehavior } from "@simdpg/system-kit";
-import { ensureTables } from "./db/index.js";
+import { checkDatabase, ensureTables } from "./db/index.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import birthsRouter from "./routes/births.js";
 import deathsRouter from "./routes/deaths.js";
@@ -30,8 +30,18 @@ app.use(behavior.middleware);
 // Health check
 // ---------------------------------------------------------------------------
 
+// A service can be up while its database is broken — that combination is
+// exactly what shows up as empty pages and zero counters, so the database's
+// state belongs here. The status code stays 200 either way (a failing probe
+// would take the service out of rotation and hide the problem instead of
+// reporting it); read `database`, and GET /admin/db-health for the detail.
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", system: "civil-registry", version: "0.1.0" });
+  res.json({
+    status: "ok",
+    system: "civil-registry",
+    version: "0.1.0",
+    database: checkDatabase().status,
+  });
 });
 
 // ---------------------------------------------------------------------------

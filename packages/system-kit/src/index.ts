@@ -70,4 +70,15 @@ export type {
 export { ensureColumn, tableColumns } from "./migrations.js";
 export type { SqliteLike } from "./migrations.js";
 
+export { checkDbHealth, dbHealthFailure } from "./db-health.js";
+export type {
+  CheckDbHealthOptions,
+  DbHealthReport,
+  DbHealthStatus,
+  DbTableSpec,
+  RowExpectation,
+} from "./db-health.js";
+
+export { schemaTableSpecs } from "./db-schema.js";
+
 export { docsHtml } from "./docs.js";
