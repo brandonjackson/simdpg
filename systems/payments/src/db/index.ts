@@ -3,7 +3,12 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ensureColumn } from "@simdpg/system-kit";
+import {
+  checkDbHealth,
+  ensureColumn,
+  schemaTableSpecs,
+  type DbHealthReport,
+} from "@simdpg/system-kit";
 import * as schema from "./schema.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -101,4 +106,28 @@ export function ensureTables(): void {
   // already have a webhook_subscriptions table, so the CREATE above is a no-op
   // for them and the new column has to be added explicitly.
   ensureColumn(sqlite, "webhook_subscriptions", "project_id", "TEXT");
+}
+
+/**
+ * What each table should contain in a working deployment, for the health
+ * check below. Everything else may legitimately be empty.
+ */
+const ROW_EXPECTATIONS = {
+  accounts: "seed",
+} as const;
+
+/**
+ * Report on the live database — schema, writability, and whether the tables
+ * that should hold rows do. Served by `GET /admin/db-health` and summarised in
+ * `/health`; the portal polls every system and raises a banner when one of
+ * these reports comes back unhealthy, because otherwise a database that never
+ * got its tables (or a volume mounted read-only) just shows up as zeroes.
+ */
+export function checkDatabase(): DbHealthReport {
+  return checkDbHealth({
+    service: "payments",
+    file: dbPath,
+    sqlite,
+    tables: schemaTableSpecs(schema, ROW_EXPECTATIONS),
+  });
 }

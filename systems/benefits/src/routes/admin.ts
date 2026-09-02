@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { eq, sql, desc } from "drizzle-orm";
 import { notFound, getPagination, listResponse } from "@simdpg/system-kit";
-import { db } from "../db/index.js";
+import { checkDatabase, db } from "../db/index.js";
 import {
   programs,
   enrollments,
@@ -19,6 +19,21 @@ function count(
 ): number {
   return db.select({ c: sql<number>`count(*)` }).from(table).get()?.c ?? 0;
 }
+
+// ---------------------------------------------------------------------------
+// GET /admin/db-health — is this system's database actually working?
+// ---------------------------------------------------------------------------
+// Answers 200 even when the database is broken: this is a report for the
+// portal's banner, not a liveness probe, and a report you can't read once
+// things break is no report at all. Read `status` ("ok" | "empty" | "error"),
+// not the HTTP status code.
+router.get("/db-health", (_req, res, next) => {
+  try {
+    res.json(checkDatabase());
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // GET /admin/stats — programme, enrollment, and payment counts

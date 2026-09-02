@@ -40,17 +40,21 @@ Leave it running and open a second terminal for the checks below.
 for p in 3001 3002 3003 3004 3005 3006 3007; do curl -s localhost:$p/health; echo; done
 ```
 
-Expected — one line per system:
+Expected — one line per system, each reporting its database as well as itself:
 
 ```json
-{"status":"ok","system":"identity","version":"0.1.0"}
-{"status":"ok","system":"civil-registry","version":"0.1.0"}
-{"status":"ok","system":"health","version":"0.1.0"}
-{"status":"ok","system":"benefits","version":"0.1.0"}
-{"status":"ok","system":"notifications","version":"0.1.0"}
-{"status":"ok","system":"payments","version":"0.1.0"}
-{"status":"ok","system":"social-registry","version":"0.1.0"}
+{"status":"ok","system":"identity","version":"0.1.0","database":"ok"}
+{"status":"ok","system":"civil-registry","version":"0.1.0","database":"ok"}
+{"status":"ok","system":"health","version":"0.1.0","database":"ok"}
+{"status":"ok","system":"benefits","version":"0.1.0","database":"ok"}
+{"status":"ok","system":"notifications","version":"0.1.0","database":"ok"}
+{"status":"ok","system":"payments","version":"0.1.0","database":"ok"}
+{"status":"ok","system":"social-registry","version":"0.1.0","database":"ok"}
 ```
+
+`"database": "empty"` means the system is up but holds no data (seed it with
+`npm run setup`); `"error"` means the database is broken — see
+[section 14](#14-database-health-and-the-alert-banner).
 
 ## 3. OpenAPI docs & spec (every system)
 
@@ -248,6 +252,38 @@ Expected: every system carries the same config with `source: "simulation <id>"`
 and an `expires_at`; the run's detail page shows a **System behaviour** table with
 counters climbing. Stop the run, then check again — all seven report
 `"enabled": false`, and calls to the systems are fast again.
+
+## 14. Database health and the alert banner
+
+A database that never got its tables (or lives on a volume that isn't mounted)
+doesn't throw — it just returns nothing. These checks prove that state is
+reported rather than rendered as a population of zero.
+
+```bash
+curl -s localhost:3001/admin/db-health; echo      # one system
+curl -s localhost:3000/api/health/database; echo  # everything, needs the portal
+```
+
+Expected: each system reports `"status":"ok"` with row counts, and the portal
+reports `"status":"ok"` for itself and all seven systems (HTTP 200).
+
+Now break one on purpose and watch it get caught:
+
+```bash
+node -e "new (require('better-sqlite3'))('systems/identity/data/identity.sqlite').exec('DROP TABLE addresses')"
+curl -s localhost:3001/admin/db-health; echo
+curl -s -o /dev/null -w "%{http_code}\n" localhost:3000/api/health/database
+```
+
+Expected: identity reports `"status":"error"` naming the missing table, the
+portal answers **503**, and every portal page (including the citizen-facing
+home page) shows a red banner at the top naming the Identity service, the
+problem, and `npm run db:seed -w @simdpg/identity`. Run that command and the
+banner clears within a minute — or press **Check again**.
+
+Stopping a system instead of breaking its database gives the same banner with
+"not answering"; deleting all population data (Staff → Population → Delete)
+gives the amber "no data" version.
 
 ## Teardown
 

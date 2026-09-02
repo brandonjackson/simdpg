@@ -1,5 +1,11 @@
 import Database from "better-sqlite3";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import {
+  checkDbHealth,
+  dbHealthFailure,
+  schemaTableSpecs,
+  type DbHealthReport,
+} from "@simdpg/system-kit/db-health";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import * as schema from "./schema";
@@ -21,6 +27,8 @@ export const DEFAULT_PROJECT_ID = "default";
 export const DEFAULT_PROJECT_NAME = "Default project";
 
 let cached: Db | null = null;
+/** The connection behind {@link cached}, kept for the health check's PRAGMAs. */
+let cachedSqlite: Database.Database | null = null;
 
 /** Column names of an existing table (empty when the table doesn't exist). */
 function columnsOf(sqlite: Database.Database, table: string): string[] {
@@ -170,6 +178,49 @@ export function getDb(): Db {
     CREATE INDEX IF NOT EXISTS idx_form_webhooks_project ON form_webhooks(project_id);
   `);
 
+  cachedSqlite = sqlite;
   cached = drizzle(sqlite, { schema });
   return cached;
+}
+
+/**
+ * `projects` always holds at least the default row: the bootstrap above
+ * re-inserts it on every start and a project can't be deleted while it is the
+ * last one. An empty table therefore means writes aren't reaching the file.
+ * The rest of the portal's tables are legitimately empty on a fresh install.
+ */
+const ROW_EXPECTATIONS = { projects: "always" } as const;
+
+/**
+ * Report on the portal's own database, in the same shape the systems serve at
+ * `/admin/db-health`.
+ *
+ * Deliberately never throws. The failure this exists to surface — a volume
+ * that isn't mounted, a read-only file, a schema that predates this build — is
+ * one where the honest answer is a report saying so, not an exception that
+ * some caller further up swallows into an empty page.
+ */
+export function checkPortalDatabase(): DbHealthReport {
+  const file = simDbPath();
+
+  try {
+    getDb();
+  } catch (err) {
+    return dbHealthFailure(
+      "portal",
+      file,
+      `The database could not be opened: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  if (!cachedSqlite) {
+    return dbHealthFailure("portal", file, "The database connection is missing.");
+  }
+
+  return checkDbHealth({
+    service: "portal",
+    file,
+    sqlite: cachedSqlite,
+    tables: schemaTableSpecs(schema, ROW_EXPECTATIONS),
+  });
 }

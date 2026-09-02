@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "//exports": "./behavior is the dependency-free config half of the stochastic-behaviour feature (no express), so the portal's browser bundle can import the presets and field registry for the simulation config screen.",
+  "//exports": "./behavior is the dependency-free config half of the stochastic-behaviour feature (no express), so the portal's browser bundle can import the presets and field registry for the simulation config screen. ./db-health is the database health check plus its Drizzle schema adapter (no express), so the portal can check its own database with the same code the systems use.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -14,6 +14,10 @@
     "./behavior": {
       "types": "./dist/behavior.d.ts",
       "default": "./dist/behavior.js"
+    },
+    "./db-health": {
+      "types": "./dist/db-health-entry.d.ts",
+      "default": "./dist/db-health-entry.js"
     }
   },
   "scripts": {
@@ -21,13 +25,16 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "drizzle-orm": "^0.36.0",
     "express": "^4.21.0",
     "uuid": "^10.0.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
     "@types/express": "^5.0.0",
     "@types/uuid": "^10.0.0",
+    "better-sqlite3": "^11.0.0",
     "vitest": "^2.1.0"
   }
 }

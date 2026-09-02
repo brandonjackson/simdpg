@@ -341,8 +341,41 @@ A Next.js app with gov.uk-inspired design (green header, breadcrumbs, one-questi
   existing one (see [Copying and re-running a run](#copying-and-re-running-a-run))
 
 Each system also exposes admin endpoints used by the population page:
-`GET /admin/stats` (record counts) and `POST /admin/reset` (wipe that
+`GET /admin/stats` (record counts), `GET /admin/db-health` (see
+[Database health](#database-health)) and `POST /admin/reset` (wipe that
 system's data — the Benefits system preserves its reference programmes).
+
+### Database health
+
+A broken database is silent here by default. Every service creates its tables
+at startup and keeps them in a SQLite file on a mounted volume, so when the
+volume isn't mounted, is mounted read-only, or the schema predates the running
+build, nothing throws — the systems answer with zero rows and the portal shows
+a population of 0, which looks exactly like a population of 0.
+
+So each service answers the question directly, at `GET /admin/db-health`: are
+the tables and columns this build's queries need actually there, can the file
+be written to, and do the tables that should never be empty hold rows. The
+answer is summarised in each system's `/health` under `database`.
+
+The portal aggregates all eight databases (its own plus the seven systems) at
+`GET /api/health/database`, and when any of them is unhealthy a banner appears
+at the top of every page naming the service, the problem, and the command to
+run to fix it. Red means broken or unreachable; amber means the databases are
+usable but hold nothing, which is what a seed that never ran looks like.
+
+```bash
+curl localhost:3001/admin/db-health     # one system
+curl localhost:3000/api/health/database # everything, 503 when broken
+```
+
+Most problems are fixed by re-running the service's seed, which rebuilds the
+schema before it inserts anything and skips a database that already has data:
+
+```bash
+npm run db:seed -w @simdpg/identity   # any system
+npm run db:setup -w @simdpg/portal    # the portal's own database
+```
 
 ## Simulation Engine
 
@@ -430,6 +463,8 @@ default** button for the rare case where a run ended without clearing up.
 | `npm run lint` | Validate all systems' OpenAPI specs (`redocly lint`) |
 | `npm run check:routes` | Verify each app's routes match its OpenAPI spec |
 | `npm run test` | Run tests across all workspaces |
+| `npm run db:seed -w @simdpg/<system>` | Rebuild a system's schema and seed it if empty |
+| `npm run db:setup -w @simdpg/portal` | Create or repair the portal's own database |
 
 ## Tech Stack
 

@@ -1263,6 +1263,149 @@ a:focus {
   background: var(--govuk-light-grey);
 }
 
+/* ===== DATABASE ALERT BANNER ===== */
+/* Sits above the header on every page: a database that has quietly stopped
+   working shows up as empty pages, so the warning has to be the first thing
+   on screen rather than a line in a log. */
+.db-alert {
+  --db-alert-bg: var(--govuk-red);
+  --db-alert-fg: var(--govuk-white);
+  --db-alert-code-bg: rgba(0, 0, 0, 0.35);
+  --db-alert-rule: rgba(255, 255, 255, 0.35);
+  background: var(--db-alert-bg);
+  color: var(--db-alert-fg);
+  border-bottom: 5px solid var(--govuk-black);
+}
+
+.db-alert--warning {
+  --db-alert-bg: var(--govuk-yellow);
+  --db-alert-fg: var(--govuk-black);
+  --db-alert-code-bg: rgba(0, 0, 0, 0.1);
+  --db-alert-rule: rgba(0, 0, 0, 0.25);
+}
+
+.db-alert__container {
+  max-width: var(--govuk-page-width);
+  margin: 0 auto;
+  padding: 20px 15px;
+  /* Several broken services at once must not push the page off the screen. */
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.db-alert__title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  line-height: 1.2;
+}
+
+.db-alert__services {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.db-alert__service + .db-alert__service {
+  border-top: 1px solid var(--db-alert-rule);
+  margin-top: 15px;
+  padding-top: 15px;
+}
+
+.db-alert__service-name {
+  font-size: 19px;
+  font-weight: 700;
+  margin: 0 0 5px;
+}
+
+.db-alert__tag {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  margin-left: 10px;
+  border: 2px solid var(--db-alert-fg);
+}
+
+.db-alert__problem,
+.db-alert__fix,
+.db-alert__hint {
+  font-size: 16px;
+  margin: 0 0 8px;
+  max-width: 42em;
+}
+
+.db-alert__hint {
+  opacity: 0.9;
+}
+
+.db-alert code {
+  font-family: monospace;
+  font-size: 15px;
+  background: var(--db-alert-code-bg);
+  padding: 1px 5px;
+}
+
+.db-alert__command {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin: 0 0 8px;
+  max-width: 42em;
+}
+
+.db-alert__command code {
+  flex: 1;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.db-alert__copy,
+.db-alert__recheck {
+  font-family: var(--govuk-font);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border: 2px solid var(--db-alert-fg);
+  background: var(--db-alert-fg);
+  color: var(--db-alert-bg);
+  cursor: pointer;
+}
+
+.db-alert__copy:hover,
+.db-alert__recheck:hover {
+  background: transparent;
+  color: var(--db-alert-fg);
+}
+
+.db-alert__copy:focus,
+.db-alert__recheck:focus {
+  outline: 3px solid var(--govuk-focus);
+  outline-offset: 0;
+  background: var(--govuk-focus);
+  color: var(--govuk-black);
+  border-color: var(--govuk-black);
+}
+
+.db-alert__recheck:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.db-alert__footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 15px 0 0;
+}
+
+.db-alert__checked {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 640px) {
   body {
@@ -1330,6 +1473,10 @@ a:focus {
   .api-sandbox__request-line {
     flex-direction: column;
     gap: 0;
+  }
+
+  .db-alert__command {
+    flex-direction: column;
   }
 }
 
