@@ -29,11 +29,12 @@ import { tableColumns, type SqliteLike } from "./migrations.js";
  * - `"always"` — reference data re-created on every server start (benefit
  *   programmes, the default project). Zero rows means a write that should have
  *   happened at boot didn't stick: a genuine failure.
- * - `"seed"` — population data written once by the seed script. Staff can
- *   delete it on purpose, so zero rows is only worth reporting when *every*
- *   seeded table is empty — the signature of a seed that never ran.
+ * - `"population"` — citizen records and the events on them, put there by the
+ *   seed script or the staff population page. Zero rows is not a fault (staff
+ *   delete a population on purpose, and a new deployment hasn't made one yet),
+ *   so it is reported as `"empty"`, separately from a broken database.
  */
-export type RowExpectation = "always" | "seed";
+export type RowExpectation = "always" | "population";
 
 /** A table the service's queries require, and what it should contain. */
 export interface DbTableSpec {
@@ -46,8 +47,9 @@ export interface DbTableSpec {
 }
 
 /**
- * `"ok"` — usable. `"empty"` — usable but holds no seeded data (counters will
- * read zero). `"error"` — broken: unreadable, unwritable, or missing schema.
+ * `"ok"` — usable, with data in it. `"empty"` — working normally but holding no
+ * population records (counters read zero). `"error"` — broken: unreadable,
+ * unwritable, or missing schema.
  */
 export type DbHealthStatus = "ok" | "empty" | "error";
 
@@ -220,8 +222,8 @@ export function checkDbHealth(options: CheckDbHealthOptions): DbHealthReport {
   }
 
   // 4. Do the tables that should hold rows hold rows?
-  const seedTables: string[] = [];
-  let seedRows = 0;
+  const populationTables: string[] = [];
+  let populationRows = 0;
 
   for (const table of tables) {
     if (!table.expectRows) continue;
@@ -241,16 +243,19 @@ export function checkDbHealth(options: CheckDbHealthOptions): DbHealthReport {
         `Table "${table.name}" is empty, but it holds reference data that is re-created on every start — the write isn't reaching the database.`,
       );
     }
-    if (table.expectRows === "seed") {
-      seedTables.push(table.name);
-      seedRows += count;
+    if (table.expectRows === "population") {
+      populationTables.push(table.name);
+      populationRows += count;
     }
   }
 
-  if (seedTables.length > 0 && seedRows === 0 && report.status === "ok") {
+  // Not a fault, and deliberately not phrased as one: an empty database is
+  // what a deployment nobody has generated a population on looks like. The
+  // portal decides what to say about it.
+  if (populationTables.length > 0 && populationRows === 0 && report.status === "ok") {
     report.status = "empty";
     report.problems.push(
-      `No data: ${seedTables.join(", ")} ${seedTables.length === 1 ? "is" : "are"} empty. Either the seed never ran or the data was deleted.`,
+      `No population records: ${populationTables.join(", ")} ${populationTables.length === 1 ? "is" : "are"} empty.`,
     );
   }
 

@@ -16,7 +16,7 @@ let file: string;
 let sqlite: Database.Database;
 
 const TABLES: DbTableSpec[] = [
-  { name: "citizens", columns: ["id", "national_id", "status"], expectRows: "seed" },
+  { name: "citizens", columns: ["id", "national_id", "status"], expectRows: "population" },
   { name: "programs", columns: ["id", "name"], expectRows: "always" },
   { name: "webhook_events", columns: ["id", "type"] },
 ];
@@ -88,7 +88,7 @@ describe("checkDbHealth", () => {
     sqlite.exec("DELETE FROM citizens");
     const report = check();
     expect(report.status).toBe("empty");
-    expect(report.problems.join(" ")).toContain("No data");
+    expect(report.problems.join(" ")).toContain("No population records");
   });
 
   it("reports a database it cannot query", () => {

@@ -109,7 +109,7 @@ export function ensureTables(): void {
  * check below. Everything else may legitimately be empty.
  */
 const ROW_EXPECTATIONS = {
-  citizens: "seed",
+  citizens: "population",
 } as const;
 
 /**

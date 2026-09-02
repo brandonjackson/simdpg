@@ -52,8 +52,9 @@ Expected — one line per system, each reporting its database as well as itself:
 {"status":"ok","system":"social-registry","version":"0.1.0","database":"ok"}
 ```
 
-`"database": "empty"` means the system is up but holds no data (seed it with
-`npm run setup`); `"error"` means the database is broken — see
+`"database": "empty"` means the system is working but holds no population
+(`npm run setup`, or generate one from the staff population page); `"error"`
+means the database is broken — see
 [section 14](#14-database-health-and-the-alert-banner).
 
 ## 3. OpenAPI docs & spec (every system)
@@ -282,8 +283,10 @@ problem, and `npm run db:seed -w @simdpg/identity`. Run that command and the
 banner clears within a minute — or press **Check again**.
 
 Stopping a system instead of breaking its database gives the same banner with
-"not answering"; deleting all population data (Staff → Population → Delete)
-gives the amber "no data" version.
+"not answering". Deleting all population data (Staff → Population → Delete)
+gives the amber version instead: it says the systems are running normally with
+no citizen records in them, and links to population management rather than
+offering a console command — an empty database is not a broken one.
 
 ## Teardown
 
