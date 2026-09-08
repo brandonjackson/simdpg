@@ -12,12 +12,6 @@ import {
 import { createRedis, redisUrl, redactRedisUrl } from "./redis.js";
 import { sleep, log, logError } from "../utils.js";
 
-/** Concurrent deliveries allowed; override with SIM_MAX_CONCURRENCY. */
-function maxConcurrencyFromEnv(): number {
-  const raw = Number.parseInt(process.env.SIM_MAX_CONCURRENCY ?? "", 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MAX_CONCURRENCY;
-}
-
 /** Min ms between live progress log lines, so a big run isn't per-event noise. */
 const PROGRESS_LOG_INTERVAL_MS = 1000;
 
@@ -116,8 +110,6 @@ export async function runWorker(
     events.reduce((max, event) => Math.max(max, event.scheduledMicros), 0) / 1000;
   const endBehavior = await beginBehavior(id, lastEventMs);
 
-  const maxConcurrency = maxConcurrencyFromEnv();
-
   try {
     await writeRunState(id, {
       pid: process.pid, status: "running", startedAt,
@@ -169,7 +161,6 @@ export async function runWorker(
           readCounts: transport.readCounts,
           onProgress,
         },
-        { maxConcurrency },
       );
     // A stalled drain still finalizes: the counters are the best total available,
     // and leaving the row `running` forever is strictly worse than a short count.
