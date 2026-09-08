@@ -33,7 +33,7 @@ this avoids rebuilding the image per service:
 
 ```bash
 docker build -t simdpg:latest .   # build the shared image once
-docker compose up                 # start all 7 systems + portal (reuses the image)
+docker compose up                 # start all 7 systems + portal + delivery pool (reuses the image)
 ```
 
 - Portal: http://localhost:3000  •  Systems: http://localhost:3001–3007 (`/health`, `/docs`)
@@ -65,9 +65,10 @@ follow the same pattern rather than relying on the seed to be there.
 The stack includes a `redis:7-alpine` service that carries the simulation
 delivery queue (`docs/specs/2026-07-19-queued-event-delivery-design.md`): a
 run's events are published to it by the portal's run-worker and consumed by the
-delivery pool. Compose has no worker service — locally you start the pool by
-hand with `npm run sim:worker -w @simdpg/simulation` (on Railway it is its own
-service, see below).
+delivery pool. Compose runs the pool as the `sim-worker` service (8 replicas per
+the design doc; scale with `--scale sim-worker=N`). For the fast host dev loop
+(`npm run dev`, hot reload) you can run just Redis in Docker and start the pool
+by hand with `npm run sim:worker -w @simdpg/simulation`.
 
 It has **no volume on purpose**: queued jobs are meaningless once a run ends, so
 persisting them would only replay stale work after a restart.
@@ -181,7 +182,9 @@ other service:
 - **Replicas:** scale past 1 to grow pool throughput. Capacity ≈ replicas ×
   `SIM_WORKER_CONCURRENCY` (default 200 in-flight deliveries per worker).
 - **No volume** needed: the queue is ephemeral by design and the per-run
-  outcome counters live in Redis.
+  outcome counters live in Redis. (The same pool runs locally as compose's
+  `sim-worker` service — on Railway, replicas × `SIM_WORKER_CONCURRENCY` is the
+  same throughput math.)
 
 The portal's run-workers are the producer side and publish from the portal
 process, so the portal also needs `REDIS_URL` set — then every run's events flow

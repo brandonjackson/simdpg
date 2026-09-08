@@ -1,7 +1,7 @@
 # SimDPG — production-like local stack.
 #
 #   docker build -t simdpg:latest .   build the shared image ONCE
-#   docker compose up                 start all systems + portal (reuses image)
+#   docker compose up                 start all systems + portal + pool (reuses image)
 #   docker compose down               stop (data volumes preserved)
 #   docker compose down -v            stop and wipe all SQLite data
 #
@@ -25,10 +25,10 @@ x-app: &app
 
 services:
   # Queue transport for the simulation delivery pool (see
-  # docs/specs/2026-07-19-queued-event-delivery-design.md): run-workers publish
-  # events here, the pool (npm run sim:worker) consumes them. Deliberately has
-  # NO volume: queued jobs are meaningless once a run ends, so persisting them
-  # would only replay stale work after a restart.
+  # docs/specs/2026-07-19-queued-event-delivery-design.md): the portal's
+  # run-workers publish events here and the `sim-worker` service below consumes
+  # them. Deliberately has NO volume: queued jobs are meaningless once a run
+  # ends, so persisting them would only replay stale work after a restart.
   # 6379 is published so the host dev loop (`npm run dev`) can reach it without
   # running the rest of the stack in Docker: `docker compose up redis`.
   redis:
@@ -107,6 +107,23 @@ services:
       PORT: 3007
     ports: ["3007:3007"]
     volumes: ["social-registry-data:/app/systems/social-registry/data"]
+
+  # The delivery pool (see docs/specs/2026-07-19-queued-event-delivery-design.md):
+  # pops `sim-deliveries` jobs and POSTs them, INCRing the per-run counters the
+  # portal's run-workers wait on. The `npm run start` script bakes the worker
+  # entry (node dist/index.js delivery-worker). No volume, no port — the queue
+  # and counters live in Redis. Scale with --scale sim-worker=N.
+  sim-worker:
+    <<: *app
+    environment:
+      SERVICE_DIR: simulation
+      START_CMD: npm run start
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 8
 
   portal:
     <<: *app
