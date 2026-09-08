@@ -12,7 +12,7 @@ function ev(over: Partial<SimulationEvent>): SimulationEvent {
 
 function baseDeps(over: Partial<DeliveryDeps> = {}): DeliveryDeps {
   return {
-    fetch: vi.fn(async () => new Response(null, { status: 200 })) as unknown as typeof fetch,
+    fetch: vi.fn(async () => new Response(null, { status: 200 })) as unknown as typeof globalThis.fetch,
     ...over,
   };
 }
@@ -26,7 +26,7 @@ describe("deliver", () => {
   });
 
   it("POSTs the payload and returns delivered on 2xx", async () => {
-    const fetch = vi.fn(async () => new Response(null, { status: 202 })) as unknown as typeof fetch;
+    const fetch = vi.fn(async () => new Response(null, { status: 202 })) as unknown as typeof globalThis.fetch;
     const outcome = await deliver(ev({ targetUrl: "http://hook", payload: { x: 1 } }), baseDeps({ fetch }));
     expect(outcome).toBe("delivered");
     expect(fetch).toHaveBeenCalledWith(
@@ -36,17 +36,17 @@ describe("deliver", () => {
   });
 
   it("returns failed on a non-2xx response", async () => {
-    const fetch = vi.fn(async () => new Response(null, { status: 500 })) as unknown as typeof fetch;
+    const fetch = vi.fn(async () => new Response(null, { status: 500 })) as unknown as typeof globalThis.fetch;
     expect(await deliver(ev({}), baseDeps({ fetch }))).toBe("failed");
   });
 
   it("returns failed when fetch throws", async () => {
-    const fetch = vi.fn(async () => { throw new Error("network"); }) as unknown as typeof fetch;
+    const fetch = vi.fn(async () => { throw new Error("network"); }) as unknown as typeof globalThis.fetch;
     expect(await deliver(ev({}), baseDeps({ fetch }))).toBe("failed");
   });
 
   it("passes an abort signal so a hung endpoint can be timed out", async () => {
-    const fetch = vi.fn(async () => new Response(null, { status: 200 })) as unknown as typeof fetch;
+    const fetch = vi.fn(async () => new Response(null, { status: 200 })) as unknown as typeof globalThis.fetch;
     await deliver(ev({}), baseDeps({ fetch }));
     const opts = (fetch as unknown as { mock: { calls: [string, FetchOptions][] } }).mock.calls[0][1];
     expect(opts.signal).toBeInstanceOf(AbortSignal);
@@ -59,7 +59,7 @@ describe("deliver", () => {
         opts.signal?.addEventListener("abort", () =>
           reject(new DOMException("aborted", "AbortError")),
         );
-      })) as unknown as typeof fetch;
+      })) as unknown as typeof globalThis.fetch;
     const outcome = deliver(ev({}), baseDeps({ fetch, timeoutMs: 1000 }));
     await vi.advanceTimersByTimeAsync(1000);
     expect(await outcome).toBe("failed");
