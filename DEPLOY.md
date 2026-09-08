@@ -15,7 +15,7 @@ monorepo once. It runs **one** workspace per container, selected two ways:
 | `SEED_CMD`   | (compose) seed the DB **once** on a fresh volume (systems only)  | `npm run db:seed -w @simdpg/identity`|
 | `PORT`       | Port to listen on (compose sets 3001–3007; Railway injects 8080) | `3001` … `3007`                      |
 | `*_URL`      | Override a system's URL; auto-derived otherwise                  | see below                            |
-| `REDIS_URL`  | Redis connection (queue groundwork; unused today)                | `redis://redis:6379`                 |
+| `REDIS_URL`  | Redis connection for the event-delivery queue                   | `redis://redis:6379`                 |
 
 Systems are independent (they don't call each other — they only emit webhooks
 to an optional `WEBHOOK_URL`), so only the portal needs to reach the systems —
@@ -62,10 +62,12 @@ follow the same pattern rather than relying on the seed to be there.
 
 ### Redis
 
-The stack includes a `redis:7-alpine` service, groundwork for the queue-based
-simulation worker pool (`docs/specs/2026-07-19-queued-event-delivery-design.md`).
-**Nothing consumes it yet** — the portal is given `REDIS_URL` ahead of the queue
-work but does not read it.
+The stack includes a `redis:7-alpine` service that carries the simulation
+delivery queue (`docs/specs/2026-07-19-queued-event-delivery-design.md`): a
+run's events are published to it by the portal's run-worker and consumed by the
+delivery pool. Compose has no worker service — locally you start the pool by
+hand with `npm run sim:worker -w @simdpg/simulation` (on Railway it is its own
+service, see below).
 
 It has **no volume on purpose**: queued jobs are meaningless once a run ends, so
 persisting them would only replay stale work after a restart.
@@ -91,10 +93,11 @@ that works with no `.env` changes.
 
 ## Railway
 
-One project, **8 services** (7 systems + portal), all deployed from this repo.
-Railway's monorepo detection creates one service per workspace and names each
-after the workspace (`@simdpg/identity`, `@simdpg/portal`, …) — **leave those
-names as they are.** No renaming, no editing private-networking names, ever.
+One project, **9 services** (7 systems + portal + the simulation delivery pool),
+all deployed from this repo. Railway's monorepo detection creates one service
+per workspace and names each after the workspace (`@simdpg/identity`,
+`@simdpg/portal`, …) — **leave those names as they are.** No renaming, no
+editing private-networking names, ever.
 
 **It configures itself.** Railway runs each service with its monorepo-detected
 command `npm run start -w <workspace>`, and the repo makes that command do the
@@ -108,6 +111,9 @@ Concretely:
   `RAILWAY_PRIVATE_DOMAIN` — `http://<sibling>.railway.internal:8080` — working
   with whatever naming scheme Railway used (`simdpgidentity.railway.internal`
   for `@simdpg/identity` names, `identity.railway.internal` for plain names).
+- The **simulation delivery pool**'s `start` script runs the BullMQ worker
+  (`node dist/index.js delivery-worker`): it pops delivery jobs and POSTs them,
+  running until SIGTERM/SIGINT. It listens on no port.
 
 The repo's **`railway.json`** pins the **builder** to the Dockerfile (so the
 monorepo build order is correct and the original `@simdpg/system-kit` build
@@ -142,21 +148,49 @@ For the **portal** service, also:
   (`.simulations/<id>.log`) are still written outside the volume; losing them
   costs a finished run's console output, nothing more.
 
-Delete the non-server services Railway auto-creates (`@simdpg/system-kit`,
-`@simdpg/api-clients`, `@simdpg/simulation`) — they aren't web servers.
+Delete the non-server library services Railway auto-creates
+(`@simdpg/system-kit`, `@simdpg/api-clients`) — they aren't web servers, and
+nothing runs them. **Keep `@simdpg/simulation`**: with its `start` script it is
+the delivery pool (see below), so it is a real service now, not a deleted one.
 
 ### Redis on Railway
 
 Redis is the one piece that does **not** configure itself. Add it from
-Railway's database templates — it's a 9th service, not built from this repo —
-and set `REDIS_URL` on the portal from the Redis service's own connection
-variable, using a reference so it tracks Railway's value:
+Railway's database templates — it's a 10th service, not built from this repo —
+and set `REDIS_URL` on the portal and the delivery pool from the Redis service's
+own connection variable, using a reference so it tracks Railway's value:
 
 ```
 REDIS_URL=${{Redis.REDIS_URL}}
 ```
 
 It is the first variable this deployment actually requires you to wire by hand.
+
+#### The delivery pool (`@simdpg/simulation`)
+
+Simulations publish every event to a shared BullMQ queue (`sim-deliveries`);
+delivery workers pop it and POST each event to its target webhook. On Railway
+that pool is the `@simdpg/simulation` service, booted by the workspace's
+`start` script (`node dist/index.js delivery-worker`). Configure it like any
+other service:
+
+- **Root Directory:** `/` (Dockerfile builder via `railway.json`, as for the
+  rest — the built image already contains `simulation/dist`).
+- **`REDIS_URL`** set from the Redis reference above — this is the queue it
+  consumes.
+- **Replicas:** scale past 1 to grow pool throughput. Capacity ≈ replicas ×
+  `SIM_WORKER_CONCURRENCY` (default 200 in-flight deliveries per worker).
+- **No volume** needed: the queue is ephemeral by design and the per-run
+  outcome counters live in Redis.
+
+The portal's run-workers are the producer side and publish from the portal
+process, so the portal also needs `REDIS_URL` set — then every run's events flow
+through the pool above.
+
+To verify a freshly-created pool: in the service's deploy, run the one-off
+command `npm run sim:redis-ping -w @simdpg/simulation` and look for
+`Redis replied: PONG`; then start a simulation in the portal and check it
+reaches `completed` with the run's delivered/skipped/failed counts.
 
 > **The IPv6 gotcha.** `ioredis` (and therefore BullMQ) does an IPv4-only DNS
 > lookup by default, which cannot resolve `*.railway.internal` in environments

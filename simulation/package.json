@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "start": "node dist/index.js delivery-worker",
     "test": "vitest run --passWithNoTests",
     "sim:generate": "tsx src/index.ts generate",
     "sim:year": "tsx src/index.ts year",
