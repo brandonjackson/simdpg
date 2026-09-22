@@ -126,7 +126,50 @@ describe("runWorker", () => {
     expect(JSON.parse(sim!.stats!)).toEqual({ delivered: 1, skipped: 1, failed: 0, total: 2 });
   });
 
-  it("records failed run-state (and record) when there is no script", async () => {
+  it("flushes live counts to the record mid-run, before the terminal write", async () => {
+    const { runWorker, db, simulations } = await load();
+    seedRunning(db, simulations, "live");
+    await writeEvents("live", [
+      { id: "e1", scheduledMicros: 0, targetKey: "national-id", targetUrl: "http://hook", payload: { n: 1 } },
+      { id: "e2", scheduledMicros: 0, targetKey: "national-id", targetUrl: "http://hook", payload: { n: 2 } },
+    ]);
+
+    // The pool settles one job, then holds at 1 — so the run stays `running` and
+    // the drain keeps polling while the ~1s flush timer fires at least once.
+    let delivered = 1;
+    const create: CreateTransport = () => ({
+      reset: async () => {},
+      enqueue: async () => {},
+      readCounts: async () => ({ delivered, skipped: 0, failed: 0 }),
+      close: async () => {},
+    });
+
+    let finished = false;
+    const run = runWorker("live", create).then(() => { finished = true; });
+
+    const stats = () => {
+      const row = db.select().from(simulations).where(eq(simulations.id, "live")).get();
+      return row?.stats ? JSON.parse(row.stats) : null;
+    };
+
+    // The live flush mirrors the running counts onto the record the portal reads,
+    // before the run has finished.
+    await vi.waitFor(
+      () => expect(stats()).toEqual({ delivered: 1, skipped: 0, failed: 0, total: 2 }),
+      { timeout: 4000, interval: 50 },
+    );
+    expect(finished).toBe(false);
+
+    // Second job settles → drain completes → terminal write reconciles.
+    delivered = 2;
+    await run;
+
+    const sim = db.select().from(simulations).where(eq(simulations.id, "live")).get();
+    expect(sim?.status).toBe("completed");
+    expect(JSON.parse(sim!.stats!)).toEqual({ delivered: 2, skipped: 0, failed: 0, total: 2 });
+  });
+
+  it("records failed run-state (and record) when the events file is missing", async () => {
     const { runWorker, db, simulations, simulationRuns } = await load();
     seedRunning(db, simulations, "missing");
 
@@ -140,5 +183,74 @@ describe("runWorker", () => {
 
     const sim = db.select().from(simulations).where(eq(simulations.id, "missing")).get();
     expect(sim?.status).toBe("failed");
+  });
+
+  it("preserves the pool's counts when the run crashes after delivery started", async () => {
+    const { runWorker, db, simulations, simulationRuns } = await load();
+    seedRunning(db, simulations, "crash");
+    await writeEvents("crash", [
+      { id: "e1", scheduledMicros: 0, targetKey: "national-id", targetUrl: "http://hook", payload: { n: 1 } },
+      { id: "e2", scheduledMicros: 0, targetKey: "national-id", targetUrl: "http://hook", payload: { n: 2 } },
+    ]);
+
+    // The pool has already settled one job when the drain's counter read throws
+    // — runEvents rejects, so runWorker's crash path runs. readCounts is what
+    // runEvents awaits during drain, so a throw there propagates. Model a
+    // transient blip: the read throws once (breaking the drain), then recovers,
+    // so the crash path's own read still returns the real toll.
+    let delivered = 1;
+    let readCalls = 0;
+    let blipDone = false;
+    const create: CreateTransport = () => ({
+      reset: async () => {},
+      enqueue: async () => {},
+      readCounts: async () => {
+        readCalls += 1;
+        // Throw on the second read (a drain poll) once, then recover.
+        if (readCalls === 2 && !blipDone) { blipDone = true; throw new Error("redis went down mid-run"); }
+        return { delivered, skipped: 0, failed: 0 };
+      },
+      close: async () => {},
+    });
+
+    const run = runWorker("crash", create);
+    // Settle the first job before the blip breaks the drain.
+    delivered = 1;
+    await run;
+
+    // The crash path reads the counters (after the blip recovered) and records
+    // the real toll, not zeros.
+    const runRow = db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "crash")).get();
+    expect(runRow?.status).toBe("failed");
+    expect(runRow?.error).toMatch(/redis went down/);
+    expect(runRow).toMatchObject({ delivered: 1, skipped: 0, failed: 0, total: 2 });
+
+    const sim = db.select().from(simulations).where(eq(simulations.id, "crash")).get();
+    expect(sim?.status).toBe("failed");
+    expect(JSON.parse(sim!.stats!)).toMatchObject({ delivered: 1, total: 2 });
+  });
+
+  it("records zero counts on crash when Redis is unreachable too", async () => {
+    const { runWorker, db, simulations, simulationRuns } = await load();
+    seedRunning(db, simulations, "redisdown");
+    await writeEvents("redisdown", [
+      { id: "e1", scheduledMicros: 0, targetKey: "national-id", targetUrl: "http://hook", payload: { n: 1 } },
+    ]);
+
+    // The drain's counter read throws AND the crash-path readCounts throws too —
+    // the crash path must stay never-throwing and record the run failed with
+    // zeroed counts.
+    const create: CreateTransport = () => ({
+      reset: async () => {},
+      enqueue: async () => {},
+      readCounts: async () => { throw new Error("redis down"); },
+      close: async () => {},
+    });
+
+    await runWorker("redisdown", create);
+
+    const run = db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "redisdown")).get();
+    expect(run?.status).toBe("failed");
+    expect(run).toMatchObject({ delivered: 0, skipped: 0, failed: 0, total: 1 });
   });
 });
