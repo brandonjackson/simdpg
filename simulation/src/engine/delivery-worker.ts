@@ -2,7 +2,7 @@ import { Worker, type Job } from "bullmq";
 import type Redis from "ioredis";
 import { deliver, type EventOutcome } from "./delivery.js";
 import { DELIVERY_QUEUE, counterKey, type DeliveryJob } from "./queue.js";
-import { createRedis, redisUrl } from "./redis.js";
+import { createRedis, redisUrl, redactRedisUrl } from "./redis.js";
 import { log, logError } from "../utils.js";
 
 /** Jobs processed simultaneously per worker; override with SIM_WORKER_CONCURRENCY.
@@ -92,7 +92,7 @@ export async function runDeliveryWorker(): Promise<void> {
   const connection = createRedis();
   const counters = createRedis();
   const worker = startDeliveryWorker({ connection, counters });
-  log(`Delivery worker: consuming ${DELIVERY_QUEUE} at ${redisUrl()}`);
+  log(`Delivery worker: consuming ${DELIVERY_QUEUE} at ${redactRedisUrl(redisUrl())}`);
 
   await new Promise<void>((resolve) => {
     const shutdown = (signal: string) => {
