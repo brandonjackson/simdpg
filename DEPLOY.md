@@ -15,6 +15,7 @@ monorepo once. It runs **one** workspace per container, selected two ways:
 | `SEED_CMD`   | (compose) seed the DB **once** on a fresh volume (systems only)  | `npm run db:seed -w @simdpg/identity`|
 | `PORT`       | Port to listen on (compose sets 3001–3007; Railway injects 8080) | `3001` … `3007`                      |
 | `*_URL`      | Override a system's URL; auto-derived otherwise                  | see below                            |
+| `REDIS_URL`  | Redis connection for the event-delivery queue                   | `redis://redis:6379`                 |
 
 Systems are independent (they don't call each other — they only emit webhooks
 to an optional `WEBHOOK_URL`), so only the portal needs to reach the systems —
@@ -32,7 +33,7 @@ this avoids rebuilding the image per service:
 
 ```bash
 docker build -t simdpg:latest .   # build the shared image once
-docker compose up                 # start all 7 systems + portal (reuses the image)
+docker compose up                 # start all 7 systems + portal + delivery pool (reuses the image)
 ```
 
 - Portal: http://localhost:3000  •  Systems: http://localhost:3001–3007 (`/health`, `/docs`)
@@ -59,6 +60,30 @@ every server start, not just by the seed — see
 `systems/benefits/src/db/reference-data.ts`. Any future reference data should
 follow the same pattern rather than relying on the seed to be there.
 
+### Redis
+
+The stack includes a `redis:7-alpine` service that carries the simulation
+delivery queue (`docs/specs/2026-07-19-queued-event-delivery-design.md`): a
+run's events are published to it by the portal's run-worker and consumed by the
+delivery pool. Compose runs the pool as the `sim-worker` service (8 replicas per
+the design doc; scale with `--scale sim-worker=N`). For the fast host dev loop
+(`npm run dev`, hot reload) you can run just Redis in Docker and start the pool
+by hand with `npm run sim:worker -w @simdpg/simulation`.
+
+It has **no volume on purpose**: queued jobs are meaningless once a run ends, so
+persisting them would only replay stale work after a restart.
+
+Port 6379 is published to the host so you can keep the fast local dev loop
+(`npm run dev`, hot reload) and run only Redis in Docker:
+
+```bash
+docker compose up redis                          # just Redis
+npm run sim:redis-ping -w @simdpg/simulation     # expect: Redis replied: PONG
+```
+
+With no `REDIS_URL` set, the client defaults to `redis://localhost:6379`, so
+that works with no `.env` changes.
+
 > **Don't use `docker compose up --build` unless you have the Buildx/BuildKit
 > plugin.** With BuildKit, Compose builds the shared image once. With Docker's
 > *legacy* builder (no buildx), Compose builds the image **once per service, in
@@ -69,10 +94,11 @@ follow the same pattern rather than relying on the seed to be there.
 
 ## Railway
 
-One project, **8 services** (7 systems + portal), all deployed from this repo.
-Railway's monorepo detection creates one service per workspace and names each
-after the workspace (`@simdpg/identity`, `@simdpg/portal`, …) — **leave those
-names as they are.** No renaming, no editing private-networking names, ever.
+One project, **9 services** (7 systems + portal + the simulation delivery pool),
+all deployed from this repo. Railway's monorepo detection creates one service
+per workspace and names each after the workspace (`@simdpg/identity`,
+`@simdpg/portal`, …) — **leave those names as they are.** No renaming, no
+editing private-networking names, ever.
 
 **It configures itself.** Railway runs each service with its monorepo-detected
 command `npm run start -w <workspace>`, and the repo makes that command do the
@@ -86,6 +112,9 @@ Concretely:
   `RAILWAY_PRIVATE_DOMAIN` — `http://<sibling>.railway.internal:8080` — working
   with whatever naming scheme Railway used (`simdpgidentity.railway.internal`
   for `@simdpg/identity` names, `identity.railway.internal` for plain names).
+- The **simulation delivery pool**'s `start` script runs the BullMQ worker
+  (`node dist/index.js delivery-worker`): it pops delivery jobs and POSTs them,
+  running until SIGTERM/SIGINT. It listens on no port.
 
 The repo's **`railway.json`** pins the **builder** to the Dockerfile (so the
 monorepo build order is correct and the original `@simdpg/system-kit` build
@@ -120,8 +149,58 @@ For the **portal** service, also:
   (`.simulations/<id>.log`) are still written outside the volume; losing them
   costs a finished run's console output, nothing more.
 
-Delete the non-server services Railway auto-creates (`@simdpg/system-kit`,
-`@simdpg/api-clients`, `@simdpg/simulation`) — they aren't web servers.
+Delete the non-server library services Railway auto-creates
+(`@simdpg/system-kit`, `@simdpg/api-clients`) — they aren't web servers, and
+nothing runs them. **Keep `@simdpg/simulation`**: with its `start` script it is
+the delivery pool (see below), so it is a real service now, not a deleted one.
+
+### Redis on Railway
+
+Redis is the one piece that does **not** configure itself. Add it from
+Railway's database templates — it's a 10th service, not built from this repo —
+and set `REDIS_URL` on the portal and the delivery pool from the Redis service's
+own connection variable, using a reference so it tracks Railway's value:
+
+```
+REDIS_URL=${{Redis.REDIS_URL}}
+```
+
+It is the first variable this deployment actually requires you to wire by hand.
+
+#### The delivery pool (`@simdpg/simulation`)
+
+Simulations publish every event to a shared BullMQ queue (`sim-deliveries`);
+delivery workers pop it and POST each event to its target webhook. On Railway
+that pool is the `@simdpg/simulation` service, booted by the workspace's
+`start` script (`node dist/index.js delivery-worker`). Configure it like any
+other service:
+
+- **Root Directory:** `/` (Dockerfile builder via `railway.json`, as for the
+  rest — the built image already contains `simulation/dist`).
+- **`REDIS_URL`** set from the Redis reference above — this is the queue it
+  consumes.
+- **Replicas:** scale past 1 to grow pool throughput. Capacity ≈ replicas ×
+  `SIM_WORKER_CONCURRENCY` (default 200 in-flight deliveries per worker).
+- **No volume** needed: the queue is ephemeral by design and the per-run
+  outcome counters live in Redis. (The same pool runs locally as compose's
+  `sim-worker` service — on Railway, replicas × `SIM_WORKER_CONCURRENCY` is the
+  same throughput math.)
+
+The portal's run-workers are the producer side and publish from the portal
+process, so the portal also needs `REDIS_URL` set — then every run's events flow
+through the pool above.
+
+To verify a freshly-created pool: in the service's deploy, run the one-off
+command `npm run sim:redis-ping -w @simdpg/simulation` and look for
+`Redis replied: PONG`; then start a simulation in the portal and check it
+reaches `completed` with the run's delivered/skipped/failed counts.
+
+> **The IPv6 gotcha.** `ioredis` (and therefore BullMQ) does an IPv4-only DNS
+> lookup by default, which cannot resolve `*.railway.internal` in environments
+> created before 2025-10-16 — those are IPv6-only. It surfaces as `ENOTFOUND`
+> against a URL that is completely correct. `simulation/src/engine/redis.ts`
+> sets `family: 0` (dual-stack lookup) to avoid this; don't remove it.
+> See https://docs.railway.com/reference/errors/enotfound-redis-railway-internal
 
 > **Escape hatches (rarely needed):** explicit `SERVICE_DIR` / `START_CMD` still
 > win, and an explicit `IDENTITY_URL` (etc.) on the portal overrides the derived

@@ -1,31 +1,83 @@
 import { beginBehavior } from "./behavior.js";
 import { readEvents, type SimulationEvent } from "./events.js";
-import { writeRunState, type SimulationRunState } from "./run-state.js";
+import { writeRunState, flushRunProgress, type SimulationRunState } from "./run-state.js";
+import { runEvents, type RunCounts, type ProgressSnapshot } from "./scheduler.js";
 import {
-  runEvents,
-  DEFAULT_MAX_CONCURRENCY,
-  type RunCounts,
-  type ProgressSnapshot,
-} from "./scheduler.js";
+  createDeliveryQueue,
+  markRunStopped,
+  readCounters,
+  resetCounters,
+  DELIVERY_JOB,
+  type OutcomeCounts,
+} from "./queue.js";
+import { createRedis, redisUrl, redactRedisUrl } from "./redis.js";
 import { sleep, log, logError } from "../utils.js";
-
-/** Concurrent deliveries allowed; override with SIM_MAX_CONCURRENCY. */
-function maxConcurrencyFromEnv(): number {
-  const raw = Number.parseInt(process.env.SIM_MAX_CONCURRENCY ?? "", 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MAX_CONCURRENCY;
-}
 
 /** Min ms between live progress log lines, so a big run isn't per-event noise. */
 const PROGRESS_LOG_INTERVAL_MS = 1000;
 
+/** How often live counts are flushed to the DB so the portal shows progress
+ * mid-run. A timer, not per-event: at 10k events/s a per-event write would
+ * hammer the single SQLite writer this whole change exists to relieve. */
+const RUN_STATE_FLUSH_MS = 1000;
+
+/** Run-scoped queue depth past which the pool is visibly losing the race with
+ * the clock, and deliveries are going out late. */
+const QUEUE_DEPTH_WARN = 500;
+
 /**
- * Execute a generated simulation: schedule every event's POST by real time,
- * then record the terminal run-state to the shared database. writeRunState also
- * stamps the authoritative `simulations` record, so the portal reads a
- * consistent status with no reconciliation. Never throws — failures are written
- * as run-state.
+ * The run-scoped side of the delivery pool the scheduler talks to: clear the
+ * run's counters, publish jobs, read the tally back, and tear down. Injected so
+ * runWorker's orchestration (the DB writes) unit-tests without a real Redis or a
+ * consuming worker pool — the real one is `createRedisTransport`.
  */
-export async function runWorker(id: string): Promise<void> {
+export interface DeliveryTransport {
+  reset: () => Promise<void>;
+  enqueue: (event: SimulationEvent) => Promise<void>;
+  readCounts: () => Promise<OutcomeCounts>;
+  /** Raise the run's stop flag so the pool skips its already-queued jobs. */
+  markStopped: () => Promise<void>;
+  close: () => Promise<void>;
+}
+
+export type CreateTransport = (simulationId: string) => DeliveryTransport;
+
+/**
+ * The real transport: a BullMQ queue to publish on plus a separate connection
+ * for counter reads/resets. Both connections are this process's to close —
+ * BullMQ never closes a connection it's handed, and an idle Redis socket keeps
+ * the process alive.
+ */
+function createRedisTransport(simulationId: string): DeliveryTransport {
+  const queueConn = createRedis();
+  const counters = createRedis();
+  const queue = createDeliveryQueue(queueConn);
+  return {
+    reset: () => resetCounters(counters, simulationId),
+    enqueue: async (event) => { await queue.add(DELIVERY_JOB, { simulationId, event }); },
+    readCounts: () => readCounters(counters, simulationId),
+    markStopped: () => markRunStopped(counters, simulationId),
+    close: async () => {
+      await queue.close();
+      await queueConn.quit();
+      await counters.quit();
+    },
+  };
+}
+
+/**
+ * Execute a generated simulation: publish every event's delivery to the shared
+ * queue by real time, wait for the worker pool to settle them, then record the
+ * terminal run-state to the shared database. writeRunState also stamps the
+ * authoritative `simulations` record, so the portal reads a consistent status
+ * with no reconciliation. Never throws — failures are written as run-state.
+ *
+ * `createTransport` defaults to the real Redis-backed pool; tests inject a fake.
+ */
+export async function runWorker(
+  id: string,
+  createTransport: CreateTransport = createRedisTransport,
+): Promise<void> {
   // The portal tees our stdio to its terminal; if it restarts mid-run the pipe
   // breaks. Swallow EPIPE so a hot-reload can't kill an in-flight simulation
   // (its log file, opened by the portal, keeps recording regardless).
@@ -37,6 +89,8 @@ export async function runWorker(id: string): Promise<void> {
   try {
     events = await readEvents(id);
   } catch (err) {
+    // Fails before any Redis connection is opened, so a missing events file
+    // never depends on the pool being reachable.
     await writeRunState(id, {
       pid: process.pid, status: "failed", startedAt, completedAt: new Date().toISOString(),
       error: err instanceof Error ? err.message : String(err),
@@ -46,14 +100,29 @@ export async function runWorker(id: string): Promise<void> {
     return;
   }
 
-  let stopped = false;
-  process.on("SIGTERM", () => { stopped = true; });
+  const transport = createTransport(id);
+  let flushTimer: ReturnType<typeof setInterval> | undefined;
 
-  await writeRunState(id, {
-    pid: process.pid, status: "running", startedAt,
-    delivered: 0, skipped: 0, failed: 0, total: events.length,
-  });
-  log(`Simulation ${id}: running ${events.length} events (cap ${maxConcurrencyFromEnv()})`);
+  let stopped = false;
+  let stopPublished: Promise<void> = Promise.resolve();
+  // SIGTERM is the portal's existing stop path (terminateWorker -> process.kill
+  // pid). Besides quitting publishing, raise the per-run stop flag so the pool
+  // skips this run's already-queued jobs instead of delivering them in our
+  // wake. The flag must be durable before the terminal `stopped` write — a
+  // worker popping a job after that write must see the flag and drop the event
+  // — so the set is recorded in `stopPublished` and awaited before finalize.
+  const onSigTerm = (): void => {
+    if (stopped) return;
+    stopped = true;
+    log(`Simulation ${id}: stop requested — cancelling queued deliveries`);
+    stopPublished = transport.markStopped().catch((err) => {
+      // A stop flag that can't be published still stops this scheduler and
+      // still records `stopped`; the pool just can't be told to cancel. Don't
+      // let the terminal write depend on the broker being up.
+      logError(`Simulation ${id}: could not set the stop flag`, err);
+    });
+  };
+  process.on("SIGTERM", onSigTerm);
 
   const finalize = async (status: SimulationRunState["status"], counts: RunCounts) => {
     await writeRunState(id, {
@@ -69,45 +138,127 @@ export async function runWorker(id: string): Promise<void> {
     events.reduce((max, event) => Math.max(max, event.scheduledMicros), 0) / 1000;
   const endBehavior = await beginBehavior(id, lastEventMs);
 
-  const maxConcurrency = maxConcurrencyFromEnv();
-  const runStart = Date.now();
-  let lastProgressLog = 0;
-  const onProgress = (s: ProgressSnapshot): void => {
-    const now = Date.now();
-    const done = s.delivered + s.skipped + s.failed;
-    // Log at most once per interval, but always log the final drain (inFlight 0).
-    if (now - lastProgressLog < PROGRESS_LOG_INTERVAL_MS && s.inFlight > 0) return;
-    lastProgressLog = now;
-    const secs = ((now - runStart) / 1000).toFixed(1);
-    log(
-      `Simulation ${id} [+${secs}s]: in-flight ${s.inFlight}/${maxConcurrency} ` +
-        `(peak ${s.peakConcurrency}) — delivered ${s.delivered}, skipped ${s.skipped}, ` +
-        `failed ${s.failed} of ${s.total} (${done}/${s.total} done)`,
-    );
-  };
-
   try {
-    const { counts, stopped: wasStopped, peakConcurrency } = await runEvents(
-      events,
-      runStart,
-      { now: Date.now, sleep, fetch, shouldStop: () => stopped, onProgress },
-      { maxConcurrency },
-    );
-    await finalize(wasStopped ? "stopped" : "completed", counts);
+    await writeRunState(id, {
+      pid: process.pid, status: "running", startedAt,
+      delivered: 0, skipped: 0, failed: 0, total: events.length,
+    });
+    // Clear any stale tallies so a re-run of this id doesn't look already-drained.
+    await transport.reset();
+    log(`Simulation ${id}: enqueuing ${events.length} events to ${redactRedisUrl(redisUrl())}`);
+
+    const runStart = Date.now();
+    let lastProgressLog = 0;
+    let lastDepthWarn = 0;
+    let latest: ProgressSnapshot | null = null;
+
+    // The scheduler must never pause to let the pool catch up — that would
+    // corrupt the schedule — so a pool losing the race can only be made visible.
+    const warnIfBehind = (s: ProgressSnapshot, now: number): void => {
+      if (s.depth < QUEUE_DEPTH_WARN || now - lastDepthWarn < PROGRESS_LOG_INTERVAL_MS) return;
+      lastDepthWarn = now;
+      log(
+        `Simulation ${id}: queue depth ${s.depth} (publish lag ${Math.round(s.lagMs)}ms) — ` +
+          `the pool is falling behind the schedule`,
+      );
+    };
+
+    const onProgress = (s: ProgressSnapshot): void => {
+      latest = s;
+      const now = Date.now();
+      const done = s.delivered + s.skipped + s.failed;
+      warnIfBehind(s, now);
+      // Log at most once per interval, but always log the final drain.
+      if (now - lastProgressLog < PROGRESS_LOG_INTERVAL_MS && done < s.enqueued) return;
+      lastProgressLog = now;
+      const secs = ((now - runStart) / 1000).toFixed(1);
+      log(
+        `Simulation ${id} [+${secs}s]: enqueued ${s.enqueued}/${s.total} ` +
+          `(depth ${s.depth}, lag ${Math.round(s.lagMs)}ms) — delivered ${s.delivered}, ` +
+          `skipped ${s.skipped}, failed ${s.failed} (${done}/${s.enqueued} settled)`,
+      );
+    };
+
+    // Mirror the latest counts to the record the portal reads, on a timer, so a
+    // run shows live progress instead of jumping from 0 to done. No-ops until the
+    // first snapshot arrives, and after the record leaves `running`.
+    const flushLatest = async (): Promise<void> => {
+      if (!latest) return;
+      try {
+        await flushRunProgress(id, {
+          pid: process.pid, startedAt,
+          delivered: latest.delivered, skipped: latest.skipped, failed: latest.failed, total: latest.total,
+        });
+      } catch (err) {
+        // A transient DB write must not kill the run; the terminal write reconciles.
+        logError(`Simulation ${id}: live progress flush failed`, err);
+      }
+    };
+    flushTimer = setInterval(() => { void flushLatest(); }, RUN_STATE_FLUSH_MS);
+
+    const { counts, stopped: wasStopped, enqueued, failedToEnqueue, maxLagMs, drainStalled } =
+      await runEvents(
+        events,
+        runStart,
+        {
+          now: Date.now,
+          sleep,
+          shouldStop: () => stopped,
+          enqueue: transport.enqueue,
+          readCounts: transport.readCounts,
+          onProgress,
+        },
+      );
+    // Stop live flushes before the terminal write, so a late timer tick can't
+    // clobber the terminal row with a stale `running` mirror.
+    clearInterval(flushTimer);
+    flushTimer = undefined;
+    // A stalled drain still finalizes: the counters are the best total available,
+    // and leaving the row `running` forever is strictly worse than a short count.
+    // runEvents has already logged which jobs never settled.
+    //
+    // Only claim the run is stopped once the stop flag is durable — a worker
+    // popping a job after this write must see the flag and drop the delivery.
+    // `stopped` (not just `wasStopped`) covers a SIGTERM that lands during the
+    // drain, after every event is published: runEvents reports `wasStopped` false
+    // then, but the portal already stamped the record `stopped`, and finalizing
+    // `completed` would flip it back.
+    const finalState = stopped || wasStopped;
+    if (finalState) await stopPublished;
+    await finalize(finalState ? "stopped" : "completed", counts);
     log(
-      `Simulation ${id}: ${wasStopped ? "stopped" : "completed"} ` +
-        `(peak concurrency ${peakConcurrency}/${maxConcurrency})`,
+      `Simulation ${id}: ${finalState ? "stopped" : "completed"} — enqueued ${enqueued}/${events.length}` +
+        (failedToEnqueue > 0 ? `, ${failedToEnqueue} failed to enqueue` : "") +
+        `, delivered ${counts.delivered}, skipped ${counts.skipped}, failed ${counts.failed} ` +
+        `(max publish lag ${Math.round(maxLagMs)}ms` +
+        (drainStalled ? ", drain stalled — counts are a floor" : "") +
+        `)`,
     );
   } catch (err) {
+    // Preserve the counts the pool already recorded rather than zeroing them: a
+    // crash late in a run (e.g. an enqueue failure after 900 delivered) would
+    // otherwise hide the real toll. readCounts may itself throw if Redis is the
+    // crash cause — fall back to zeros so this path stays never-throwing.
+    let counts = { delivered: 0, skipped: 0, failed: 0 };
+    try {
+      counts = await transport.readCounts();
+    } catch (readErr) {
+      logError(`Simulation ${id}: could not read counts after crash`, readErr);
+    }
     await writeRunState(id, {
       pid: process.pid, status: "failed", startedAt, completedAt: new Date().toISOString(),
       error: err instanceof Error ? err.message : String(err),
-      delivered: 0, skipped: 0, failed: 0, total: events.length,
+      delivered: counts.delivered, skipped: counts.skipped, failed: counts.failed, total: events.length,
     });
     logError(`Simulation ${id} crashed`, err);
   } finally {
-    // However the run ended — completed, stopped, or crashed — the systems go
-    // back to behaving normally.
+    if (flushTimer) clearInterval(flushTimer);
+    // Drop this run's SIGTERM listener so a later signal can't act on the closed
+    // transport (a long-lived host running many runs would otherwise accumulate
+    // one listener per run, firing on every future SIGTERM).
+    process.off("SIGTERM", onSigTerm);
+    await transport.close();
+    // However the run ended — completed, stopped, or crashed — the systems go back to behaving normally.
     await endBehavior();
   }
 }
