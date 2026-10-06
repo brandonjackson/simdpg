@@ -11,10 +11,11 @@ function job(over: Partial<SimulationEvent> = {}): DeliveryJob {
   return { simulationId: "sim1", event: ev(over) };
 }
 
-/** Fake Redis exposing just the `incr` the handler uses, recording the keys. */
+/** Fake Redis exposing just the `incr`/`exists` the handler uses, recording the keys. */
 function fakeRedis() {
   const incr = vi.fn(async () => 1);
-  return { incr };
+  const exists = vi.fn(async () => 0);
+  return { incr, exists };
 }
 
 describe("handleDeliveryJob", () => {
@@ -53,5 +54,26 @@ describe("handleDeliveryJob", () => {
     expect(outcome).toBe("failed");
     expect(redis.incr).toHaveBeenCalledOnce();
     expect(redis.incr).toHaveBeenCalledWith("sim:run:sim1:failed");
+  });
+
+  it("skips a stopped run's job: no fetch, tallied as skipped", async () => {
+    const fetch = vi.fn(async () => new Response(null, { status: 200 })) as unknown as typeof globalThis.fetch;
+    const redis = fakeRedis();
+    redis.exists.mockResolvedValue(1);
+    const outcome = await handleDeliveryJob(job(), { fetch, redis });
+    expect(outcome).toBe("skipped");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(redis.incr).toHaveBeenCalledOnce();
+    expect(redis.incr).toHaveBeenCalledWith("sim:run:sim1:skipped");
+  });
+
+  it("delivers anyway when the stop-flag read fails (fail-open, never stalls the drain)", async () => {
+    const fetch = vi.fn(async () => new Response(null, { status: 200 })) as unknown as typeof globalThis.fetch;
+    const redis = fakeRedis();
+    redis.exists.mockRejectedValue(new Error("redis blip"));
+    const outcome = await handleDeliveryJob(job(), { fetch, redis });
+    expect(outcome).toBe("delivered");
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(redis.incr).toHaveBeenCalledWith("sim:run:sim1:delivered");
   });
 });

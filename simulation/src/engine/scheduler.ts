@@ -166,15 +166,16 @@ export async function runEvents(
   }
 
   // Drain phase: wait until the pool has settled every job we enqueued. A
-  // stopped run skips the wait — its already-queued jobs keep draining on the
-  // workers, but the scheduler is on its way out and reports the snapshot it has.
+  // stopped run still drains — its already-queued jobs are skipped by workers
+  // (tallied as `skipped` via the stop flag) and so still settle, letting the
+  // run write accurate partial counts rather than abandoning in-flight work.
   await refreshCounts(true);
   emitProgress();
 
   let lastSettled = settled(counts);
   let lastAdvanceAt = deps.now();
   let drainStalled = false;
-  while (settled(counts) < enqueued && !deps.shouldStop()) {
+  while (settled(counts) < enqueued) {
     if (deps.now() - lastAdvanceAt >= drainStallMs) {
       drainStalled = true;
       log(

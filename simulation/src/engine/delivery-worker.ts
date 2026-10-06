@@ -1,7 +1,7 @@
 import { Worker, type Job } from "bullmq";
 import type Redis from "ioredis";
 import { deliver, type EventOutcome } from "./delivery.js";
-import { DELIVERY_QUEUE, counterKey, type DeliveryJob } from "./queue.js";
+import { DELIVERY_QUEUE, counterKey, isRunStopped, type DeliveryJob } from "./queue.js";
 import { createRedis, redisUrl, redactRedisUrl } from "./redis.js";
 import { log, logError } from "../utils.js";
 
@@ -22,7 +22,7 @@ export function concurrencyFromEnv(): number {
 export interface JobHandlerDeps {
   fetch: typeof fetch;
   timeoutMs?: number;
-  redis: Pick<Redis, "incr">;
+  redis: Pick<Redis, "incr" | "exists">;
 }
 
 /**
@@ -31,11 +31,37 @@ export interface JobHandlerDeps {
  * normally on all three outcomes and the BullMQ job is marked completed.
  * BullMQ's redelivery is reserved for a crashed worker (stalled job), not for
  * HTTP failures, which would otherwise double-count.
+ *
+ * A stopped run's already-queued jobs are skipped here rather than delivered:
+ * the scheduler SET a per-run stop flag on SIGTERM, and the per-job check below
+ * is how the whole pool cancels a run without the scheduler deleting individual
+ * jobs. The skip is tallied as `skipped` so the run's counters still settle to
+ * its enqueued total and the scheduler's drain completes with accurate partial
+ * counts.
  */
 export async function handleDeliveryJob(
   data: DeliveryJob,
   deps: JobHandlerDeps,
 ): Promise<EventOutcome> {
+  // A stop-flag read that rejects must not fail the job — that would lose the
+  // event's tally and stall the drain. On a read failure, fall through to
+  // deliver(): the flag is a cancel optimization, not a correctness gate, so
+  // delivering is the safe default.
+  let stopped = false;
+  try {
+    stopped = await isRunStopped(deps.redis, data.simulationId);
+  } catch (err) {
+    logError(`Stop-flag read failed for ${data.simulationId}, delivering anyway`, err);
+  }
+  if (stopped) {
+    try {
+      await deps.redis.incr(counterKey(data.simulationId, "skipped"));
+    } catch (err) {
+      logError(`Skipped-counter INCR failed for ${data.simulationId}`, err);
+    }
+    return "skipped";
+  }
+
   const outcome = await deliver(data.event, { fetch: deps.fetch, timeoutMs: deps.timeoutMs });
   // A failed INCR must not fail the job: the event was already POSTed, so a
   // retry would duplicate it. Under-count instead — the scheduler's terminal

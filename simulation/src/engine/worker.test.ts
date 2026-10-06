@@ -21,6 +21,7 @@ function fakeTransport(counts: OutcomeCounts) {
     enqueue: async (event) => { enqueued.push(event); },
     // Settled == enqueued once everything is published, so the drain returns.
     readCounts: async () => counts,
+    markStopped: async () => {},
     close: async () => {},
   });
   return { create, enqueued };
@@ -141,6 +142,7 @@ describe("runWorker", () => {
       reset: async () => {},
       enqueue: async () => {},
       readCounts: async () => ({ delivered, skipped: 0, failed: 0 }),
+      markStopped: async () => {},
       close: async () => {},
     });
 
@@ -210,6 +212,7 @@ describe("runWorker", () => {
         if (readCalls === 2 && !blipDone) { blipDone = true; throw new Error("redis went down mid-run"); }
         return { delivered, skipped: 0, failed: 0 };
       },
+      markStopped: async () => {},
       close: async () => {},
     });
 
@@ -244,6 +247,7 @@ describe("runWorker", () => {
       reset: async () => {},
       enqueue: async () => {},
       readCounts: async () => { throw new Error("redis down"); },
+      markStopped: async () => {},
       close: async () => {},
     });
 
@@ -252,5 +256,49 @@ describe("runWorker", () => {
     const run = db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "redisdown")).get();
     expect(run?.status).toBe("failed");
     expect(run).toMatchObject({ delivered: 0, skipped: 0, failed: 0, total: 1 });
+  });
+
+  it("raises the stop flag on SIGTERM and records stopped with the pool's partial counts", async () => {
+    const { runWorker, db, simulations, simulationRuns } = await load();
+    seedRunning(db, simulations, "stop1");
+    await writeEvents("stop1", [
+      { id: "e1", scheduledMicros: 0, targetKey: "national-id", targetUrl: "http://hook", payload: { n: 1 } },
+      { id: "e2", scheduledMicros: 0, targetKey: "national-id", targetUrl: "http://hook", payload: { n: 2 } },
+      { id: "e3", scheduledMicros: 0, targetKey: "national-id", targetUrl: "http://hook", payload: { n: 3 } },
+    ]);
+
+    const marksStopped: string[] = [];
+    let enqueues = 0;
+    const create: CreateTransport = () => ({
+      reset: async () => {},
+      // Fire the stop signal from inside the run, on the first publish, so the
+      // SIGTERM handler is guaranteed to be registered — unlike emitting from
+      // the test body, which can race the run's startup.
+      enqueue: async () => {
+        enqueues += 1;
+        if (enqueues === 1) process.emit("SIGTERM");
+      },
+      // The pool settled the one event published before the signal arrived.
+      readCounts: async () => ({ delivered: 1, skipped: 0, failed: 0 }),
+      markStopped: async () => { marksStopped.push("stop1"); },
+      close: async () => {},
+    });
+
+    await runWorker("stop1", create);
+
+    // The stop signal reached the process and raised the pool's flag.
+    expect(marksStopped).toEqual(["stop1"]);
+    // The signal hit before the second event was published.
+    expect(enqueues).toBe(1);
+
+    // The run finalizes `stopped` (not `completed`), from the pool's partial
+    // counts — the event that was published is the one the pool settled.
+    const runRow = db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "stop1")).get();
+    expect(runRow?.status).toBe("stopped");
+    expect(runRow).toMatchObject({ delivered: 1, skipped: 0, failed: 0, total: 3 });
+
+    const sim = db.select().from(simulations).where(eq(simulations.id, "stop1")).get();
+    expect(sim?.status).toBe("stopped");
+    expect(JSON.parse(sim!.stats!)).toMatchObject({ delivered: 1, total: 3 });
   });
 });

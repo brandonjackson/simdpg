@@ -4,6 +4,7 @@ import { writeRunState, flushRunProgress, type SimulationRunState } from "./run-
 import { runEvents, type RunCounts, type ProgressSnapshot } from "./scheduler.js";
 import {
   createDeliveryQueue,
+  markRunStopped,
   readCounters,
   resetCounters,
   DELIVERY_JOB,
@@ -34,6 +35,8 @@ export interface DeliveryTransport {
   reset: () => Promise<void>;
   enqueue: (event: SimulationEvent) => Promise<void>;
   readCounts: () => Promise<OutcomeCounts>;
+  /** Raise the run's stop flag so the pool skips its already-queued jobs. */
+  markStopped: () => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -53,6 +56,7 @@ function createRedisTransport(simulationId: string): DeliveryTransport {
     reset: () => resetCounters(counters, simulationId),
     enqueue: async (event) => { await queue.add(DELIVERY_JOB, { simulationId, event }); },
     readCounts: () => readCounters(counters, simulationId),
+    markStopped: () => markRunStopped(counters, simulationId),
     close: async () => {
       await queue.close();
       await queueConn.quit();
@@ -96,11 +100,29 @@ export async function runWorker(
     return;
   }
 
-  let stopped = false;
-  process.on("SIGTERM", () => { stopped = true; });
-
   const transport = createTransport(id);
   let flushTimer: ReturnType<typeof setInterval> | undefined;
+
+  let stopped = false;
+  let stopPublished: Promise<void> = Promise.resolve();
+  // SIGTERM is the portal's existing stop path (terminateWorker -> process.kill
+  // pid). Besides quitting publishing, raise the per-run stop flag so the pool
+  // skips this run's already-queued jobs instead of delivering them in our
+  // wake. The flag must be durable before the terminal `stopped` write — a
+  // worker popping a job after that write must see the flag and drop the event
+  // — so the set is recorded in `stopPublished` and awaited before finalize.
+  const onSigTerm = (): void => {
+    if (stopped) return;
+    stopped = true;
+    log(`Simulation ${id}: stop requested — cancelling queued deliveries`);
+    stopPublished = transport.markStopped().catch((err) => {
+      // A stop flag that can't be published still stops this scheduler and
+      // still records `stopped`; the pool just can't be told to cancel. Don't
+      // let the terminal write depend on the broker being up.
+      logError(`Simulation ${id}: could not set the stop flag`, err);
+    });
+  };
+  process.on("SIGTERM", onSigTerm);
 
   const finalize = async (status: SimulationRunState["status"], counts: RunCounts) => {
     await writeRunState(id, {
@@ -194,9 +216,18 @@ export async function runWorker(
     // A stalled drain still finalizes: the counters are the best total available,
     // and leaving the row `running` forever is strictly worse than a short count.
     // runEvents has already logged which jobs never settled.
-    await finalize(wasStopped ? "stopped" : "completed", counts);
+    //
+    // Only claim the run is stopped once the stop flag is durable — a worker
+    // popping a job after this write must see the flag and drop the delivery.
+    // `stopped` (not just `wasStopped`) covers a SIGTERM that lands during the
+    // drain, after every event is published: runEvents reports `wasStopped` false
+    // then, but the portal already stamped the record `stopped`, and finalizing
+    // `completed` would flip it back.
+    const finalState = stopped || wasStopped;
+    if (finalState) await stopPublished;
+    await finalize(finalState ? "stopped" : "completed", counts);
     log(
-      `Simulation ${id}: ${wasStopped ? "stopped" : "completed"} — enqueued ${enqueued}/${events.length}` +
+      `Simulation ${id}: ${finalState ? "stopped" : "completed"} — enqueued ${enqueued}/${events.length}` +
         (failedToEnqueue > 0 ? `, ${failedToEnqueue} failed to enqueue` : "") +
         `, delivered ${counts.delivered}, skipped ${counts.skipped}, failed ${counts.failed} ` +
         `(max publish lag ${Math.round(maxLagMs)}ms` +
@@ -222,6 +253,10 @@ export async function runWorker(
     logError(`Simulation ${id} crashed`, err);
   } finally {
     if (flushTimer) clearInterval(flushTimer);
+    // Drop this run's SIGTERM listener so a later signal can't act on the closed
+    // transport (a long-lived host running many runs would otherwise accumulate
+    // one listener per run, firing on every future SIGTERM).
+    process.off("SIGTERM", onSigTerm);
     await transport.close();
     // However the run ended — completed, stopped, or crashed — the systems go back to behaving normally.
     await endBehavior();

@@ -114,6 +114,39 @@ describe("runEvents", () => {
     expect(counts).toEqual({ delivered: 2, skipped: 0, failed: 0, total: 3 });
   });
 
+  it("keeps draining after shouldStop flips, so stopped runs settle accurate counts", async () => {
+    let clock = 0;
+    let stop = false;
+    let published = 0;
+    const events = Array.from({ length: 3 }, (_, i) => ev({ id: String(i), scheduledMicros: 0 }));
+    // The scheduler stops publishing on the second event, but the pool still
+    // settles the two published jobs (workers skip them via the stop flag),
+    // climbing the counters across reads. The drain must wait for them — that
+    // is where a stopped run's `skipped` totals come from.
+    const reads: OutcomeCounts[] = [
+      { delivered: 0, skipped: 0, failed: 0 },
+      { delivered: 0, skipped: 1, failed: 0 },
+      { delivered: 0, skipped: 2, failed: 0 },
+    ];
+    let i = 0;
+    const { enqueued: n, stopped, counts } = await runEvents(
+      events, 0,
+      baseDeps({
+        now: () => clock,
+        sleep: async (ms) => { clock += ms; },
+        enqueue: async () => { published += 1; if (published === 2) stop = true; },
+        shouldStop: () => stop,
+        readCounts: async () => reads[Math.min(i++, reads.length - 1)],
+      }),
+      { drainPollMs: 10, drainStallMs: 1000 },
+    );
+    expect(n).toBe(2);
+    expect(stopped).toBe(true);
+    // Both published events settled as skips — the drain did not abandon the
+    // run when the stop arrived.
+    expect(counts).toEqual({ delivered: 0, skipped: 2, failed: 0, total: 3 });
+  });
+
   it("gives up draining when the counters stop moving, instead of polling forever", async () => {
     let clock = 0;
     const events = [ev({ id: "a", scheduledMicros: 0 })];

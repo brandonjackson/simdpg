@@ -129,4 +129,68 @@ describe.skipIf(!REDIS_URL)("runWorker (integration: real Redis + worker pool)",
     expect(sim?.status).toBe("completed");
     expect(JSON.parse(sim!.stats!)).toEqual({ delivered: 2, skipped: 1, failed: 0, total: 3 });
   }, 20_000);
+
+  it("stops a run mid-flight: SIGTERM halts publishing, workers skip queued jobs, partial counts are recorded", async () => {
+    const { runWorker, startDeliveryWorker, createRedis, createDeliveryQueue, db, simulations, simulationRuns } =
+      await load();
+    seedRunning(db, simulations, "stop1");
+
+    // Slow webhook so jobs stay in-flight and some stay queued when we stop.
+    let delivered = 0;
+    const server = http.createServer((_req, res) => {
+      setTimeout(() => { delivered += 1; res.writeHead(200).end(); }, 400);
+    });
+    await new Promise<void>((r) => server.listen(0, r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+    // Clear any jobs a previous run left on the shared queue.
+    const adminConn = createRedis();
+    const adminQueue = createDeliveryQueue(adminConn);
+    await adminQueue.obliterate({ force: true });
+    await adminQueue.close();
+    await adminConn.quit();
+
+    // 2 workers, concurrency 2 = 4 in-flight max. 6 jobs at t=0 means 2 stay
+    // queued; a 7th at t=300ms gives a publish window to SIGTERM inside.
+    const workerConns = [createRedis(), createRedis()];
+    const counterConns = [createRedis(), createRedis()];
+    const workers = [
+      startDeliveryWorker({ connection: workerConns[0], counters: counterConns[0], concurrency: 2 }),
+      startDeliveryWorker({ connection: workerConns[1], counters: counterConns[1], concurrency: 2 }),
+    ];
+
+    await writeEvents("stop1", [
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, scheduledMicros: 0, targetKey: "national-id", targetUrl: url, payload: { i } })),
+      { id: "e6", scheduledMicros: 300_000, targetKey: "national-id", targetUrl: url, payload: { i: 6 } },
+    ]);
+
+    // The scheduler is this process; its SIGTERM handler is what the portal's
+    // terminateWorker triggers. Fire it in-process once the run is underway and
+    // some jobs are queued.
+    const run = runWorker("stop1");
+    await vi.waitFor(
+      () => expect(db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "stop1")).get()?.status).toBe("running"),
+      { timeout: 4000, interval: 50 },
+    );
+    await new Promise((r) => setTimeout(r, 150)); // let some jobs queue/in-flight
+    process.emit("SIGTERM");
+    await run;
+
+    await Promise.all(workers.map((w) => w.close()));
+    await Promise.all([...workerConns, ...counterConns].map((c) => c.quit()));
+    await new Promise<void>((r) => server.close(() => r()));
+
+    const runRow = db.select().from(simulationRuns).where(eq(simulationRuns.simulation_id, "stop1")).get();
+    expect(runRow?.status).toBe("stopped");
+    // Every enqueued job settled (drain completed), so the counts are accurate.
+    expect(runRow!.delivered + runRow!.skipped + runRow!.failed).toBe(6);
+    expect(runRow!.total).toBe(7);
+    // The stop flag skipped queued jobs: not all 6 enqueued were POSTed.
+    expect(delivered).toBe(runRow!.delivered);
+    expect(delivered).toBeLessThan(6);
+    expect(runRow!.skipped).toBeGreaterThan(0);
+
+    const sim = db.select().from(simulations).where(eq(simulations.id, "stop1")).get();
+    expect(sim?.status).toBe("stopped");
+  }, 30_000);
 });

@@ -50,6 +50,39 @@ export function counterKey(simulationId: string, outcome: EventOutcome): string 
   return `sim:run:${simulationId}:${outcome}`;
 }
 
+/**
+ * The per-run stop flag, raised by the scheduler's SIGTERM handler and checked
+ * once per job by the pool. A plain Redis key (not a queue name), so it keeps
+ * the `:` convention. The scheduler sets it; workers GET it per job and skip
+ * anything already queued for that run, so a stop cancels delivery across the
+ * whole pool without the scheduler tracking individual jobs.
+ */
+export const stopKey = (simulationId: string): string => `sim:run:${simulationId}:stopped`;
+
+/**
+ * How long a stopped flag lives. The flag has to outlive the scheduler — jobs
+ * queued before the stop can be popped after it exits and must still see it —
+ * so 24h is a backstop against keys accumulating for runs never re-run, not a
+ * meaningful expiry.
+ */
+export const STOP_FLAG_TTL_SECONDS = 24 * 60 * 60;
+
+/** Raise a run's stop flag. Idempotent. Never throws; broker blips are logged. */
+export async function markRunStopped(
+  redis: Pick<Redis, "set">,
+  simulationId: string,
+): Promise<void> {
+  await redis.set(stopKey(simulationId), "1", "EX", STOP_FLAG_TTL_SECONDS);
+}
+
+/** True once a run has been stopped, so its queued jobs should be dropped. */
+export async function isRunStopped(
+  redis: Pick<Redis, "exists">,
+  simulationId: string,
+): Promise<boolean> {
+  return (await redis.exists(stopKey(simulationId))) === 1;
+}
+
 function toCount(raw: string | null): number {
   const n = Number.parseInt(raw ?? "", 10);
   return Number.isFinite(n) ? n : 0;
@@ -74,15 +107,20 @@ export async function readCounters(
 }
 
 /**
- * Clear a run's counters before it starts. Run ids are unique per run, so this
- * matters only when one is deliberately re-run — without it, stale tallies would
- * make the new run look already-drained. Cheap and idempotent either way.
+ * Clear a run's counters AND its stop flag before it starts. Run ids are unique
+ * per run, so this matters only when one is deliberately re-run — without it,
+ * stale tallies would make the new run look already-drained, and a stale stop
+ * flag (the previous run was stopped) would make every worker skip the new
+ * run's jobs. The stop flag is cleared FIRST: if the DEL batch fails partway, a
+ * stale tally is caught by the drain, but a stale stop flag left set would doom
+ * the whole re-run to be skipped. Cheap and idempotent either way.
  */
 export async function resetCounters(
   redis: Pick<Redis, "del">,
   simulationId: string,
 ): Promise<void> {
   await redis.del(
+    stopKey(simulationId),
     counterKey(simulationId, "delivered"),
     counterKey(simulationId, "skipped"),
     counterKey(simulationId, "failed"),
